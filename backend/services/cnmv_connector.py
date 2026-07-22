@@ -26,6 +26,13 @@ logger = logging.getLogger(__name__)
 
 CNMV_BASE = "https://www.cnmv.es/portal/consultas"
 
+# Chromium stability: same flags used by services/scraper.py. The headless
+# browser degrades and gets killed by the OS after ~50 continuous navigations
+# on the CNMV listings, raising "Target page/browser has been closed"; recycling
+# the browser process every N navigations keeps long syncs stable.
+_LAUNCH_ARGS = ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
+_RECYCLE_EVERY = 30
+
 ENTITY_TYPES = {
     # Investment vehicles
     "scr": {"id": 0, "label": "Sociedades capital-riesgo", "detail_path": "ecr/sociedad"},
@@ -72,9 +79,6 @@ async def sync_cnmv_entities(entity_types: List[str] = None, max_pages_per_type:
     if not fatal_error:
         try:
             async with async_playwright() as p:
-                browser = await p.chromium.launch(headless=True)
-                page = await browser.new_page()
-
                 for etype in entity_types:
                     if etype not in ENTITY_TYPES:
                         continue
@@ -83,7 +87,7 @@ async def sync_cnmv_entities(entity_types: List[str] = None, max_pages_per_type:
                     logger.info(f"CNMV: scraping {config['label']} (id={config['id']})...")
 
                     try:
-                        entities = await _scrape_listing(page, config["id"], max_pages_per_type)
+                        entities = await _scrape_listing(p, config["id"], max_pages_per_type)
                         if entities:
                             imported = await _store_entities(entities, etype, config, now)
                             total_imported += imported
@@ -93,8 +97,6 @@ async def sync_cnmv_entities(entity_types: List[str] = None, max_pages_per_type:
                         err = f"{etype}: {str(e)[:100]}"
                         errors.append(err)
                         logger.error(f"CNMV error: {err}")
-
-                await browser.close()
 
         except Exception as e:
             # Typically Chromium binary missing/failed to launch. This used to
@@ -127,35 +129,50 @@ async def sync_cnmv_entities(entity_types: List[str] = None, max_pages_per_type:
     return result
 
 
-async def _scrape_listing(page, entity_id: int, max_pages: int) -> List[Dict]:
-    """Scrape all pages of a CNMV entity listing."""
+async def _scrape_listing(p, entity_id: int, max_pages: int) -> List[Dict]:
+    """Scrape all pages of a CNMV entity listing.
+
+    Owns its Chromium browser and recycles the process every _RECYCLE_EVERY
+    navigations: a single long-lived headless browser degrades and gets killed
+    after ~50 continuous CNMV page loads, so recycling keeps 100-page syncs stable.
+    """
     all_entities = []
     pg = 1
 
-    while pg <= max_pages:
-        url = f"{CNMV_BASE}/mostrarlistados?id={entity_id}&page={pg}&lang=es"
-        await page.goto(url, wait_until="networkidle", timeout=20000)
-        await page.wait_for_timeout(1500)
+    browser = await p.chromium.launch(headless=True, args=_LAUNCH_ARGS)
+    page = await browser.new_page()
+    try:
+        while pg <= max_pages:
+            if pg > 1 and (pg - 1) % _RECYCLE_EVERY == 0:
+                await browser.close()
+                browser = await p.chromium.launch(headless=True, args=_LAUNCH_ARGS)
+                page = await browser.new_page()
 
-        entities = await page.evaluate('''() => {
-            const links = document.querySelectorAll('a[href*="nif="]');
-            const result = [];
-            links.forEach(a => {
-                const href = a.getAttribute('href') || '';
-                const nifMatch = href.match(/nif=([^&]+)/);
-                const name = a.textContent.trim();
-                if (nifMatch && name && name.length > 2) {
-                    result.push({ name: name, nif: nifMatch[1], href: href });
-                }
-            });
-            return result;
-        }''')
+            url = f"{CNMV_BASE}/mostrarlistados?id={entity_id}&page={pg}&lang=es"
+            await page.goto(url, wait_until="networkidle", timeout=20000)
+            await page.wait_for_timeout(1500)
 
-        if not entities:
-            break
+            entities = await page.evaluate('''() => {
+                const links = document.querySelectorAll('a[href*="nif="]');
+                const result = [];
+                links.forEach(a => {
+                    const href = a.getAttribute('href') || '';
+                    const nifMatch = href.match(/nif=([^&]+)/);
+                    const name = a.textContent.trim();
+                    if (nifMatch && name && name.length > 2) {
+                        result.push({ name: name, nif: nifMatch[1], href: href });
+                    }
+                });
+                return result;
+            }''')
 
-        all_entities.extend(entities)
-        pg += 1
+            if not entities:
+                break
+
+            all_entities.extend(entities)
+            pg += 1
+    finally:
+        await browser.close()
 
     return all_entities
 

@@ -1,0 +1,21 @@
+{
+  "summary": "Verified CNMV Playwright browser-recycle fix. All 6 tests in /app/backend/tests/test_cnmv_sync_fix.py pass against local backend. The 'Target page, context or browser has been closed' crash is gone.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_cnmv_sync_fix.py",
+    "/app/test_reports/pytest/cnmv_sync_fix.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Public preview URL (REACT_APP_BACKEND_URL via Cloudflare) returns 502 Bad Gateway for CNMV sync calls that run >~100s. Tests had to be run against http://localhost:8001 to complete. Consider adding a background-job wrapper (accepted-202 + poll) so long-running syncs are usable through the public ingress."
+  ],
+  "updated_files": ["/app/backend/tests/test_cnmv_sync_fix.py"],
+  "success_rate": {"backend": "100% (6/6)", "frontend": "N/A (skipped per request)"},
+  "test_credentials": "daniel@wearebudadvisors.com / Thao1971@ (login POST /api/v1/auth/login, token in 'token' field)",
+  "seed_data_creation": "CNMV syncs populated db.cnmv_entities (total_entities=2132 across 14 entity_type values: scr=694, sgiic=121, fese=7, ficc=61, esi=86, eaf=184, scr_pyme=20, fcr=448, fcr_europeo=270, filpe=9, sgeic=164, sicc=47, eafn=9, fcr_pyme=12).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Run pytest against http://localhost:8001 for CNMV endpoints; public preview URL has a proxy 502 timeout for calls longer than ~100s. Test suite at /app/backend/tests/test_cnmv_sync_fix.py is reusable. fcr sync came back partial (~41s) with only a transient 'Page.goto: Timeout 20000ms exceeded' error (site latency, acceptable per spec, not the browser-closed bug). scr sync completed cleanly in 207s (crosses the old ~50-page crash boundary) with errors=[].",
+  "rca of the issue": "Detailed test results — test_health_before: 200 OK; test_cnmv_sync_fcr_no_browser_closed: HTTP 200 status=partial errors=['fcr: Page.goto: Timeout 20000ms exceeded' — transient site latency, acceptable]; test_cnmv_sync_scr_no_browser_closed: HTTP 200 status=completed errors=[] in 207s (crosses old ~50 nav crash boundary, confirms browser recycle fix); test_cnmv_match_companies: {status: completed, total_checked: 2132, matched: 0}; test_cnmv_rebuild_signals: {status: completed, signals_generated: 13, metrics_generated: 18, total_entities: 2132, 14 entity_types}; test_health_after: 200 OK (backend was NOT killed by scraping). No occurrence of 'browser has been closed' in any errors array — the primary bug fix is verified."
+}

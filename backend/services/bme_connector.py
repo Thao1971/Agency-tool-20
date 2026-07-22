@@ -54,7 +54,7 @@ async def sync_bme(markets: List[str] = None) -> Dict:
     if not fatal_error:
         try:
             async with async_playwright() as p:
-                browser = await p.chromium.launch(headless=True)
+                browser = await p.chromium.launch(headless=True, args=['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'])
                 page = await browser.new_page()
 
                 for market in markets:
