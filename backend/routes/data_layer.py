@@ -177,6 +177,28 @@ async def sector_consolidation_map(cnae_field: str = "cnae_code", cnae_value: st
         raise HTTPException(400, str(e))
 
 
+@router.get("/search-companies")
+async def search_companies(q: str = "", limit: int = 20, user=Depends(get_current_user)):
+    """Company autocomplete against the MODERN master_companies/master_id schema (the
+    one Q5/T3/E6/Control&Synergy all use) — deliberately separate from
+    `GET /api/v1/master` (routes/master.py), which searches the LEGACY
+    companies_master/master_company_id schema and would return IDs incompatible with
+    these engines. Frontend-only convenience, JWT-gated."""
+    if not q or len(q) < 2:
+        return {"count": 0, "companies": []}
+    rows = await db.master_companies.find(
+        {"status": "active", "identity.legal_name": {"$regex": q, "$options": "i"}},
+        {"_id": 0, "master_id": 1, "identity.legal_name": 1, "classification.cnae_code": 1,
+         "location.provincia": 1},
+    ).limit(limit).to_list(limit)
+    return {"count": len(rows), "companies": [
+        {"master_id": r["master_id"], "legal_name": (r.get("identity") or {}).get("legal_name"),
+         "cnae_code": (r.get("classification") or {}).get("cnae_code"),
+         "provincia": (r.get("location") or {}).get("provincia")}
+        for r in rows
+    ]}
+
+
 @router.get("/control-synergy/{master_id_a}/{master_id_b}")
 async def control_synergy(master_id_a: str, master_id_b: str, user=Depends(get_current_user)):
     """Control & Synergy Score (roadmap: parte de T3, dueño Ownership & Control /

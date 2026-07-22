@@ -7,7 +7,8 @@ import {
   FileText, Palette, Newspaper, FileDown, BookOpen, Activity, Layers,
   TrendingUp, Globe, BarChart3, Zap, ArrowRightLeft, Database,
   Landmark, Shield, Heart, Workflow, ListChecks, ScrollText,
-  Users, Lock, History, Flag, Plug, Gauge, Sparkles
+  Users, Lock, History, Flag, Plug, Gauge, Sparkles,
+  Eye, PieChart, Combine, Network, GitCompareArrows
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -45,6 +46,11 @@ const navSections = [
       { path: '/ma/buyers', label: 'Buyers', icon: Users },
       { path: '/ma/sellers', label: 'Sellers', icon: Building2 },
       { path: '/ma/matching', label: 'Matching', icon: Search },
+      { path: '/watchlist', label: 'Watchlist', icon: Eye },
+      { path: '/investment/fragmentation', label: 'Fragmentación', icon: PieChart },
+      { path: '/investment/rollup-thesis', label: 'Roll-up Thesis', icon: Combine },
+      { path: '/ownership/control-graph', label: 'Grafo de Control', icon: Network },
+      { path: '/ownership/control-synergy', label: 'Control & Synergy', icon: GitCompareArrows },
     ],
   },
   {

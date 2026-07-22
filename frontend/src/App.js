@@ -44,6 +44,11 @@ import ScrapeQueuePage from "@/pages/engine/ScrapeQueuePage";
 import WebSourcePage from "@/pages/engine/WebSourcePage";
 import PlaceholderPage from "@/pages/PlaceholderPage";
 import DataSourcePage from "@/pages/DataSourcePage";
+import WatchlistPage from "@/pages/WatchlistPage";
+import FragmentationPage from "@/pages/FragmentationPage";
+import RollupThesisPage from "@/pages/RollupThesisPage";
+import ControlGraphPage from "@/pages/ControlGraphPage";
+import ControlSynergyPage from "@/pages/ControlSynergyPage";
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
@@ -95,6 +100,11 @@ function AppRoutes() {
         <Route path="cnmv" element={<CNMVPage />} />
         <Route path="bme" element={<BMEPage />} />
         <Route path="valuations" element={<ValuationsPage />} />
+        <Route path="watchlist" element={<WatchlistPage />} />
+        <Route path="investment/fragmentation" element={<FragmentationPage />} />
+        <Route path="investment/rollup-thesis" element={<RollupThesisPage />} />
+        <Route path="ownership/control-graph" element={<ControlGraphPage />} />
+        <Route path="ownership/control-synergy" element={<ControlSynergyPage />} />
         <Route path="procurement" element={<ProcurementPage />} />
         <Route path="doc-studio" element={<DocStudioPage />} />
         <Route path="template-builder" element={<TemplateBuilderPage />} />

@@ -120,6 +120,90 @@ function StatsCards({ sectors }) {
   );
 }
 
+function fmtEUR(v) {
+  if (v === null || v === undefined) return '—';
+  if (Math.abs(v) >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M €`;
+  if (Math.abs(v) >= 1_000) return `${(v / 1_000).toFixed(0)}k €`;
+  return `${v.toLocaleString('es-ES')} €`;
+}
+
+function CompaniesTable({ data, loading, onLoadMore }) {
+  const companies = data?.companies || [];
+  const pagination = data?.pagination || {};
+
+  return (
+    <div className="space-y-3">
+      <Card className="bg-zinc-900/50 border-zinc-800">
+        <CardContent className="p-3 flex items-center gap-2">
+          <Building2 className="w-3.5 h-3.5 text-emerald-400" />
+          <span className="text-xs text-zinc-400">
+            {pagination.total_in_arroba_universe ?? companies.length} empresas reales en el universo ARROBA
+            para este sector (no es la estimación DIRCE/INE nacional que se ve arriba).
+          </span>
+        </CardContent>
+      </Card>
+
+      <Card className="bg-zinc-900/50 border-zinc-800">
+        <Table>
+          <TableHeader>
+            <TableRow className="border-zinc-800 hover:bg-transparent">
+              <TableHead className="text-[10px] uppercase tracking-wider text-zinc-500">Empresa</TableHead>
+              <TableHead className="text-[10px] uppercase tracking-wider text-zinc-500">Provincia</TableHead>
+              <TableHead className="text-[10px] uppercase tracking-wider text-zinc-500 text-right">Facturacion</TableHead>
+              <TableHead className="text-[10px] uppercase tracking-wider text-zinc-500 text-right">EBITDA</TableHead>
+              <TableHead className="text-[10px] uppercase tracking-wider text-zinc-500 text-center">Senales</TableHead>
+              <TableHead className="text-[10px] uppercase tracking-wider text-zinc-500">Senal principal</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {companies.map((c) => (
+              <TableRow key={c.master_id} className="border-zinc-800/50">
+                <TableCell className="py-2 text-sm text-zinc-200">{c.legal_name || c.master_id}</TableCell>
+                <TableCell className="py-2 text-xs text-zinc-400">{c.provincia || '—'}</TableCell>
+                <TableCell className="py-2 text-xs text-zinc-300 text-right tabular-nums">{fmtEUR(c.revenue)}</TableCell>
+                <TableCell className="py-2 text-xs text-zinc-300 text-right tabular-nums">{fmtEUR(c.ebitda)}</TableCell>
+                <TableCell className="py-2 text-center">
+                  <Badge variant="outline" className="text-[10px] border-zinc-700 text-zinc-400">
+                    {c.active_signals_count ?? 0}
+                  </Badge>
+                </TableCell>
+                <TableCell className="py-2">
+                  {c.top_signal ? (
+                    <Badge variant="outline" className="text-[10px] border-blue-500/30 text-blue-400 bg-blue-500/5">
+                      {c.top_signal.signal_type}
+                    </Badge>
+                  ) : <span className="text-xs text-zinc-600">—</span>}
+                </TableCell>
+              </TableRow>
+            ))}
+            {companies.length === 0 && !loading && (
+              <TableRow><TableCell colSpan={6} className="text-center text-xs text-zinc-500 py-8">
+                Sin empresas reales cargadas para este sector todavia.
+              </TableCell></TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </Card>
+
+      {loading && (
+        <div className="flex items-center justify-center py-6"><Loader2 className="w-4 h-4 animate-spin text-zinc-500" /></div>
+      )}
+
+      {!loading && pagination.returned < pagination.total_in_arroba_universe && (
+        <div className="flex justify-center">
+          <Button variant="outline" size="sm" onClick={onLoadMore} className="border-zinc-700 text-zinc-300 h-7 text-xs">
+            Cargar mas empresas
+          </Button>
+        </div>
+      )}
+
+      {data?.data_caveat && (
+        <p className="text-[9px] text-zinc-700">{data.data_caveat}</p>
+      )}
+    </div>
+  );
+}
+
 export default function SectorIntelligencePage() {
   const [sectors, setSectors] = useState([]);
   const [level, setLevel] = useState('section');
@@ -127,6 +211,8 @@ export default function SectorIntelligencePage() {
   const [drilldown, setDrilldown] = useState(null);
   const [drillData, setDrillData] = useState(null);
   const [breadcrumbs, setBreadcrumbs] = useState([]);
+  const [companiesData, setCompaniesData] = useState(null);
+  const [companiesLoading, setCompaniesLoading] = useState(false);
 
   const loadOverview = useCallback(async (lvl = 'section') => {
     setLoading(true);
@@ -138,8 +224,20 @@ export default function SectorIntelligencePage() {
     setLoading(false);
   }, []);
 
+  const loadCompanies = useCallback(async (cnaeCode, offset = 0, append = false) => {
+    setCompaniesLoading(true);
+    try {
+      const { data } = await api.get(`/public/sector-intelligence/detail/${cnaeCode}/companies`, {
+        params: { limit: 20, offset },
+      });
+      setCompaniesData(prev => append && prev ? { ...data, companies: [...prev.companies, ...data.companies] } : data);
+    } catch (e) { toast.error('Error cargando empresas del sector'); }
+    setCompaniesLoading(false);
+  }, []);
+
   const loadDrilldown = useCallback(async (sector) => {
     setLoading(true);
+    setCompaniesData(null);
     try {
       if (sector.cnae_level === 'section') {
         const { data } = await api.get(`/public/sector-intelligence/section/${sector.cnae_code}`);
@@ -149,16 +247,23 @@ export default function SectorIntelligencePage() {
         const { data } = await api.get(`/public/sector-intelligence/detail/${sector.cnae_code}`);
         setDrillData(data);
         setBreadcrumbs(prev => [...prev, { code: sector.cnae_code, label: sector.cnae_label, level: 'division' }]);
+      } else if (sector.cnae_level === 'group') {
+        // Finest CNAE granularity — no more sub-sectors, drill straight into real
+        // companies (Q5) instead of another sector table.
+        setDrillData(null);
+        setBreadcrumbs(prev => [...prev, { code: sector.cnae_code, label: sector.cnae_label, level: 'group' }]);
+        await loadCompanies(sector.cnae_code, 0, false);
       }
       setDrilldown(sector);
     } catch (e) { toast.error('Error en drill-down'); }
     setLoading(false);
-  }, []);
+  }, [loadCompanies]);
 
   const goBack = () => {
     const newCrumbs = [...breadcrumbs];
     newCrumbs.pop();
     setBreadcrumbs(newCrumbs);
+    setCompaniesData(null);
     if (newCrumbs.length === 0) {
       setDrilldown(null);
       setDrillData(null);
@@ -172,6 +277,7 @@ export default function SectorIntelligencePage() {
     setDrilldown(null);
     setDrillData(null);
     setBreadcrumbs([]);
+    setCompaniesData(null);
   };
 
   useEffect(() => { loadOverview(); }, [loadOverview]);
@@ -248,7 +354,13 @@ export default function SectorIntelligencePage() {
               <ArrowLeft className="w-3 h-3 mr-1" /> Volver
             </Button>
           </div>
-          {loading ? (
+          {drilldown?.cnae_level === 'group' ? (
+            <CompaniesTable
+              data={companiesData}
+              loading={companiesLoading}
+              onLoadMore={() => loadCompanies(drilldown.cnae_code, companiesData?.companies?.length || 0, true)}
+            />
+          ) : loading ? (
             <div className="flex items-center justify-center py-12">
               <Loader2 className="w-5 h-5 animate-spin text-zinc-500" />
             </div>
@@ -269,8 +381,7 @@ export default function SectorIntelligencePage() {
                 </TableHeader>
                 <TableBody>
                   {children.map(s => (
-                    <SectorRow key={s.cnae_code} sector={s} onClick={loadDrilldown}
-                      showDrilldown={s.cnae_level !== 'group'} />
+                    <SectorRow key={s.cnae_code} sector={s} onClick={loadDrilldown} showDrilldown />
                   ))}
                   {children.length === 0 && (
                     <TableRow><TableCell colSpan={8} className="text-center text-xs text-zinc-500 py-8">Sin sub-sectores</TableCell></TableRow>
