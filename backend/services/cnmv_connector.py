@@ -26,9 +26,6 @@ logger = logging.getLogger(__name__)
 
 CNMV_BASE = "https://www.cnmv.es/portal/consultas"
 
-_LAUNCH_ARGS = ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
-_RECYCLE_EVERY = 30
-
 ENTITY_TYPES = {
     # Investment vehicles
     "scr": {"id": 0, "label": "Sociedades capital-riesgo", "detail_path": "ecr/sociedad"},
@@ -83,6 +80,8 @@ async def sync_cnmv_entities(entity_types: List[str] = None, max_pages_per_type:
                     logger.info(f"CNMV: scraping {config['label']} (id={config['id']})...")
 
                     try:
+                        # _scrape_listing manages its own browser lifecycle (see its
+                        # docstring) — no shared browser/page across entity types here.
                         entities = await _scrape_listing(p, config["id"], max_pages_per_type)
                         if entities:
                             imported = await _store_entities(entities, etype, config, now)
@@ -125,27 +124,41 @@ async def sync_cnmv_entities(entity_types: List[str] = None, max_pages_per_type:
     return result
 
 
+CNMV_LAUNCH_ARGS = ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"]
+CNMV_BROWSER_RECYCLE_EVERY = 30
+
+
 async def _scrape_listing(p, entity_id: int, max_pages: int) -> List[Dict]:
     """Scrape all pages of a CNMV entity listing.
 
-    Owns and recycles its Chromium browser every _RECYCLE_EVERY navigations:
-    a single long-lived headless browser degrades and is killed after ~50
-    continuous CNMV page loads ('Target page/browser has been closed').
+    Manages its own browser instance and recycles it every 30 navigations.
+    Root cause (found 2026-07 via the Emergent testing agent): a single headless
+    Chromium instance was previously reused across the ENTIRE sync (all 14 entity
+    types, potentially 100 pages each) — the browser process degrades and dies
+    with "Target page/browser has been closed" after ~50 consecutive navigations
+    against cnmv.es. It was not an OOM or a missing-Chromium issue. Recycling the
+    browser here — closing and relaunching every 30 page loads — keeps each
+    instance well under the point where it degrades. Launch flags match the ones
+    already used elsewhere in this codebase (services/scraper.py).
     """
     all_entities = []
     pg = 1
+    nav_count = 0
 
-    browser = await p.chromium.launch(headless=True, args=_LAUNCH_ARGS)
+    browser = await p.chromium.launch(headless=True, args=CNMV_LAUNCH_ARGS)
     page = await browser.new_page()
+
     try:
         while pg <= max_pages:
-            if pg > 1 and (pg - 1) % _RECYCLE_EVERY == 0:
+            if nav_count > 0 and nav_count % CNMV_BROWSER_RECYCLE_EVERY == 0:
+                await page.close()
                 await browser.close()
-                browser = await p.chromium.launch(headless=True, args=_LAUNCH_ARGS)
+                browser = await p.chromium.launch(headless=True, args=CNMV_LAUNCH_ARGS)
                 page = await browser.new_page()
 
             url = f"{CNMV_BASE}/mostrarlistados?id={entity_id}&page={pg}&lang=es"
             await page.goto(url, wait_until="networkidle", timeout=20000)
+            nav_count += 1
             await page.wait_for_timeout(1500)
 
             entities = await page.evaluate('''() => {

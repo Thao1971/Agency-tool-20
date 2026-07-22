@@ -1,0 +1,30 @@
+{
+  "summary": "Independently verified the v9 E11000 fix in services/data_layer/master/entity_resolution.py. Ran /api/v1/data-layer/bootstrap-tab TWICE against /app/data/muestra_25000; both completed cleanly with all steps ok. Confirmed 25989 master_companies, unique indexes on master_id and cif_normalized hold, no duplicates. Also verified resolve() short-circuits to 'new' for a novel CIF even when domain/name would match existing rows. 7/7 tests pass.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "services/data_layer/bootstrap.py::_set", "issue": "run_bootstrap_tab() opens a new run with $set only; if the same run_id was previously in status='failed' with an 'error' field, that stale error field is retained on the doc even after the new run succeeds. First run of my test tripped on this (found stale E11000 payload from an 18:54 pre-fix run still attached to a 19:43 successful run doc). Suggest doing {'$set': {...}, '$unset': {'error': '', 'finished_at': '', 'verification': '', 'canonical_set': ''}} at run start, or writing a full replace instead of a partial $set."}
+    ]
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_bootstrap_tab_e11000_fix.py",
+    "/app/test_reports/pytest/bootstrap_tab_e11000.xml"
+  ],
+  "action_items": [
+    "(Non-blocking) In services/data_layer/bootstrap.py, clear stale 'error'/'finished_at'/'verification'/'canonical_set' fields at the start of run_bootstrap_tab (and run_bootstrap) so a successful re-run doesn't inherit a prior failure's error payload."
+  ],
+  "critical_code_review_comments": [
+    "entity_resolution.py resolve() fix is correct and minimal: 'if cif: return new_master_id(), \"new\", 1.0, True' before domain/name fallback. Domain/name fallback still reachable when cif is falsy (validated).",
+    "master_builder.py bulk_write uses ordered=default (True). If a duplicate does creep back in the future, all subsequent ops in that batch also abort. Consider ordered=False so a single collision doesn't lose 400+ upserts, plus a retry on E11000 that re-resolves the offending CIF.",
+    "bootstrap_runs doc has no TTL and no unique index; the fixed run_id 'bootstrap_tab_bootstrap_tab_2026' is a nice singleton but its state is only merged via $set, retaining stale sub-fields between runs (see minor bug above)."
+  ],
+  "updated_files": ["/app/backend/tests/test_bootstrap_tab_e11000_fix.py"],
+  "success_rate": {"backend": "100% (7/7)", "frontend": "N/A (skipped per request)"},
+  "test_credentials": "daniel@wearebudadvisors.com / Thao1971@ (POST /api/v1/auth/login, token in 'token').",
+  "seed_data_creation": "None — pre-existing db.master_companies (25989 docs) fully verified. Two bootstrap-tab runs against /app/data/muestra_25000 during testing, count stable.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Public preview URL 502s on requests > ~100s; use http://localhost:8001 for bootstrap tests. run_id is fixed 'bootstrap_tab_bootstrap_tab_2026' and reused per call. Bootstrap with rebuild_intelligence:false takes ~19s end-to-end (ingestion ~10s + master_builder ~7.7s). File writes under /app/backend/** trigger uvicorn reload that can wedge shutdown for >60s during long-running CNMV scrapes — a hard 'sudo supervisorctl restart backend' clears it.",
+  "rca of the issue": "Original E11000: pre-v9 resolve() fell through to domain/name matching even when the entity's CIF was novel; two distinct real companies sharing a domain (e.g. A39040647 CANTABRICA DE PIENSOS + A99062174 OBLANCA HOLDING on oblanca.es, and A41280074 FRANCISCO JOSE GUERRA ANTUNEZ + real Renault ES on renault.es) got assigned the SAME master_id, then the batch upsert keyed by cif_normalized tried to write two docs with the same master_id → unique index master_id_1 rejected the 2nd. v9 fix: when cif is present and unmatched, return new_master_id() immediately with reason='new', bypassing the collision-prone fallback. Verified: both offending CIFs now hold distinct master_ids (A39040647→mc_7a3a299c081f, A41280074→mc_ffc06e721b14), 0 dup master_id values in 25989 docs, and bootstrap-tab runs cleanly twice in a row."
+}

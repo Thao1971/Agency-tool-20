@@ -54,7 +54,7 @@ async def sync_bme(markets: List[str] = None) -> Dict:
     if not fatal_error:
         try:
             async with async_playwright() as p:
-                browser = await p.chromium.launch(headless=True, args=['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'])
+                browser = await p.chromium.launch(headless=True)
                 page = await browser.new_page()
 
                 for market in markets:
@@ -130,13 +130,38 @@ async def sync_bme(markets: List[str] = None) -> Dict:
 
 
 async def _scrape_listing(page, url: str, market: str) -> List[Dict]:
-    """Scrape full listing with ASP.NET postback pagination (Siguiente →)."""
+    """Scrape full listing with ASP.NET postback pagination (Siguiente →).
+
+    BME esta migrando estas paginas legacy (ASP.NET, /esp/Listado.aspx o
+    /MTF_Equity/.../Listado.aspx) a un sitio nuevo (Adobe AEM, bolsasymercados.es/es/...).
+    Confirmado 2026-07: la URL legacy de Growth (bmegrowth.es/esp/Listado.aspx) ya
+    redirige de forma permanente a la pagina nueva, que no tiene tabla en absoluto
+    (solo un aviso de "contactar con BME Market Data"). Scaleup, a esta fecha, todavia
+    sirve la tabla legacy en la URL base -- pero anadir cualquier query string ya
+    redirige tambien a la pagina nueva, senal de que la migracion esta en curso y
+    puede completarse en cualquier momento.
+
+    Por eso esta funcion ya NO asume que "pagina cargada sin excepcion" == "tabla
+    presente": comprueba explicitamente que seguimos en una URL con el patron
+    Listado.aspx tras el goto(), y que la primera pagina trae al menos una fila.
+    Si BME nos ha movido a la pagina nueva (sin tabla), esto ahora es un error
+    explicito -- antes se devolvia una lista vacia sin fallo, que sync_bme()
+    registraba como "completed, 0 importados" (indistinguible de un mercado
+    genuinamente vacio, el bug que reporto el testing agent)."""
     all_companies = []
     seen_isins = set()
 
     logger.info(f"BME {market}: loading {url}")
     await page.goto(url, wait_until="networkidle", timeout=20000)
     await page.wait_for_timeout(3000)
+
+    current_url = page.url
+    if "Listado.aspx" not in current_url:
+        raise RuntimeError(
+            f"la pagina redirigio a {current_url} (la URL legacy con la tabla de "
+            f"empresas ya no esta disponible ahi -- probable migracion de sitio de "
+            f"BME en curso, no un fallo transitorio de red)"
+        )
 
     page_num = 0
     max_pages = 20
@@ -193,6 +218,20 @@ async def _scrape_listing(page, url: str, market: str) -> List[Dict]:
                 new_count += 1
 
         logger.info(f"  Page {page_num}: {len(companies)} rows, {new_count} new (total: {len(all_companies)})")
+
+        if page_num == 1 and len(companies) == 0:
+            # A real BME listing always has at least one company on its first page.
+            # Zero rows here (with the URL check above already passed) means the
+            # table structure/selectors no longer match what's on the page -- e.g.
+            # a cookie-consent overlay, a partial site redesign short of a full
+            # redirect, or a further stage of BME's ongoing site migration. Raising
+            # here (instead of returning an empty list) makes sync_bme() log this
+            # as a real failure instead of "completed, 0 importados".
+            raise RuntimeError(
+                "la primera pagina no devolvio ninguna fila -- la tabla esperada "
+                "no esta donde el scraper la busca (selectores desactualizados o "
+                "pagina distinta a la que se probo originalmente)"
+            )
 
         if new_count == 0 and page_num > 1:
             break

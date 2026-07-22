@@ -41,7 +41,16 @@ async def _master_lookup(field: str, value: str) -> Optional[str]:
 
 
 async def resolve(entity: Dict, source: str) -> Tuple[str, str, float, bool]:
-    """Resolve an entity to a master_id. Returns (master_id, match_rule, confidence, created)."""
+    """Resolve an entity to a master_id. Returns (master_id, match_rule, confidence, created).
+
+    CIF is the authoritative company identifier (Iberinform and all other real sources
+    always provide one). The domain / name+province rules below are fallbacks for the rare
+    case an entity has NO usable CIF at all — they must never be used to override an entity
+    that already carries its own CIF, because two distinct, legally separate companies
+    (e.g. a holding and one of its investees) commonly share a website domain or a
+    name+province pair. Matching on that alone previously caused unrelated real companies
+    to collide onto the same master_id (E11000 duplicate key on cif_normalized bulk-upsert).
+    """
     cif = entity.get("cif_normalized")
     domain = entity.get("domain")
     name_key = entity.get("name_key")
@@ -51,7 +60,14 @@ async def resolve(entity: Dict, source: str) -> Tuple[str, str, float, bool]:
     mid = await _xref_lookup(source, "cif", cif) or await _master_lookup("cif_normalized", cif)
     if mid:
         return mid, "exact_cif", 1.0, False
-    # 2) web domain
+
+    # A CIF was provided but didn't match any existing master record: this is a genuinely
+    # new company. Do NOT fall through to domain/name matching, which could incorrectly
+    # merge it onto a different, already-CIF-identified company's master_id.
+    if cif:
+        return new_master_id(), "new", 1.0, True
+
+    # 2) web domain (only reached when the entity has no CIF at all)
     mid = await _master_lookup("contact.domain", domain)
     if mid:
         return mid, "domain", 0.9, False
