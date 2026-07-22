@@ -51,8 +51,18 @@ export default function DataComexPage() {
   const handleSync = async () => {
     setSyncing(true);
     try {
+      // OJO: el backend devuelve { sync: {...}, rebuild: {...} } anidado, no
+      // los campos en el nivel superior. Leer data.records_imported directamente
+      // siempre daba "undefined" — daba igual si el sync habia funcionado o no.
       const { data } = await api.post('/datacomex/sync?years=2022,2023,2024,2025');
-      toast.success(`Sync: ${data.records_imported} registros importados`);
+      const s = data.sync || {};
+      if (s.status === 'error') {
+        toast.error(`Error sincronizando DataComex: ${s.error || 'fallo desconocido'}`);
+      } else if (s.status === 'unchanged') {
+        toast.success('DataComex ya estaba actualizado (sin cambios)');
+      } else {
+        toast.success(`Sync: ${s.records_imported ?? 0} registros importados`);
+      }
       loadDashboard();
     } catch (e) {
       toast.error('Error sincronizando DataComex');
@@ -85,7 +95,11 @@ export default function DataComexPage() {
       const { data } = await api.post('/datacomex/upload-csv', form, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
-      toast.success(`CSV: ${data.records_imported} registros importados`);
+      if (data.status === 'error') {
+        toast.error(`Error en el CSV: ${data.message || 'formato no reconocido'}`);
+      } else {
+        toast.success(`CSV: ${data.records_imported ?? 0} registros importados`);
+      }
       loadDashboard();
     } catch { toast.error('Error procesando CSV'); }
     e.target.value = '';

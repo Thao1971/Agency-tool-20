@@ -145,7 +145,13 @@ async def sync(
     type_list = None
     if types:
         type_list = [t.strip() for t in types.split(",")]
-    return await sync_cnmv_entities(entity_types=type_list, max_pages_per_type=max_pages)
+    result = await sync_cnmv_entities(entity_types=type_list, max_pages_per_type=max_pages)
+    if result.get("status") == "error":
+        # Previously this always returned 200 OK even on a fatal scraping failure
+        # (e.g. Chromium missing), so the frontend's try/catch never fired and
+        # showed a false "success" toast. Surface it as a real HTTP error.
+        raise HTTPException(502, result.get("message", "Error sincronizando CNMV"))
+    return result
 
 
 @router.post("/match-companies")

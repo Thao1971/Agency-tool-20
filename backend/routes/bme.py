@@ -1,6 +1,6 @@
 """BME Intelligence — Endpoints for BME Growth + Scaleup data."""
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, HTTPException
 from database import db
 from models import now_iso
 from auth_utils import get_current_user
@@ -89,7 +89,10 @@ async def list_events(
 async def enrich(user=Depends(get_current_user)):
     """Run batch enrichment for all companies needing data."""
     from services.bme_enrichment import run_full_enrichment
-    return await run_full_enrichment(max_companies=300)
+    result = await run_full_enrichment(max_companies=300)
+    if result.get("status") == "error":
+        raise HTTPException(502, result.get("message", "Error en enriquecimiento BME"))
+    return result
 
 
 @router.get("/enrichment-stats")
@@ -110,7 +113,10 @@ async def sync(
     market_list = None
     if markets:
         market_list = [m.strip() for m in markets.split(",")]
-    return await sync_bme(markets=market_list)
+    result = await sync_bme(markets=market_list)
+    if result.get("status") == "error":
+        raise HTTPException(502, result.get("message", "Error sincronizando BME"))
+    return result
 
 
 @router.get("/coverage")

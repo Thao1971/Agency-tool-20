@@ -22,11 +22,14 @@ Design (reuses real, already-persisted data — no new signal computation):
 `watchlist_scheduler.py` (so alerts appear for signals detected AFTER the watch began).
 """
 
+import logging
 import uuid
 from typing import Dict, List, Optional
 
 from database import db
 from models import now_iso
+
+logger = logging.getLogger(__name__)
 
 _INDEXED = False
 
@@ -112,10 +115,18 @@ async def sync_alerts_all() -> Dict:
     of `master_companies`."""
     user_ids = await db.watchlist.distinct("user_id")
     total_created = 0
+    failed_users = []
     for uid in user_ids:
-        result = await sync_alerts_for_user(uid)
-        total_created += result["alerts_created"]
-    return {"users_checked": len(user_ids), "alerts_created": total_created}
+        try:
+            result = await sync_alerts_for_user(uid)
+            total_created += result["alerts_created"]
+        except Exception as e:
+            # One user's bad data used to abort the whole sweep — the rest of the
+            # users just waited until the next 15-min cycle. Now a single failure
+            # is isolated and logged; everyone else still gets processed this pass.
+            logger.error(f"Watchlist sync failed for user {uid}: {e}")
+            failed_users.append(uid)
+    return {"users_checked": len(user_ids), "alerts_created": total_created, "failed_users": failed_users}
 
 
 async def list_alerts(user_id: str, unread_only: bool = False, limit: int = 50) -> List[Dict]:

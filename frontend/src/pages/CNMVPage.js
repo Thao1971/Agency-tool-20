@@ -96,9 +96,21 @@ export default function CNMVPage() {
     setSyncing(true);
     try {
       const { data: r } = await api.post('/cnmv/sync?types=fcr,scr');
-      toast.success(`CNMV: ${r.total_imported} entidades`);
+      // El backend ahora devuelve un error HTTP real si el sync falla (antes
+      // respondia 200 OK con status:"error" y esto mostraba "CNMV: undefined
+      // entidades" como si fuera un exito), pero comprobamos igualmente por si
+      // acaso llega un status:"partial" con avisos.
+      if (r.status === 'error') {
+        toast.error(`Error sincronizando CNMV: ${r.message || 'fallo desconocido'}`);
+      } else if (r.status === 'partial') {
+        toast.success(`CNMV: ${r.total_imported} entidades (con avisos, ver logs)`);
+      } else {
+        toast.success(`CNMV: ${r.total_imported} entidades`);
+      }
       loadData();
-    } catch { toast.error('Error sincronizando'); }
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || 'Error sincronizando CNMV');
+    }
     setSyncing(false);
   };
 

@@ -71,12 +71,19 @@ async def run_full_enrichment(max_companies: int = 300, batch_size: int = 5) -> 
     try:
         from playwright.async_api import async_playwright
     except ImportError:
+        await db.bme_sync_logs.insert_one({
+            "log_id": new_id(), "synced_at": now, "type": "enrichment",
+            "total_candidates": len(companies), "processed": 0, "enriched": 0,
+            "errors": 0, "skipped": 0, "fatal_error": "Playwright no instalado",
+            "status": "error",
+        })
         return {"status": "error", "message": "Playwright not installed"}
 
     processed = 0
     enriched = 0
     errors = 0
     skipped = 0
+    fatal_error = None
 
     try:
         async with async_playwright() as p:
@@ -134,9 +141,15 @@ async def run_full_enrichment(max_companies: int = 300, batch_size: int = 5) -> 
             await browser.close()
 
     except Exception as e:
-        logger.error(f"Enrichment engine error: {e}")
+        # This used to be swallowed here and then logged as "status": "completed"
+        # below unconditionally — even with processed=0, enriched=0, the log (and
+        # the BME dashboard's "last_sync") reported success every night.
+        fatal_error = str(e)[:300]
+        logger.error(f"Enrichment engine error: {fatal_error}")
 
-    # Log
+    status = "error" if fatal_error else "completed"
+
+    # Log — status now reflects what actually happened.
     await db.bme_sync_logs.insert_one({
         "log_id": new_id(),
         "synced_at": now,
@@ -146,17 +159,21 @@ async def run_full_enrichment(max_companies: int = 300, batch_size: int = 5) -> 
         "enriched": enriched,
         "errors": errors,
         "skipped": skipped,
-        "status": "completed",
+        "fatal_error": fatal_error,
+        "status": status,
     })
 
-    return {
-        "status": "completed",
+    result = {
+        "status": status,
         "candidates": len(companies),
         "processed": processed,
         "enriched": enriched,
         "errors": errors,
         "skipped": skipped,
     }
+    if fatal_error:
+        result["message"] = fatal_error
+    return result
 
 
 async def _fetch_detail_data(page, url: str, company: Dict) -> Dict | None:

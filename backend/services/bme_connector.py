@@ -28,59 +28,74 @@ def _count_pages(companies):
 
 
 async def sync_bme(markets: List[str] = None) -> Dict:
-    """Sync BME Growth and/or Scaleup listings."""
+    """Sync BME Growth and/or Scaleup listings.
+
+    Always writes a sync log entry — success, partial, or fatal failure — so
+    `last_sync` never silently freezes. Previously a fatal error (e.g. Chromium
+    binary missing) returned before the log write, leaving no record the sync
+    was even attempted (same bug already fixed in services/cnmv_connector.py).
+    """
     now = now_iso()
     if not markets:
         markets = ["growth", "scaleup", "principal"]
-
-    try:
-        from playwright.async_api import async_playwright
-    except ImportError:
-        return {"status": "error", "message": "Playwright not installed"}
 
     total_imported = 0
     total_updated = 0
     by_market = {}
     errors = []
+    detail_count = 0
+    fatal_error = None
 
     try:
-        async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=True)
-            page = await browser.new_page()
+        from playwright.async_api import async_playwright
+    except ImportError:
+        fatal_error = "Playwright no instalado (falta el paquete pip)"
 
-            for market in markets:
-                try:
-                    if market == "growth":
-                        companies = await _scrape_listing(page, BME_GROWTH_URL, "growth")
-                    elif market == "scaleup":
-                        companies = await _scrape_listing(page, BME_SCALEUP_URL, "scaleup")
-                    elif market == "principal":
-                        companies = await _scrape_principal(page)
-                    else:
-                        continue
+    if not fatal_error:
+        try:
+            async with async_playwright() as p:
+                browser = await p.chromium.launch(headless=True)
+                page = await browser.new_page()
 
-                    imported, updated = await _store_companies(companies, market, now)
-                    total_imported += imported
-                    total_updated += updated
-                    by_market[market] = {"imported": imported, "updated": updated, "total": len(companies), "pages": _count_pages(companies)}
-                    logger.info(f"BME {market}: {len(companies)} companies ({imported} new, {updated} updated)")
+                for market in markets:
+                    try:
+                        if market == "growth":
+                            companies = await _scrape_listing(page, BME_GROWTH_URL, "growth")
+                        elif market == "scaleup":
+                            companies = await _scrape_listing(page, BME_SCALEUP_URL, "scaleup")
+                        elif market == "principal":
+                            companies = await _scrape_principal(page)
+                        else:
+                            continue
 
-                except Exception as e:
-                    err = f"{market}: {str(e)[:150]}"
-                    errors.append(err)
-                    logger.error(f"BME {market} error: {e}")
+                        imported, updated = await _store_companies(companies, market, now)
+                        total_imported += imported
+                        total_updated += updated
+                        by_market[market] = {"imported": imported, "updated": updated, "total": len(companies), "pages": _count_pages(companies)}
+                        logger.info(f"BME {market}: {len(companies)} companies ({imported} new, {updated} updated)")
 
-            # Try to fetch detail pages for companies without full data
-            detail_count = await _enrich_details(page, now)
+                    except Exception as e:
+                        err = f"{market}: {str(e)[:150]}"
+                        errors.append(err)
+                        logger.error(f"BME {market} error: {e}")
 
-            await browser.close()
+                # Try to fetch detail pages for companies without full data
+                detail_count = await _enrich_details(page, now)
 
-    except Exception as e:
-        return {"status": "error", "message": str(e)[:200]}
+                await browser.close()
+
+        except Exception as e:
+            # Typically Chromium binary missing/failed to launch. This used to
+            # `return` immediately, skipping the log write below entirely.
+            fatal_error = str(e)[:300]
+            logger.error(f"BME sync fatal error: {fatal_error}")
+
+    status = "error" if fatal_error else ("completed" if not errors else "partial")
 
     # Log sync
     await db.bme_sync_logs.insert_one({
         "log_id": new_id(),
+        "type": "full_sync",
         "synced_at": now,
         "markets": markets,
         "total_imported": total_imported,
@@ -88,17 +103,19 @@ async def sync_bme(markets: List[str] = None) -> Dict:
         "details_enriched": detail_count,
         "by_market": by_market,
         "errors": errors,
-        "status": "completed" if not errors else "partial",
+        "fatal_error": fatal_error,
+        "status": status,
     })
 
-    # Generate signals
-    await _generate_signals(now)
+    match_result = None
+    if not fatal_error:
+        # Generate signals
+        await _generate_signals(now)
+        # Match against companies_master
+        match_result = await _match_companies(now)
 
-    # Match against companies_master
-    match_result = await _match_companies(now)
-
-    return {
-        "status": "completed" if not errors else "partial",
+    result = {
+        "status": status,
         "total_imported": total_imported,
         "total_updated": total_updated,
         "details_enriched": detail_count,
@@ -107,6 +124,9 @@ async def sync_bme(markets: List[str] = None) -> Dict:
         "errors": errors,
         "synced_at": now,
     }
+    if fatal_error:
+        result["message"] = fatal_error
+    return result
 
 
 async def _scrape_listing(page, url: str, market: str) -> List[Dict]:
@@ -608,7 +628,11 @@ async def get_bme_stats() -> Dict:
     ]
     by_sector = await db.bme_companies.aggregate(sector_pipeline).to_list(10)
 
-    last_sync = await db.bme_sync_logs.find_one({}, {"_id": 0}, sort=[("synced_at", -1)])
+    # Only look at full-listing syncs here — the nightly "enrichment" job (which only
+    # fills in missing detail fields for up to 50 already-known companies) writes to
+    # the same collection and used to be indistinguishable, making a failed real sync
+    # look "fresh" because enrichment quietly ran (or tried to) every night.
+    last_sync = await db.bme_sync_logs.find_one({"type": "full_sync"}, {"_id": 0}, sort=[("synced_at", -1)])
 
     return {
         "total": total,

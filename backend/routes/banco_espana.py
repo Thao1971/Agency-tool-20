@@ -4,7 +4,7 @@ Public (no auth): homepage, macro-indicators, signals, intelligence context
 Admin (auth): refresh, status
 """
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, HTTPException
 from database import db
 from models import now_iso
 from auth_utils import get_current_user
@@ -252,7 +252,10 @@ async def intelligence_financing_context():
 @router.post("/api/v1/admin/data-sources/banco-espana/refresh")
 async def admin_refresh(user=Depends(get_current_user)):
     email = user.get("email", user.get("id"))
-    return await refresh_all_indicators(email)
+    result = await refresh_all_indicators(email)
+    if result.get("status") == "error":
+        raise HTTPException(502, result.get("error", "Error actualizando indicadores Banco de España"))
+    return result
 
 
 @router.get("/api/v1/admin/data-sources/banco-espana/status")

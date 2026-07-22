@@ -47,51 +47,63 @@ ENTITY_TYPES = {
 
 
 async def sync_cnmv_entities(entity_types: List[str] = None, max_pages_per_type: int = 100) -> Dict:
-    """Scrape all CNMV entity listings via Playwright."""
+    """Scrape all CNMV entity listings via Playwright.
+
+    Always writes a sync log entry — success, partial, or fatal failure — so
+    `last_sync` never silently freezes. Previously a fatal error (e.g. Chromium
+    binary missing) returned before the log write, leaving no record the sync
+    was even attempted.
+    """
     now = now_iso()
 
     if not entity_types:
         entity_types = list(ENTITY_TYPES.keys())
 
-    try:
-        from playwright.async_api import async_playwright
-    except ImportError:
-        return {"status": "error", "message": "Playwright not installed"}
-
     total_imported = 0
     total_by_type = {}
     errors = []
+    fatal_error = None
 
     try:
-        async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=True)
-            page = await browser.new_page()
+        from playwright.async_api import async_playwright
+    except ImportError:
+        fatal_error = "Playwright no instalado (falta el paquete pip)"
 
-            for etype in entity_types:
-                if etype not in ENTITY_TYPES:
-                    continue
+    if not fatal_error:
+        try:
+            async with async_playwright() as p:
+                browser = await p.chromium.launch(headless=True)
+                page = await browser.new_page()
 
-                config = ENTITY_TYPES[etype]
-                logger.info(f"CNMV: scraping {config['label']} (id={config['id']})...")
+                for etype in entity_types:
+                    if etype not in ENTITY_TYPES:
+                        continue
 
-                try:
-                    entities = await _scrape_listing(page, config["id"], max_pages_per_type)
-                    if entities:
-                        imported = await _store_entities(entities, etype, config, now)
-                        total_imported += imported
-                        total_by_type[etype] = imported
-                        logger.info(f"  {config['label']}: {imported} entities")
-                except Exception as e:
-                    err = f"{etype}: {str(e)[:100]}"
-                    errors.append(err)
-                    logger.error(f"CNMV error: {err}")
+                    config = ENTITY_TYPES[etype]
+                    logger.info(f"CNMV: scraping {config['label']} (id={config['id']})...")
 
-            await browser.close()
+                    try:
+                        entities = await _scrape_listing(page, config["id"], max_pages_per_type)
+                        if entities:
+                            imported = await _store_entities(entities, etype, config, now)
+                            total_imported += imported
+                            total_by_type[etype] = imported
+                            logger.info(f"  {config['label']}: {imported} entities")
+                    except Exception as e:
+                        err = f"{etype}: {str(e)[:100]}"
+                        errors.append(err)
+                        logger.error(f"CNMV error: {err}")
 
-    except Exception as e:
-        return {"status": "error", "message": str(e)[:200]}
+                await browser.close()
 
-    # Log
+        except Exception as e:
+            # Typically Chromium binary missing/failed to launch. This used to
+            # `return` immediately, skipping the log write below entirely.
+            fatal_error = str(e)[:300]
+            logger.error(f"CNMV sync fatal error: {fatal_error}")
+
+    status = "error" if fatal_error else ("completed" if not errors else "partial")
+
     await db.cnmv_sync_logs.insert_one({
         "log_id": new_id(),
         "synced_at": now,
@@ -99,16 +111,20 @@ async def sync_cnmv_entities(entity_types: List[str] = None, max_pages_per_type:
         "total_imported": total_imported,
         "by_type": total_by_type,
         "errors": errors,
-        "status": "completed" if not errors else "partial",
+        "fatal_error": fatal_error,
+        "status": status,
     })
 
-    return {
-        "status": "completed" if not errors else "partial",
+    result = {
+        "status": status,
         "total_imported": total_imported,
         "by_type": total_by_type,
         "errors": errors,
         "synced_at": now,
     }
+    if fatal_error:
+        result["message"] = fatal_error
+    return result
 
 
 async def _scrape_listing(page, entity_id: int, max_pages: int) -> List[Dict]:

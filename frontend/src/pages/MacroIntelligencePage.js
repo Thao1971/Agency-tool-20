@@ -104,11 +104,13 @@ export default function MacroIntelligencePage() {
   const handleRefresh = async () => {
     setRefreshing(true);
     try {
+      // El backend ahora devuelve un error HTTP real (antes respondia 200 OK con
+      // status:"error" y este toast de exito se mostraba igualmente).
       await api.post('/admin/data-sources/banco-espana/refresh');
       toast.success('Indicadores actualizados');
       const [indR, sigR] = await Promise.all([api.get('/public/macro-indicators'), api.get('/public/macro/signals')]);
       setData(indR.data); setSignals(sigR.data);
-    } catch (_) { toast.error('Error al actualizar'); }
+    } catch (e) { toast.error(e?.response?.data?.detail || 'Error al actualizar'); }
     finally { setRefreshing(false); }
   };
 

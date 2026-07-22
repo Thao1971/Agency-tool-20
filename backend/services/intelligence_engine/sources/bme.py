@@ -15,7 +15,7 @@ def _norm(s: str) -> str:
 META = {
     "display_name": "BME (Bolsas y Mercados)",
     "collection": "bme_companies",
-    "frequency": "Bajo demanda",
+    "frequency": "Diario ~04:00 UTC (scheduler) + manual",
     "signal_source": "bme",
     "audit_action": None,
     "phase": "active",

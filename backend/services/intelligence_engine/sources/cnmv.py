@@ -7,7 +7,7 @@ from database import db
 META = {
     "display_name": "CNMV",
     "collection": "cnmv_entities",
-    "frequency": "Bajo demanda (sync httpx)",
+    "frequency": "Diario ~04:00 UTC (scheduler) + manual",
     "signal_source": "cnmv",
     "audit_action": None,
     "phase": "active",

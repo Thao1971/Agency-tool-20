@@ -100,6 +100,17 @@ async def sync_placsp(years: List[int] = None, dataset: str = "menores",
         count = await db.public_procurement_contracts.count_documents({})
         checksum = hashlib.sha256(f"{count}:{now}".encode()).hexdigest()[:16]
 
+    # Status: previously any run with `errors` was labeled "partial" even when
+    # EVERY year failed and total_imported stayed at 0 — indistinguishable from a
+    # genuine partial success (some years ok, some not). Now a total failure is
+    # reported as "error".
+    if not errors:
+        status = "completed"
+    elif total_imported == 0:
+        status = "error"
+    else:
+        status = "partial"
+
     # Log
     await db.procurement_sync_logs.insert_one({
         "sync_id": new_id(),
@@ -111,11 +122,11 @@ async def sync_placsp(years: List[int] = None, dataset: str = "menores",
         "total_skipped": total_skipped,
         "errors": errors,
         "checksum": checksum,
-        "status": "completed" if not errors else "partial",
+        "status": status,
     })
 
     return {
-        "status": "completed" if not errors else "partial",
+        "status": status,
         "dataset": dataset,
         "years": years_processed,
         "imported": total_imported,

@@ -39,9 +39,17 @@ export default function BMEPage() {
     setSyncing(true);
     try {
       const { data: r } = await api.post('/bme-markets/sync');
-      toast.success(`BME: ${r.total_imported} nuevas, ${r.total_updated} actualizadas`);
+      if (r.status === 'error') {
+        toast.error(`Error sincronizando BME: ${r.message || 'fallo desconocido'}`);
+      } else if (r.status === 'partial') {
+        toast.success(`BME: ${r.total_imported} nuevas, ${r.total_updated} actualizadas (con avisos)`);
+      } else {
+        toast.success(`BME: ${r.total_imported} nuevas, ${r.total_updated} actualizadas`);
+      }
       loadData();
-    } catch { toast.error('Error sincronizando BME'); }
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || 'Error sincronizando BME');
+    }
     setSyncing(false);
   };
 

@@ -18,7 +18,7 @@ from services.data_layer.normalize import (
 logger = logging.getLogger(__name__)
 
 _FIN_FIELDS = ["year", "revenue", "ebitda", "ebitda_margin", "equity", "net_income",
-               "employees", "total_assets"]
+               "employees", "total_assets", "source"]
 
 
 def _web(doc: Dict) -> Dict:
@@ -55,16 +55,28 @@ def _build_classification(doc: Dict, ib: Optional[Dict]) -> Dict:
 
 
 def _build_sources(doc: Dict, ib: Optional[Dict], fin: Optional[Dict]) -> Dict:
-    """Source lineage blocks to MERGE into existing sources (never clobbers existing web)."""
+    """Source lineage blocks to MERGE into existing sources (never clobbers existing web).
+
+    Propagates real-vs-synthetic provenance. Raw docs in `iberinform_companies` /
+    `iberinform_financials` are tagged "iberinform" (real) or "iberinform_synthetic"
+    (generated from INE DIRCE distributions — see iberinform_processor.py) at
+    ingestion time, but that distinction used to get dropped here: every downstream
+    consumer (Sector/Geo Intelligence, Valuo, public APIs, DocStudio reports) saw
+    identical `source_version: "v1.0"` for both and had no way to tell invented
+    financials from real ones for a given company.
+    """
+    fin_latest = (fin or {}).get("latest") or {}
     return {
         "iberinform": {
             "present": bool(ib),
+            "is_synthetic": (ib.get("source") == "iberinform_synthetic") if ib else None,
             "source_version": (ib or {}).get("source_version"),
             "imported_at": (ib or {}).get("imported_at"),
         },
         "financials": {
             "present": bool(fin),
-            "latest_year": (fin or {}).get("latest", {}).get("year") if fin else None,
+            "is_synthetic": (fin_latest.get("source") == "iberinform_synthetic") if fin else None,
+            "latest_year": fin_latest.get("year") if fin else None,
             "years": (fin or {}).get("years") if fin else [],
         },
     }

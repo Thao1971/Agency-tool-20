@@ -152,7 +152,14 @@ export default function DataSourcePage() {
         url += (url.includes('?') ? '&' : '?') + qs;
       }
       const r = await api.post(url, null, { timeout: 180000 });
-      toast.success(`${action.label}: ${JSON.stringify(r.data).substring(0, 120)}`);
+      // Muchos endpoints de estas fuentes responden 200 OK con {status:"error",...}
+      // en vez de un error HTTP real — este manejador generico los mostraba como
+      // exito porque solo miraba el catch(). Se comprueba el body explicitamente.
+      if (r.data && r.data.status === 'error') {
+        toast.error(`${action.label} falló: ${r.data.message || r.data.error || 'error desconocido'}`);
+      } else {
+        toast.success(`${action.label}: ${JSON.stringify(r.data).substring(0, 120)}`);
+      }
       await load();
       if (src?.queryable) await loadData(dataPage, applied);
     } catch (e) {
