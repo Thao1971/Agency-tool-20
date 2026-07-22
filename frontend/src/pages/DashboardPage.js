@@ -53,13 +53,14 @@ export default function DashboardPage() {
   const loadAll = async () => {
     setLoading(true);
     try {
-      const [econStats, econSignals, sectorOv, geoOv, syncStatus, econOv] = await Promise.all([
+      const [econStats, econSignals, sectorOv, geoOv, syncStatus, econOv, ibStats] = await Promise.all([
         api.get('/economic-intelligence/stats').catch(() => ({ data: {} })),
         api.get('/economic-intelligence/signals?limit=12').catch(() => ({ data: { signals: [] } })),
         api.get('/public/sector-intelligence/overview').catch(() => ({ data: { sectors: [] } })),
         api.get('/public/geo-intelligence/overview').catch(() => ({ data: { territories: [] } })),
         api.get('/public/intelligence/sync-status').catch(() => ({ data: { sources: {} } })),
         api.get('/economic-intelligence/overview?limit=10').catch(() => ({ data: { cnae_divisions: [] } })),
+        api.get('/admin/iberinform/stats').catch(() => ({ data: null })),
       ]);
 
       // M&A stats
@@ -96,6 +97,7 @@ export default function DashboardPage() {
         maStats,
         bormeStats,
         valuoHealth,
+        companiesTotal: ibStats.data?.companies_master?.total ?? null,
       });
     } catch {}
     setLoading(false);
@@ -120,7 +122,7 @@ export default function DashboardPage() {
         <Card className="bg-zinc-900/50 border-zinc-800">
           <CardContent className="p-3 text-center">
             <Building2 className="w-4 h-4 text-zinc-500 mx-auto mb-1" />
-            <p className="text-xl font-bold text-zinc-100 tabular-nums" data-testid="dash-companies">{fmtNum(5265)}</p>
+            <p className="text-xl font-bold text-zinc-100 tabular-nums" data-testid="dash-companies">{fmtNum(d.companiesTotal || 5265)}</p>
             <p className="text-[10px] text-zinc-500">Empresas</p>
           </CardContent>
         </Card>
