@@ -1,0 +1,19 @@
+{
+  "summary": "Backend v2 verification: health OK, two NEW endpoints (rollup-thesis, control-synergy) return 200 with expected shapes, auth negatives correctly reject 401/403, regression endpoints (fragmentation, ratios/catalog, watchlist POST/GET) still pass. 11/11 tests passed.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_v2_new_endpoints.py",
+    "/app/test_reports/pytest/v2_new_endpoints.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [],
+  "updated_files": ["/app/backend/tests/test_v2_new_endpoints.py"],
+  "success_rate": {"backend": "100%", "frontend": "skipped"},
+  "test_credentials": "JWT: daniel@wearebudadvisors.com / Thao1971@; X-API-Key from backend/.env ARROBA_SERVICE_API_KEY",
+  "seed_data_creation": "None (watchlist POST creates a TEST_v2_regression entry for master_id mc_c6a1440c3ff8)",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "v2 endpoints stable. Reusable pytest suite at /app/backend/tests/test_v2_new_endpoints.py covers health, rollup-thesis (success + missing param + auth negatives), control-synergy (success + auth negatives), and regression on fragmentation/ratios-catalog/watchlist.",
+  "rca of the issue": "N/A - no failures observed. Rollup-thesis returned rollup_viable=false with platform_candidate present; control-synergy returned relationship/control_level/evidence + synergy_score/evidence + engine_version. Auth negatives yielded 401/403 as expected."
+}

@@ -17,6 +17,7 @@ from services.data_layer import bootstrap as bootstrap_svc
 from services.data_layer.master import ownership_graph as OG
 from services.data_layer.master.competitor_graph import rebuild_competitor_edges
 from services.data_layer.master import graph_traversal as GT
+from services.data_layer.master import control_synergy as CS
 
 router = APIRouter(prefix="/api/v1/data-layer", tags=["data_layer"])
 
@@ -174,6 +175,19 @@ async def sector_consolidation_map(cnae_field: str = "cnae_code", cnae_value: st
         return await GT.sector_consolidation_map(cnae_field, cnae_value, limit_companies=limit_companies)
     except ValueError as e:
         raise HTTPException(400, str(e))
+
+
+@router.get("/control-synergy/{master_id_a}/{master_id_b}")
+async def control_synergy(master_id_a: str, master_id_b: str, user=Depends(get_current_user)):
+    """Control & Synergy Score (roadmap: parte de T3, dueño Ownership & Control /
+    Buyer Intelligence). Control real (pct directo o cadena de pct multi-salto vía T3,
+    nunca inventado) + synergy real (competitor_of de Q2, solapamiento CNAE, misma
+    provincia) entre dos empresas concretas. supplier_candidate no se mide — sin datos
+    reales en ninguna fuente conectada."""
+    try:
+        return await CS.compute_control_synergy(master_id_a, master_id_b)
+    except ValueError as e:
+        raise HTTPException(404, str(e))
 
 
 @router.post("/rebuild-competitor-graph")

@@ -7,6 +7,7 @@ signal-intelligence).
 from fastapi import APIRouter, Depends, HTTPException
 from services.service_auth import require_service_key
 from services.engines.investment import fragmentation as F
+from services.engines.investment import rollup_thesis as RT
 
 router = APIRouter(prefix="/api/v1/investment-intelligence", tags=["investment_intelligence"])
 
@@ -22,5 +23,20 @@ async def fragmentation(cnae_field: str = "cnae_code", cnae_value: str = "",
         raise HTTPException(400, "cnae_value is required")
     try:
         return await F.compute_fragmentation(cnae_field, cnae_value, limit_companies=limit_companies)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@router.get("/rollup-thesis")
+async def rollup_thesis(cnae_field: str = "cnae_code", cnae_value: str = "",
+                         limit_companies: int = 300, _key=Depends(require_service_key)):
+    """E6 — roll-up/platform thesis for a real CNAE sector: consumes E7's fragmentation
+    index (viability) and T3's sector consolidation map (real ownership + competitor
+    edges) to identify an existing platform candidate (or flag that an external one is
+    needed) and rank real standalone companies as add-on targets."""
+    if not cnae_value:
+        raise HTTPException(400, "cnae_value is required")
+    try:
+        return await RT.compute_rollup_thesis(cnae_field, cnae_value, limit_companies=limit_companies)
     except ValueError as e:
         raise HTTPException(400, str(e))
