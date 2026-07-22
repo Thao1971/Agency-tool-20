@@ -1,0 +1,25 @@
+{
+  "summary": "Backend-only verification of 3 admin/intelligence endpoints + auth negatives. 8/8 pytest cases passed. Responses match expected shapes and thresholds.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_signal_intelligence_admin.py",
+    "/app/test_reports/pytest/signal_intelligence_admin.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [],
+  "updated_files": ["/app/backend/tests/test_signal_intelligence_admin.py"],
+  "success_rate": {"backend": "100%", "frontend": "N/A"},
+  "test_credentials": "X-API-Key from ARROBA_SERVICE_API_KEY in backend/.env; JWT user daniel@wearebudadvisors.com / Thao1971@",
+  "seed_data_creation": "none",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "observed_responses": {
+    "step1_borme_link_backfill": {"companies_processed": 0, "events_linked": 0, "companies_remaining": 0, "bridge_version": "borme-signal-bridge-v1"},
+    "step2_baselines_compute": {"sectors_processed": 18, "companies_sampled": 355, "buckets_written": 20, "min_sample_size": 12, "baselines_version": "baselines-v1"},
+    "step2b_baselines_status": {"total_buckets": 20, "by_metric": {"ebitda_margin": {"buckets": 7, "companies_covered": 170}, "revenue_per_employee": {"buckets": 6, "companies_covered": 141}, "revenue_growth_yoy": {"buckets": 7, "companies_covered": 168}}},
+    "step3_rebuild_competitor_graph": {"cnae_codes_scanned": 172, "buckets_used": 66, "edges_written": 468, "duration_ms": 185.4, "confidence": 0.5}
+  },
+  "auth_negative_checks": "signal-intelligence rejects missing/bad X-API-Key with 401/403; rebuild-competitor-graph rejects missing JWT with 401/403 — all verified.",
+  "context_for_next_testing_agent": "Test file at /app/backend/tests/test_signal_intelligence_admin.py runs in <2s against localhost:8001 and is safe to re-run (idempotent). Uses ARROBA_SERVICE_API_KEY from env with hardcoded fallback for the current preview."
+}
