@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="{{locale}}">
+<head><meta charset="utf-8"><title>{{company_name}} — Agency Report</title></head>
+<body>
+
+<!-- COVER -->
+<div class="cover">
+  <div class="cover-top">
+    <div class="cover-logo-area">
+      <img class="logo-img cover-logo-img" src="{{logo_url}}" alt="Logo" />
+      <span class="logo-text cover-logo">{{brand_logo_text}}</span>
+    </div>
+    <div class="cover-badge">Confidential</div>
+  </div>
+  <div class="cover-center">
+    <div class="cover-line"></div>
+    <h1 class="cover-title">{{company_name}}</h1>
+    <p class="cover-subtitle">{{subtitle}}</p>
+    <div class="cover-line"></div>
+  </div>
+  <div class="cover-bottom">
+    <div class="cover-meta">
+      <span>{{category}}</span>
+      <span class="cover-meta-sep">|</span>
+      <span>{{subcategory}}</span>
+    </div>
+    <p class="cover-date">{{generated_at}}</p>
+    <p class="cover-brand">BUD Advisors</p>
+  </div>
+</div>
+
+<!-- DISCLAIMER -->
+<div class="disclaimer-page">
+  <h2 class="disclaimer-title">DISCLAIMER</h2>
+  <div class="disclaimer-box">
+    <p>{{legal_disclaimer}}</p>
+    <p>This document has been prepared by BUD Advisors for informational purposes only. The information contained herein is based on sources believed to be reliable but no representation or warranty, express or implied, is made as to its accuracy, completeness or correctness.</p>
+    <p>This document does not constitute an offer or solicitation for the purchase or sale of any financial instrument. The recipient agrees to keep this document and its contents strictly confidential.</p>
+  </div>
+</div>
+
+<!-- SECTION 01: EXECUTIVE SUMMARY -->
+<div class="section-sep">
+  <div class="section-sep-num">Section 01</div>
+  <div class="section-sep-title">Executive Summary</div>
+</div>
+<div class="content-page">
+  <div class="page-header">
+    <span class="page-header-title">Executive Summary</span>
+    <img class="logo-img page-header-logo-img" src="{{logo_url}}" alt="" /><span class="logo-text page-header-logo">{{brand_logo_text}}</span>
+  </div>
+  <h2 class="section-heading">{{company_name}}</h2>
+  <div class="body-text">{{executive_summary}}</div>
+  <div class="conf-badge">Confidence: {{confidence_overall}}/100</div>
+</div>
+
+<!-- SECTION 02: INVESTMENT HIGHLIGHTS -->
+<div class="section-sep">
+  <div class="section-sep-num">Section 02</div>
+  <div class="section-sep-title">Investment Highlights</div>
+</div>
+<div class="content-page">
+  <div class="page-header">
+    <span class="page-header-title">Investment Highlights</span>
+    <img class="logo-img page-header-logo-img" src="{{logo_url}}" alt="" /><span class="logo-text page-header-logo">{{brand_logo_text}}</span>
+  </div>
+  <div class="highlights-row">
+    <div class="highlight-box">
+      <div class="highlight-box-title strengths">Key Strengths</div>
+      <div class="highlight-items">{{top_strengths}}</div>
+    </div>
+    <div class="highlight-box">
+      <div class="highlight-box-title risks">Key Risks</div>
+      <div class="highlight-items">{{top_risks}}</div>
+    </div>
+  </div>
+</div>
+
+<!-- SECTION 03: COMPANY OVERVIEW -->
+<div class="section-sep">
+  <div class="section-sep-num">Section 03</div>
+  <div class="section-sep-title">Company Overview</div>
+</div>
+<div class="content-page">
+  <div class="page-header">
+    <span class="page-header-title">Company Overview</span>
+    <img class="logo-img page-header-logo-img" src="{{logo_url}}" alt="" /><span class="logo-text page-header-logo">{{brand_logo_text}}</span>
+  </div>
+  <div class="overview-grid">
+    <div class="overview-main">
+      <div class="body-text">{{company_overview}}</div>
+    </div>
+    <div class="overview-sidebar">
+      <div class="info-row"><div class="info-label">Website</div><div class="info-value">{{website}}</div></div>
+      <div class="info-row"><div class="info-label">Category</div><div class="info-value">{{category}}</div></div>
+      <div class="info-row"><div class="info-label">Subcategory</div><div class="info-value">{{subcategory}}</div></div>
+      <div class="info-row"><div class="info-label">Location</div><div class="info-value">{{city}}, {{country}}</div></div>
+      <div class="info-row"><div class="info-label">Contact</div><div class="info-value">{{main_contact_email}}</div></div>
+      <div class="info-row"><div class="info-label">Phone</div><div class="info-value">{{phone}}</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- SECTION 04: KEY METRICS -->
+<div class="section-sep">
+  <div class="section-sep-num">Section 04</div>
+  <div class="section-sep-title">Key Metrics</div>
+</div>
+<div class="content-page">
+  <div class="page-header">
+    <span class="page-header-title">Key Metrics</span>
+    <img class="logo-img page-header-logo-img" src="{{logo_url}}" alt="" /><span class="logo-text page-header-logo">{{brand_logo_text}}</span>
+  </div>
+  <div class="kpi-grid">
+    <div class="kpi-card"><div class="kpi-value">{{confidence_overall}}</div><div class="kpi-label">Overall Score</div></div>
+    <div class="kpi-card"><div class="kpi-value">{{confidence_category}}</div><div class="kpi-label">Category Score</div></div>
+    <div class="kpi-card"><div class="kpi-value">{{num_clients}}</div><div class="kpi-label">Clients</div></div>
+    <div class="kpi-card"><div class="kpi-value">{{num_pages_visited}}</div><div class="kpi-label">Pages Analyzed</div></div>
+    <div class="kpi-card"><div class="kpi-value">{{has_awards_text}}</div><div class="kpi-label">Awards</div></div>
+    <div class="kpi-card"><div class="kpi-value">{{num_tags}}</div><div class="kpi-label">Tags</div></div>
+  </div>
+  <div class="subsection-heading">Financial Highlights</div>
+  <div class="body-text">{{financial_highlights}}</div>
+</div>
+
+<!-- SECTION 05: CLIENTS & MARKET -->
+<div class="content-page">
+  <div class="page-header">
+    <span class="page-header-title">Clients & Market Position</span>
+    <img class="logo-img page-header-logo-img" src="{{logo_url}}" alt="" /><span class="logo-text page-header-logo">{{brand_logo_text}}</span>
+  </div>
+  <div class="subsection-heading">Notable Clients</div>
+  <div class="clients-grid">{{clients_list}}</div>
+  <div class="subsection-heading">Market Position</div>
+  <div class="body-text">{{market_position}}</div>
+  <div class="subsection-heading">Classification</div>
+  <div class="tags-grid">{{tags_list}}</div>
+</div>
+
+<!-- SECTION 06: NEXT STEPS -->
+<div class="content-page">
+  <div class="page-header">
+    <span class="page-header-title">Next Steps</span>
+    <img class="logo-img page-header-logo-img" src="{{logo_url}}" alt="" /><span class="logo-text page-header-logo">{{brand_logo_text}}</span>
+  </div>
+  <h2 class="section-heading">Recommended <span class="section-heading-accent">Next Steps</span></h2>
+  <div class="body-text">{{next_steps}}</div>
+</div>
+
+<!-- CLOSING -->
+<div class="closing-page">
+  <div class="closing-line"></div>
+  <div class="closing-brand-area"><img class="logo-img closing-logo-img" src="{{logo_url}}" alt="" /><span class="logo-text closing-brand">{{brand_name_upper}}</span></div>
+  <p class="closing-tagline">M&A Advisory  |  Sectoral Intelligence</p>
+  <div class="closing-line"></div>
+  <div class="closing-contact">
+    <p>daniel@wearebudadvisors.com</p>
+    <p>fernando@wearebudadvisors.com</p>
+    <p>www.wearebudadvisors.com</p>
+  </div>
+  <div class="closing-legal">
+    <p>{{legal_disclaimer}}</p>
+    <p>Generated by BUD Document Engine — {{generated_at}}</p>
+  </div>
+</div>
+
+</body>
+</html>

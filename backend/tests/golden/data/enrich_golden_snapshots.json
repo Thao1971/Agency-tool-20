@@ -1,0 +1,2050 @@
+{
+ "_meta": {
+  "dataset_size": 14,
+  "profiles": [
+   "valuo",
+   "arroba"
+  ],
+  "selection": "deterministic by master_company_id; buckets: rich_financials, with_web, sparse, discovered"
+ },
+ "entries": {
+  "000456e9-9f56-4f3e-93b9-adbaa75401d8::arroba": {
+   "_bucket": "rich_financials",
+   "engine_version": "1.0.0",
+   "fields": {
+    "cnmv.buyers_breakdown": {
+     "buyers": 500,
+     "managers": 473
+    },
+    "cnmv.potential_buyers_count": 973,
+    "economic_intel.active_companies": 33108,
+    "economic_intel.cnae_code": "73",
+    "economic_intel.revenue_sector": 519850.87,
+    "economic_intel.sector_trend": "stable",
+    "economic_intel.signals": [
+     {
+      "cnae_code": "73",
+      "confidence": 0.8,
+      "description": "7 contratos publicos adjudicados",
+      "generated_at": "2026-06-17T19:54:30.652642+00:00",
+      "signal_id": "a9d56f5d-821d-4788-93dc-5edf168ff14e",
+      "signal_type": "public_demand",
+      "sources_used": [
+       "procurement"
+      ]
+     }
+    ],
+    "economic_intel.signals_count": 1,
+    "economic_intel.sources": [
+     "borme",
+     "iberinform",
+     "ine",
+     "procurement"
+    ],
+    "iberinform.cnae_code": "7311",
+    "iberinform.employees_latest": 28,
+    "iberinform.revenue_latest": 404676.4,
+    "identity.aliases": [
+     "FHZODU",
+     "Gestion FHZODU SLP"
+    ],
+    "identity.category_name": "Actividades profesionales, científicas y técnicas",
+    "identity.cif": "H82829789",
+    "identity.cnae_primary": "73",
+    "identity.confidence_score": 0.99,
+    "identity.legal_name": "Gestion FHZODU SLP"
+   },
+   "found_map": {
+    "bme": false,
+    "boe": false,
+    "borme": false,
+    "catastro": false,
+    "cnmv": false,
+    "datacomex": false,
+    "economic_intel": true,
+    "employment": false,
+    "grants": false,
+    "iberinform": true,
+    "identity": true,
+    "oepm": false,
+    "patentes": false,
+    "procurement": false,
+    "territorial": false,
+    "web": false
+   },
+   "profile": "arroba",
+   "sources_with_data": [
+    "cnmv",
+    "economic_intel",
+    "iberinform",
+    "identity"
+   ]
+  },
+  "000456e9-9f56-4f3e-93b9-adbaa75401d8::valuo": {
+   "_bucket": "rich_financials",
+   "engine_version": "1.0.0",
+   "fields": {
+    "economic_intel.active_companies": 33108,
+    "economic_intel.cnae_code": "73",
+    "economic_intel.revenue_sector": 519850.87,
+    "economic_intel.sector_trend": "stable",
+    "economic_intel.signals": [
+     {
+      "cnae_code": "73",
+      "confidence": 0.8,
+      "description": "7 contratos publicos adjudicados",
+      "generated_at": "2026-06-17T19:54:30.652642+00:00",
+      "signal_id": "a9d56f5d-821d-4788-93dc-5edf168ff14e",
+      "signal_type": "public_demand",
+      "sources_used": [
+       "procurement"
+      ]
+     }
+    ],
+    "economic_intel.signals_count": 1,
+    "economic_intel.sources": [
+     "borme",
+     "iberinform",
+     "ine",
+     "procurement"
+    ],
+    "iberinform.cnae_code": "7311",
+    "iberinform.employees_latest": 28,
+    "iberinform.revenue_latest": 404676.4,
+    "identity.aliases": [
+     "FHZODU",
+     "Gestion FHZODU SLP"
+    ],
+    "identity.category_name": "Actividades profesionales, científicas y técnicas",
+    "identity.cif": "H82829789",
+    "identity.cnae_primary": "73",
+    "identity.confidence_score": 0.99,
+    "identity.legal_name": "Gestion FHZODU SLP"
+   },
+   "found_map": {
+    "bme": false,
+    "economic_intel": true,
+    "grants": false,
+    "iberinform": true,
+    "identity": true,
+    "territorial": false,
+    "web": false
+   },
+   "profile": "valuo",
+   "sources_with_data": [
+    "economic_intel",
+    "iberinform",
+    "identity"
+   ]
+  },
+  "00091db3-7e92-4d1c-9a8e-9812c47c9a67::arroba": {
+   "_bucket": "rich_financials",
+   "engine_version": "1.0.0",
+   "fields": {
+    "cnmv.buyers_breakdown": {
+     "buyers": 584,
+     "managers": 478
+    },
+    "cnmv.potential_buyers_count": 1062,
+    "economic_intel.active_companies": 13243,
+    "economic_intel.cnae_code": "63",
+    "economic_intel.revenue_sector": 1008449.52,
+    "economic_intel.sector_trend": "stable",
+    "economic_intel.signals": [
+     {
+      "cnae_code": "63",
+      "confidence": 0.8,
+      "description": "Crecimiento empleo 12.9%",
+      "generated_at": "2026-06-17T19:54:30.652642+00:00",
+      "signal_id": "1b40bf7f-3102-4dd6-9bc3-f1c5541ea88b",
+      "signal_type": "employment_growth",
+      "sources_used": [
+       "iberinform"
+      ]
+     }
+    ],
+    "economic_intel.signals_count": 1,
+    "economic_intel.sources": [
+     "borme",
+     "iberinform",
+     "ine"
+    ],
+    "iberinform.cnae_code": "6391",
+    "iberinform.employees_latest": 21,
+    "iberinform.revenue_latest": 827151.15,
+    "identity.aliases": [
+     "Grupo SITTI SA",
+     "SITTI"
+    ],
+    "identity.category_name": "Información y comunicaciones",
+    "identity.cif": "W1222063J",
+    "identity.cnae_primary": "63",
+    "identity.confidence_score": 0.99,
+    "identity.legal_name": "Grupo SITTI SA"
+   },
+   "found_map": {
+    "bme": false,
+    "boe": false,
+    "borme": false,
+    "catastro": false,
+    "cnmv": false,
+    "datacomex": false,
+    "economic_intel": true,
+    "employment": false,
+    "grants": false,
+    "iberinform": true,
+    "identity": true,
+    "oepm": false,
+    "patentes": false,
+    "procurement": false,
+    "territorial": false,
+    "web": false
+   },
+   "profile": "arroba",
+   "sources_with_data": [
+    "cnmv",
+    "economic_intel",
+    "iberinform",
+    "identity"
+   ]
+  },
+  "00091db3-7e92-4d1c-9a8e-9812c47c9a67::valuo": {
+   "_bucket": "rich_financials",
+   "engine_version": "1.0.0",
+   "fields": {
+    "economic_intel.active_companies": 13243,
+    "economic_intel.cnae_code": "63",
+    "economic_intel.revenue_sector": 1008449.52,
+    "economic_intel.sector_trend": "stable",
+    "economic_intel.signals": [
+     {
+      "cnae_code": "63",
+      "confidence": 0.8,
+      "description": "Crecimiento empleo 12.9%",
+      "generated_at": "2026-06-17T19:54:30.652642+00:00",
+      "signal_id": "1b40bf7f-3102-4dd6-9bc3-f1c5541ea88b",
+      "signal_type": "employment_growth",
+      "sources_used": [
+       "iberinform"
+      ]
+     }
+    ],
+    "economic_intel.signals_count": 1,
+    "economic_intel.sources": [
+     "borme",
+     "iberinform",
+     "ine"
+    ],
+    "iberinform.cnae_code": "6391",
+    "iberinform.employees_latest": 21,
+    "iberinform.revenue_latest": 827151.15,
+    "identity.aliases": [
+     "Grupo SITTI SA",
+     "SITTI"
+    ],
+    "identity.category_name": "Información y comunicaciones",
+    "identity.cif": "W1222063J",
+    "identity.cnae_primary": "63",
+    "identity.confidence_score": 0.99,
+    "identity.legal_name": "Grupo SITTI SA"
+   },
+   "found_map": {
+    "bme": false,
+    "economic_intel": true,
+    "grants": false,
+    "iberinform": true,
+    "identity": true,
+    "territorial": false,
+    "web": false
+   },
+   "profile": "valuo",
+   "sources_with_data": [
+    "economic_intel",
+    "iberinform",
+    "identity"
+   ]
+  },
+  "0010f059-9feb-4b53-b75e-8bf81b339e4d::arroba": {
+   "_bucket": "microempresa",
+   "engine_version": "1.0.0",
+   "fields": {
+    "cnmv.buyers_breakdown": {
+     "buyers": 513,
+     "managers": 479
+    },
+    "cnmv.potential_buyers_count": 992,
+    "economic_intel.active_companies": 182095,
+    "economic_intel.cnae_code": "68",
+    "economic_intel.revenue_sector": 767790.93,
+    "economic_intel.sector_trend": "stable",
+    "economic_intel.signals": [
+     {
+      "cnae_code": "68",
+      "confidence": 0.8,
+      "description": "Crecimiento empleo 13.1%",
+      "generated_at": "2026-06-17T19:54:30.652642+00:00",
+      "signal_id": "91958708-b5d8-4ddb-9d0b-6360eb92e689",
+      "signal_type": "employment_growth",
+      "sources_used": [
+       "iberinform"
+      ]
+     },
+     {
+      "cnae_code": "68",
+      "confidence": 0.9,
+      "description": "472 eventos mercantiles registrados",
+      "generated_at": "2026-06-17T19:54:30.652642+00:00",
+      "signal_id": "8d22b709-c64b-4b4e-bf94-74d1c1d1be1f",
+      "signal_type": "high_corporate_activity",
+      "sources_used": [
+       "borme"
+      ]
+     }
+    ],
+    "economic_intel.signals_count": 2,
+    "economic_intel.sources": [
+     "borme",
+     "iberinform",
+     "ine"
+    ],
+    "iberinform.cnae_code": "6820",
+    "iberinform.employees_latest": 7,
+    "iberinform.revenue_latest": 619407.75,
+    "identity.aliases": [
+     "Digital RCUZM SC",
+     "RCUZM"
+    ],
+    "identity.category_name": "Actividades inmobiliarias",
+    "identity.cif": "A83042997",
+    "identity.cnae_primary": "68",
+    "identity.confidence_score": 0.99,
+    "identity.legal_name": "Digital RCUZM SC"
+   },
+   "found_map": {
+    "bme": false,
+    "boe": false,
+    "borme": false,
+    "catastro": false,
+    "cnmv": false,
+    "datacomex": false,
+    "economic_intel": true,
+    "employment": false,
+    "grants": false,
+    "iberinform": true,
+    "identity": true,
+    "oepm": false,
+    "patentes": false,
+    "procurement": false,
+    "territorial": false,
+    "web": false
+   },
+   "profile": "arroba",
+   "sources_with_data": [
+    "cnmv",
+    "economic_intel",
+    "iberinform",
+    "identity"
+   ]
+  },
+  "0010f059-9feb-4b53-b75e-8bf81b339e4d::valuo": {
+   "_bucket": "microempresa",
+   "engine_version": "1.0.0",
+   "fields": {
+    "economic_intel.active_companies": 182095,
+    "economic_intel.cnae_code": "68",
+    "economic_intel.revenue_sector": 767790.93,
+    "economic_intel.sector_trend": "stable",
+    "economic_intel.signals": [
+     {
+      "cnae_code": "68",
+      "confidence": 0.8,
+      "description": "Crecimiento empleo 13.1%",
+      "generated_at": "2026-06-17T19:54:30.652642+00:00",
+      "signal_id": "91958708-b5d8-4ddb-9d0b-6360eb92e689",
+      "signal_type": "employment_growth",
+      "sources_used": [
+       "iberinform"
+      ]
+     },
+     {
+      "cnae_code": "68",
+      "confidence": 0.9,
+      "description": "472 eventos mercantiles registrados",
+      "generated_at": "2026-06-17T19:54:30.652642+00:00",
+      "signal_id": "8d22b709-c64b-4b4e-bf94-74d1c1d1be1f",
+      "signal_type": "high_corporate_activity",
+      "sources_used": [
+       "borme"
+      ]
+     }
+    ],
+    "economic_intel.signals_count": 2,
+    "economic_intel.sources": [
+     "borme",
+     "iberinform",
+     "ine"
+    ],
+    "iberinform.cnae_code": "6820",
+    "iberinform.employees_latest": 7,
+    "iberinform.revenue_latest": 619407.75,
+    "identity.aliases": [
+     "Digital RCUZM SC",
+     "RCUZM"
+    ],
+    "identity.category_name": "Actividades inmobiliarias",
+    "identity.cif": "A83042997",
+    "identity.cnae_primary": "68",
+    "identity.confidence_score": 0.99,
+    "identity.legal_name": "Digital RCUZM SC"
+   },
+   "found_map": {
+    "bme": false,
+    "economic_intel": true,
+    "grants": false,
+    "iberinform": true,
+    "identity": true,
+    "territorial": false,
+    "web": false
+   },
+   "profile": "valuo",
+   "sources_with_data": [
+    "economic_intel",
+    "iberinform",
+    "identity"
+   ]
+  },
+  "00117486-2716-46b9-ab0a-0e6af7c8f79a::arroba": {
+   "_bucket": "pyme",
+   "engine_version": "1.0.0",
+   "fields": {
+    "cnmv.buyers_breakdown": {
+     "buyers": 512,
+     "managers": 473
+    },
+    "cnmv.potential_buyers_count": 985,
+    "economic_intel.active_companies": 39730,
+    "economic_intel.cnae_code": "10",
+    "economic_intel.revenue_sector": 1444216.32,
+    "economic_intel.sector_trend": "down",
+    "economic_intel.signals": [
+     {
+      "cnae_code": "10",
+      "confidence": 0.8,
+      "description": "60 contratos publicos adjudicados",
+      "generated_at": "2026-06-17T19:54:30.652642+00:00",
+      "signal_id": "b75e4126-5173-4f0b-a1f1-31bb0936f357",
+      "signal_type": "public_demand",
+      "sources_used": [
+       "procurement"
+      ]
+     },
+     {
+      "cnae_code": "10",
+      "confidence": 0.85,
+      "description": "Superavit comercial >500M EUR",
+      "generated_at": "2026-06-17T19:54:30.652642+00:00",
+      "signal_id": "a0c75c9f-8fc1-4910-96fb-bf85a06af0f5",
+      "signal_type": "trade_surplus",
+      "sources_used": [
+       "datacomex"
+      ]
+     },
+     {
+      "cnae_code": "10",
+      "confidence": 0.9,
+      "description": "Exportaciones >1.000M EUR",
+      "generated_at": "2026-06-17T19:54:30.652642+00:00",
+      "signal_id": "2972d8bd-2de2-4799-8fbd-734683cb4a40",
+      "signal_type": "export_powerhouse",
+      "sources_used": [
+       "datacomex"
+      ]
+     }
+    ],
+    "economic_intel.signals_count": 3,
+    "economic_intel.sources": [
+     "borme",
+     "datacomex",
+     "iberinform",
+     "ine",
+     "procurement"
+    ],
+    "iberinform.cnae_code": "1081",
+    "iberinform.employees_latest": 11,
+    "iberinform.revenue_latest": 2127667.53,
+    "identity.aliases": [
+     "Distribuciones FXSUHW SA",
+     "FXSUHW"
+    ],
+    "identity.category_name": "Industria manufacturera",
+    "identity.cif": "P9484180C",
+    "identity.cnae_primary": "10",
+    "identity.confidence_score": 0.99,
+    "identity.legal_name": "Distribuciones FXSUHW SA"
+   },
+   "found_map": {
+    "bme": false,
+    "boe": false,
+    "borme": false,
+    "catastro": false,
+    "cnmv": false,
+    "datacomex": false,
+    "economic_intel": true,
+    "employment": false,
+    "grants": false,
+    "iberinform": true,
+    "identity": true,
+    "oepm": false,
+    "patentes": false,
+    "procurement": false,
+    "territorial": false,
+    "web": false
+   },
+   "profile": "arroba",
+   "sources_with_data": [
+    "cnmv",
+    "economic_intel",
+    "iberinform",
+    "identity"
+   ]
+  },
+  "00117486-2716-46b9-ab0a-0e6af7c8f79a::valuo": {
+   "_bucket": "pyme",
+   "engine_version": "1.0.0",
+   "fields": {
+    "economic_intel.active_companies": 39730,
+    "economic_intel.cnae_code": "10",
+    "economic_intel.revenue_sector": 1444216.32,
+    "economic_intel.sector_trend": "down",
+    "economic_intel.signals": [
+     {
+      "cnae_code": "10",
+      "confidence": 0.8,
+      "description": "60 contratos publicos adjudicados",
+      "generated_at": "2026-06-17T19:54:30.652642+00:00",
+      "signal_id": "b75e4126-5173-4f0b-a1f1-31bb0936f357",
+      "signal_type": "public_demand",
+      "sources_used": [
+       "procurement"
+      ]
+     },
+     {
+      "cnae_code": "10",
+      "confidence": 0.85,
+      "description": "Superavit comercial >500M EUR",
+      "generated_at": "2026-06-17T19:54:30.652642+00:00",
+      "signal_id": "a0c75c9f-8fc1-4910-96fb-bf85a06af0f5",
+      "signal_type": "trade_surplus",
+      "sources_used": [
+       "datacomex"
+      ]
+     },
+     {
+      "cnae_code": "10",
+      "confidence": 0.9,
+      "description": "Exportaciones >1.000M EUR",
+      "generated_at": "2026-06-17T19:54:30.652642+00:00",
+      "signal_id": "2972d8bd-2de2-4799-8fbd-734683cb4a40",
+      "signal_type": "export_powerhouse",
+      "sources_used": [
+       "datacomex"
+      ]
+     }
+    ],
+    "economic_intel.signals_count": 3,
+    "economic_intel.sources": [
+     "borme",
+     "datacomex",
+     "iberinform",
+     "ine",
+     "procurement"
+    ],
+    "iberinform.cnae_code": "1081",
+    "iberinform.employees_latest": 11,
+    "iberinform.revenue_latest": 2127667.53,
+    "identity.aliases": [
+     "Distribuciones FXSUHW SA",
+     "FXSUHW"
+    ],
+    "identity.category_name": "Industria manufacturera",
+    "identity.cif": "P9484180C",
+    "identity.cnae_primary": "10",
+    "identity.confidence_score": 0.99,
+    "identity.legal_name": "Distribuciones FXSUHW SA"
+   },
+   "found_map": {
+    "bme": false,
+    "economic_intel": true,
+    "grants": false,
+    "iberinform": true,
+    "identity": true,
+    "territorial": false,
+    "web": false
+   },
+   "profile": "valuo",
+   "sources_with_data": [
+    "economic_intel",
+    "iberinform",
+    "identity"
+   ]
+  },
+  "00247528-f64a-4e07-a02a-5c4f687c2a1d::arroba": {
+   "_bucket": "microempresa",
+   "engine_version": "1.0.0",
+   "fields": {
+    "bme.company_name": "INMOBILIARIA DEL SUR,  S.A.",
+    "bme.isin": "ES0154653911",
+    "bme.market_cap": 308972463.05,
+    "bme.market_segment": "principal",
+    "bme.sector": "07",
+    "cnmv.buyers_breakdown": {
+     "buyers": 500,
+     "managers": 473
+    },
+    "cnmv.potential_buyers_count": 973,
+    "economic_intel.active_companies": 82771,
+    "economic_intel.cnae_code": "70",
+    "economic_intel.revenue_sector": 524873.93,
+    "economic_intel.sector_trend": "down",
+    "economic_intel.signals": [
+     {
+      "cnae_code": "70",
+      "confidence": 0.8,
+      "description": "147 contratos publicos adjudicados",
+      "generated_at": "2026-06-17T19:54:30.652642+00:00",
+      "signal_id": "b0fe797a-e877-4780-92f5-56720052fcef",
+      "signal_type": "public_demand",
+      "sources_used": [
+       "procurement"
+      ]
+     },
+     {
+      "cnae_code": "70",
+      "confidence": 0.9,
+      "description": "322 eventos mercantiles registrados",
+      "generated_at": "2026-06-17T19:54:30.652642+00:00",
+      "signal_id": "d845db15-05ba-452a-8851-14db72e77bcf",
+      "signal_type": "high_corporate_activity",
+      "sources_used": [
+       "borme"
+      ]
+     }
+    ],
+    "economic_intel.signals_count": 2,
+    "economic_intel.sources": [
+     "borme",
+     "iberinform",
+     "ine",
+     "procurement"
+    ],
+    "iberinform.cnae_code": "7021",
+    "iberinform.employees_latest": 17,
+    "iberinform.revenue_latest": 204735.04,
+    "identity.aliases": [
+     "FJCSW",
+     "Inmobiliaria FJCSW SC"
+    ],
+    "identity.category_name": "Actividades profesionales, científicas y técnicas",
+    "identity.cif": "V25962611",
+    "identity.cnae_primary": "70",
+    "identity.confidence_score": 0.99,
+    "identity.legal_name": "Inmobiliaria FJCSW SC",
+    "is_public_company": true
+   },
+   "found_map": {
+    "bme": true,
+    "boe": false,
+    "borme": false,
+    "catastro": false,
+    "cnmv": false,
+    "datacomex": false,
+    "economic_intel": true,
+    "employment": false,
+    "grants": false,
+    "iberinform": true,
+    "identity": true,
+    "oepm": false,
+    "patentes": false,
+    "procurement": false,
+    "territorial": false,
+    "web": false
+   },
+   "profile": "arroba",
+   "sources_with_data": [
+    "bme",
+    "cnmv",
+    "economic_intel",
+    "iberinform",
+    "identity"
+   ]
+  },
+  "00247528-f64a-4e07-a02a-5c4f687c2a1d::valuo": {
+   "_bucket": "microempresa",
+   "engine_version": "1.0.0",
+   "fields": {
+    "bme.company_name": "INMOBILIARIA DEL SUR,  S.A.",
+    "bme.isin": "ES0154653911",
+    "bme.market_cap": 308972463.05,
+    "bme.market_segment": "principal",
+    "bme.sector": "07",
+    "economic_intel.active_companies": 82771,
+    "economic_intel.cnae_code": "70",
+    "economic_intel.revenue_sector": 524873.93,
+    "economic_intel.sector_trend": "down",
+    "economic_intel.signals": [
+     {
+      "cnae_code": "70",
+      "confidence": 0.8,
+      "description": "147 contratos publicos adjudicados",
+      "generated_at": "2026-06-17T19:54:30.652642+00:00",
+      "signal_id": "b0fe797a-e877-4780-92f5-56720052fcef",
+      "signal_type": "public_demand",
+      "sources_used": [
+       "procurement"
+      ]
+     },
+     {
+      "cnae_code": "70",
+      "confidence": 0.9,
+      "description": "322 eventos mercantiles registrados",
+      "generated_at": "2026-06-17T19:54:30.652642+00:00",
+      "signal_id": "d845db15-05ba-452a-8851-14db72e77bcf",
+      "signal_type": "high_corporate_activity",
+      "sources_used": [
+       "borme"
+      ]
+     }
+    ],
+    "economic_intel.signals_count": 2,
+    "economic_intel.sources": [
+     "borme",
+     "iberinform",
+     "ine",
+     "procurement"
+    ],
+    "iberinform.cnae_code": "7021",
+    "iberinform.employees_latest": 17,
+    "iberinform.revenue_latest": 204735.04,
+    "identity.aliases": [
+     "FJCSW",
+     "Inmobiliaria FJCSW SC"
+    ],
+    "identity.category_name": "Actividades profesionales, científicas y técnicas",
+    "identity.cif": "V25962611",
+    "identity.cnae_primary": "70",
+    "identity.confidence_score": 0.99,
+    "identity.legal_name": "Inmobiliaria FJCSW SC",
+    "is_public_company": true
+   },
+   "found_map": {
+    "bme": true,
+    "economic_intel": true,
+    "grants": false,
+    "iberinform": true,
+    "identity": true,
+    "territorial": false,
+    "web": false
+   },
+   "profile": "valuo",
+   "sources_with_data": [
+    "bme",
+    "economic_intel",
+    "iberinform",
+    "identity"
+   ]
+  },
+  "0095480b-7c17-43a3-b4fe-cf12f4e1e32c::arroba": {
+   "_bucket": "holding_grupo",
+   "engine_version": "1.0.0",
+   "fields": {
+    "cnmv.buyers_breakdown": {
+     "buyers": 500,
+     "managers": 473
+    },
+    "cnmv.potential_buyers_count": 973,
+    "economic_intel.active_companies": 215204,
+    "economic_intel.cnae_code": "56",
+    "economic_intel.revenue_sector": 427700.09,
+    "economic_intel.sector_trend": "down",
+    "economic_intel.signals": [
+     {
+      "cnae_code": "56",
+      "confidence": 0.9,
+      "description": "433 eventos mercantiles registrados",
+      "generated_at": "2026-06-17T19:54:30.652642+00:00",
+      "signal_id": "a64e389f-19a6-4e3c-ab7a-721a7a5d9b4c",
+      "signal_type": "high_corporate_activity",
+      "sources_used": [
+       "borme"
+      ]
+     }
+    ],
+    "economic_intel.signals_count": 1,
+    "economic_intel.sources": [
+     "borme",
+     "iberinform",
+     "ine"
+    ],
+    "iberinform.cnae_code": "5630",
+    "iberinform.employees_latest": 3,
+    "iberinform.revenue_latest": 175337.56,
+    "identity.aliases": [
+     "Grupo VKWNV SC",
+     "VKWNV"
+    ],
+    "identity.category_name": "Hostelería",
+    "identity.cif": "H40558493",
+    "identity.cnae_primary": "56",
+    "identity.confidence_score": 0.99,
+    "identity.legal_name": "Grupo VKWNV SC"
+   },
+   "found_map": {
+    "bme": false,
+    "boe": false,
+    "borme": false,
+    "catastro": false,
+    "cnmv": false,
+    "datacomex": false,
+    "economic_intel": true,
+    "employment": false,
+    "grants": false,
+    "iberinform": true,
+    "identity": true,
+    "oepm": false,
+    "patentes": false,
+    "procurement": false,
+    "territorial": false,
+    "web": false
+   },
+   "profile": "arroba",
+   "sources_with_data": [
+    "cnmv",
+    "economic_intel",
+    "iberinform",
+    "identity"
+   ]
+  },
+  "0095480b-7c17-43a3-b4fe-cf12f4e1e32c::valuo": {
+   "_bucket": "holding_grupo",
+   "engine_version": "1.0.0",
+   "fields": {
+    "economic_intel.active_companies": 215204,
+    "economic_intel.cnae_code": "56",
+    "economic_intel.revenue_sector": 427700.09,
+    "economic_intel.sector_trend": "down",
+    "economic_intel.signals": [
+     {
+      "cnae_code": "56",
+      "confidence": 0.9,
+      "description": "433 eventos mercantiles registrados",
+      "generated_at": "2026-06-17T19:54:30.652642+00:00",
+      "signal_id": "a64e389f-19a6-4e3c-ab7a-721a7a5d9b4c",
+      "signal_type": "high_corporate_activity",
+      "sources_used": [
+       "borme"
+      ]
+     }
+    ],
+    "economic_intel.signals_count": 1,
+    "economic_intel.sources": [
+     "borme",
+     "iberinform",
+     "ine"
+    ],
+    "iberinform.cnae_code": "5630",
+    "iberinform.employees_latest": 3,
+    "iberinform.revenue_latest": 175337.56,
+    "identity.aliases": [
+     "Grupo VKWNV SC",
+     "VKWNV"
+    ],
+    "identity.category_name": "Hostelería",
+    "identity.cif": "H40558493",
+    "identity.cnae_primary": "56",
+    "identity.confidence_score": 0.99,
+    "identity.legal_name": "Grupo VKWNV SC"
+   },
+   "found_map": {
+    "bme": false,
+    "economic_intel": true,
+    "grants": false,
+    "iberinform": true,
+    "identity": true,
+    "territorial": false,
+    "web": false
+   },
+   "profile": "valuo",
+   "sources_with_data": [
+    "economic_intel",
+    "iberinform",
+    "identity"
+   ]
+  },
+  "0140debe-b7bc-4513-b934-2759907e4cba::arroba": {
+   "_bucket": "holding_grupo",
+   "engine_version": "1.0.0",
+   "fields": {
+    "cnmv.buyers_breakdown": {
+     "buyers": 500,
+     "managers": 473
+    },
+    "cnmv.potential_buyers_count": 973,
+    "economic_intel.active_companies": 9932,
+    "economic_intel.cnae_code": "58",
+    "economic_intel.revenue_sector": 1029353.25,
+    "economic_intel.sector_trend": "down",
+    "economic_intel.signals_count": 0,
+    "economic_intel.sources": [
+     "borme",
+     "iberinform",
+     "ine"
+    ],
+    "iberinform.cnae_code": "5812",
+    "iberinform.employees_latest": 79,
+    "iberinform.revenue_latest": 589044.33,
+    "identity.aliases": [
+     "Grupo UKMFRW SLP",
+     "UKMFRW"
+    ],
+    "identity.category_name": "Información y comunicaciones",
+    "identity.cif": "C3945693G",
+    "identity.cnae_primary": "58",
+    "identity.confidence_score": 0.99,
+    "identity.legal_name": "Grupo UKMFRW SLP"
+   },
+   "found_map": {
+    "bme": false,
+    "boe": false,
+    "borme": false,
+    "catastro": false,
+    "cnmv": false,
+    "datacomex": false,
+    "economic_intel": true,
+    "employment": false,
+    "grants": false,
+    "iberinform": true,
+    "identity": true,
+    "oepm": false,
+    "patentes": false,
+    "procurement": false,
+    "territorial": false,
+    "web": false
+   },
+   "profile": "arroba",
+   "sources_with_data": [
+    "cnmv",
+    "economic_intel",
+    "iberinform",
+    "identity"
+   ]
+  },
+  "0140debe-b7bc-4513-b934-2759907e4cba::valuo": {
+   "_bucket": "holding_grupo",
+   "engine_version": "1.0.0",
+   "fields": {
+    "economic_intel.active_companies": 9932,
+    "economic_intel.cnae_code": "58",
+    "economic_intel.revenue_sector": 1029353.25,
+    "economic_intel.sector_trend": "down",
+    "economic_intel.signals_count": 0,
+    "economic_intel.sources": [
+     "borme",
+     "iberinform",
+     "ine"
+    ],
+    "iberinform.cnae_code": "5812",
+    "iberinform.employees_latest": 79,
+    "iberinform.revenue_latest": 589044.33,
+    "identity.aliases": [
+     "Grupo UKMFRW SLP",
+     "UKMFRW"
+    ],
+    "identity.category_name": "Información y comunicaciones",
+    "identity.cif": "C3945693G",
+    "identity.cnae_primary": "58",
+    "identity.confidence_score": 0.99,
+    "identity.legal_name": "Grupo UKMFRW SLP"
+   },
+   "found_map": {
+    "bme": false,
+    "economic_intel": true,
+    "grants": false,
+    "iberinform": true,
+    "identity": true,
+    "territorial": false,
+    "web": false
+   },
+   "profile": "valuo",
+   "sources_with_data": [
+    "economic_intel",
+    "iberinform",
+    "identity"
+   ]
+  },
+  "02ee3b5f-44fe-4821-b7d9-5e92deee9cf6::arroba": {
+   "_bucket": "pyme",
+   "engine_version": "1.0.0",
+   "fields": {
+    "cnmv.buyers_breakdown": {
+     "buyers": 500,
+     "managers": 473
+    },
+    "cnmv.potential_buyers_count": 973,
+    "economic_intel.active_companies": 6622,
+    "economic_intel.cnae_code": "27",
+    "economic_intel.revenue_sector": 1772780.94,
+    "economic_intel.sector_trend": "down",
+    "economic_intel.signals": [
+     {
+      "cnae_code": "27",
+      "confidence": 0.85,
+      "description": "Deficit comercial >500M EUR",
+      "generated_at": "2026-06-17T19:54:30.652642+00:00",
+      "signal_id": "3c0ddbba-b89e-4d88-8855-0fe307a17a17",
+      "signal_type": "trade_deficit",
+      "sources_used": [
+       "datacomex"
+      ]
+     },
+     {
+      "cnae_code": "27",
+      "confidence": 0.9,
+      "description": "Exportaciones >1.000M EUR",
+      "generated_at": "2026-06-17T19:54:30.652642+00:00",
+      "signal_id": "83223bc8-1a6f-4326-bfde-37f0ddd695c3",
+      "signal_type": "export_powerhouse",
+      "sources_used": [
+       "datacomex"
+      ]
+     }
+    ],
+    "economic_intel.signals_count": 2,
+    "economic_intel.sources": [
+     "borme",
+     "datacomex",
+     "iberinform",
+     "ine"
+    ],
+    "iberinform.cnae_code": "2700",
+    "iberinform.employees_latest": 47,
+    "iberinform.revenue_latest": 2562346.34,
+    "identity.aliases": [
+     "Digital WQPWJX SAU",
+     "WQPWJX"
+    ],
+    "identity.category_name": "Industria manufacturera",
+    "identity.cif": "A65039875",
+    "identity.cnae_primary": "27",
+    "identity.confidence_score": 0.99,
+    "identity.legal_name": "Digital WQPWJX SAU"
+   },
+   "found_map": {
+    "bme": false,
+    "boe": false,
+    "borme": false,
+    "catastro": false,
+    "cnmv": false,
+    "datacomex": false,
+    "economic_intel": true,
+    "employment": false,
+    "grants": false,
+    "iberinform": true,
+    "identity": true,
+    "oepm": false,
+    "patentes": false,
+    "procurement": false,
+    "territorial": false,
+    "web": false
+   },
+   "profile": "arroba",
+   "sources_with_data": [
+    "cnmv",
+    "economic_intel",
+    "iberinform",
+    "identity"
+   ]
+  },
+  "02ee3b5f-44fe-4821-b7d9-5e92deee9cf6::valuo": {
+   "_bucket": "pyme",
+   "engine_version": "1.0.0",
+   "fields": {
+    "economic_intel.active_companies": 6622,
+    "economic_intel.cnae_code": "27",
+    "economic_intel.revenue_sector": 1772780.94,
+    "economic_intel.sector_trend": "down",
+    "economic_intel.signals": [
+     {
+      "cnae_code": "27",
+      "confidence": 0.85,
+      "description": "Deficit comercial >500M EUR",
+      "generated_at": "2026-06-17T19:54:30.652642+00:00",
+      "signal_id": "3c0ddbba-b89e-4d88-8855-0fe307a17a17",
+      "signal_type": "trade_deficit",
+      "sources_used": [
+       "datacomex"
+      ]
+     },
+     {
+      "cnae_code": "27",
+      "confidence": 0.9,
+      "description": "Exportaciones >1.000M EUR",
+      "generated_at": "2026-06-17T19:54:30.652642+00:00",
+      "signal_id": "83223bc8-1a6f-4326-bfde-37f0ddd695c3",
+      "signal_type": "export_powerhouse",
+      "sources_used": [
+       "datacomex"
+      ]
+     }
+    ],
+    "economic_intel.signals_count": 2,
+    "economic_intel.sources": [
+     "borme",
+     "datacomex",
+     "iberinform",
+     "ine"
+    ],
+    "iberinform.cnae_code": "2700",
+    "iberinform.employees_latest": 47,
+    "iberinform.revenue_latest": 2562346.34,
+    "identity.aliases": [
+     "Digital WQPWJX SAU",
+     "WQPWJX"
+    ],
+    "identity.category_name": "Industria manufacturera",
+    "identity.cif": "A65039875",
+    "identity.cnae_primary": "27",
+    "identity.confidence_score": 0.99,
+    "identity.legal_name": "Digital WQPWJX SAU"
+   },
+   "found_map": {
+    "bme": false,
+    "economic_intel": true,
+    "grants": false,
+    "iberinform": true,
+    "identity": true,
+    "territorial": false,
+    "web": false
+   },
+   "profile": "valuo",
+   "sources_with_data": [
+    "economic_intel",
+    "iberinform",
+    "identity"
+   ]
+  },
+  "mc_00390811-f3e::arroba": {
+   "_bucket": "financials_incompletos",
+   "engine_version": "1.0.0",
+   "fields": {
+    "identity.aliases": [
+     "Luxurycomm",
+     "luxurycomm.com"
+    ],
+    "identity.category_name": "Influencer & Creator Economy",
+    "identity.cif": "B86740149",
+    "identity.confidence_score": 0.45,
+    "identity.domain": "luxurycomm.com",
+    "identity.legal_name": "Luxurycomm",
+    "identity.website": "https://www.luxurycomm.com",
+    "web._agency_result_id": "147bd7a5-b8a9-44fa-9920-68d14ad426fa",
+    "web._scraped_at": "2026-03-24T23:23:44.509724+00:00",
+    "web.category": "Influencer & Creator Economy",
+    "web.company_name": "Luxurycomm",
+    "web.confidence_category": 75,
+    "web.confidence_description": 95,
+    "web.contact_name": "Cayetana Vela",
+    "web.contact_role": "Socia fundadora, Luxurycomm",
+    "web.description": "Agencia especializada en comunicación estratégica para marcas de lujo, que ofrece soluciones 360º de comunicación, relaciones públicas, marketing de influencia y gestión de redes sociales para marcas premium y de alta gama.",
+    "web.has_awards": false,
+    "web.subcategory": "Influencer marketing (campanas)",
+    "web.tags": [
+     "comunicacion estrategica",
+     "entorno digital",
+     "gestion de redes sociales",
+     "marcas de lujo",
+     "marcas premium",
+     "marketing de influencia",
+     "relaciones publicas",
+     "soluciones 360"
+    ]
+   },
+   "found_map": {
+    "bme": false,
+    "boe": false,
+    "borme": false,
+    "catastro": false,
+    "cnmv": false,
+    "datacomex": false,
+    "economic_intel": false,
+    "employment": false,
+    "grants": false,
+    "iberinform": false,
+    "identity": true,
+    "oepm": false,
+    "patentes": false,
+    "procurement": false,
+    "territorial": false,
+    "web": true
+   },
+   "profile": "arroba",
+   "sources_with_data": [
+    "identity",
+    "web"
+   ]
+  },
+  "mc_00390811-f3e::valuo": {
+   "_bucket": "financials_incompletos",
+   "engine_version": "1.0.0",
+   "fields": {
+    "identity.aliases": [
+     "Luxurycomm",
+     "luxurycomm.com"
+    ],
+    "identity.category_name": "Influencer & Creator Economy",
+    "identity.cif": "B86740149",
+    "identity.confidence_score": 0.45,
+    "identity.domain": "luxurycomm.com",
+    "identity.legal_name": "Luxurycomm",
+    "identity.website": "https://www.luxurycomm.com",
+    "web._agency_result_id": "147bd7a5-b8a9-44fa-9920-68d14ad426fa",
+    "web._scraped_at": "2026-03-24T23:23:44.509724+00:00",
+    "web.category": "Influencer & Creator Economy",
+    "web.company_name": "Luxurycomm",
+    "web.confidence_category": 75,
+    "web.confidence_description": 95,
+    "web.contact_name": "Cayetana Vela",
+    "web.contact_role": "Socia fundadora, Luxurycomm",
+    "web.description": "Agencia especializada en comunicación estratégica para marcas de lujo, que ofrece soluciones 360º de comunicación, relaciones públicas, marketing de influencia y gestión de redes sociales para marcas premium y de alta gama.",
+    "web.has_awards": false,
+    "web.subcategory": "Influencer marketing (campanas)",
+    "web.tags": [
+     "comunicacion estrategica",
+     "entorno digital",
+     "gestion de redes sociales",
+     "marcas de lujo",
+     "marcas premium",
+     "marketing de influencia",
+     "relaciones publicas",
+     "soluciones 360"
+    ]
+   },
+   "found_map": {
+    "bme": false,
+    "economic_intel": false,
+    "grants": false,
+    "iberinform": false,
+    "identity": true,
+    "territorial": false,
+    "web": true
+   },
+   "profile": "valuo",
+   "sources_with_data": [
+    "identity",
+    "web"
+   ]
+  },
+  "mc_0178844c-d4f::arroba": {
+   "_bucket": "financials_incompletos",
+   "engine_version": "1.0.0",
+   "fields": {
+    "identity.aliases": [
+     "The Summer Agency",
+     "thesummeragency.com"
+    ],
+    "identity.category_name": "Creatividad y Produccion",
+    "identity.cif": "B85333953",
+    "identity.confidence_score": 0.45,
+    "identity.domain": "thesummeragency.com",
+    "identity.legal_name": "The Summer Agency",
+    "identity.website": "https://www.thesummeragency.com",
+    "web._agency_result_id": "e926d4a9-17f2-4a83-8142-c8603e2d7e01",
+    "web._scraped_at": "2026-03-24T23:28:04.425162+00:00",
+    "web.address.city": "Madrid",
+    "web.address.country": "Spain",
+    "web.address.postal_code": "28002",
+    "web.address.street": "Calle Sánchez Pacheco, 82",
+    "web.category": "Creatividad y Produccion",
+    "web.company_name": "The Summer Agency",
+    "web.confidence_category": 80,
+    "web.confidence_description": 85,
+    "web.contact_email": "madrid@thesummeragency.com",
+    "web.description": "Agencia en Madrid que crea ideas y estrategias para generar impacto cultural y desarrolla campañas creativas, social media y proyectos de transformación digital para marcas.",
+    "web.has_awards": false,
+    "web.main_clients": [
+     "Atlético de Madrid",
+     "BBVA",
+     "BMW",
+     "Banco Santander",
+     "CUNEF",
+     "Colegio de Fisioterapeutas",
+     "Comedy Central",
+     "Flying Tiger",
+     "Generali",
+     "ING",
+     "JD",
+     "Playz",
+     "Repsol",
+     "Shandy",
+     "Viacom",
+     "Visalia"
+    ],
+    "web.phone": "82\n28002",
+    "web.subcategory": "Agencia creativa (ATL / TTL)",
+    "web.tags": [
+     "Creative Agency",
+     "Digital Transformation",
+     "Documental",
+     "Ficcion sonora",
+     "Good Vibes",
+     "Impacto cultural",
+     "Inspiration",
+     "Marketing de guerrilla",
+     "Social Media",
+     "Spots",
+     "Transmedia",
+     "Website"
+    ]
+   },
+   "found_map": {
+    "bme": false,
+    "boe": false,
+    "borme": false,
+    "catastro": false,
+    "cnmv": false,
+    "datacomex": false,
+    "economic_intel": false,
+    "employment": false,
+    "grants": false,
+    "iberinform": false,
+    "identity": true,
+    "oepm": false,
+    "patentes": false,
+    "procurement": false,
+    "territorial": false,
+    "web": true
+   },
+   "profile": "arroba",
+   "sources_with_data": [
+    "identity",
+    "web"
+   ]
+  },
+  "mc_0178844c-d4f::valuo": {
+   "_bucket": "financials_incompletos",
+   "engine_version": "1.0.0",
+   "fields": {
+    "identity.aliases": [
+     "The Summer Agency",
+     "thesummeragency.com"
+    ],
+    "identity.category_name": "Creatividad y Produccion",
+    "identity.cif": "B85333953",
+    "identity.confidence_score": 0.45,
+    "identity.domain": "thesummeragency.com",
+    "identity.legal_name": "The Summer Agency",
+    "identity.website": "https://www.thesummeragency.com",
+    "web._agency_result_id": "e926d4a9-17f2-4a83-8142-c8603e2d7e01",
+    "web._scraped_at": "2026-03-24T23:28:04.425162+00:00",
+    "web.address.city": "Madrid",
+    "web.address.country": "Spain",
+    "web.address.postal_code": "28002",
+    "web.address.street": "Calle Sánchez Pacheco, 82",
+    "web.category": "Creatividad y Produccion",
+    "web.company_name": "The Summer Agency",
+    "web.confidence_category": 80,
+    "web.confidence_description": 85,
+    "web.contact_email": "madrid@thesummeragency.com",
+    "web.description": "Agencia en Madrid que crea ideas y estrategias para generar impacto cultural y desarrolla campañas creativas, social media y proyectos de transformación digital para marcas.",
+    "web.has_awards": false,
+    "web.main_clients": [
+     "Atlético de Madrid",
+     "BBVA",
+     "BMW",
+     "Banco Santander",
+     "CUNEF",
+     "Colegio de Fisioterapeutas",
+     "Comedy Central",
+     "Flying Tiger",
+     "Generali",
+     "ING",
+     "JD",
+     "Playz",
+     "Repsol",
+     "Shandy",
+     "Viacom",
+     "Visalia"
+    ],
+    "web.phone": "82\n28002",
+    "web.subcategory": "Agencia creativa (ATL / TTL)",
+    "web.tags": [
+     "Creative Agency",
+     "Digital Transformation",
+     "Documental",
+     "Ficcion sonora",
+     "Good Vibes",
+     "Impacto cultural",
+     "Inspiration",
+     "Marketing de guerrilla",
+     "Social Media",
+     "Spots",
+     "Transmedia",
+     "Website"
+    ]
+   },
+   "found_map": {
+    "bme": false,
+    "economic_intel": false,
+    "grants": false,
+    "iberinform": false,
+    "identity": true,
+    "territorial": false,
+    "web": true
+   },
+   "profile": "valuo",
+   "sources_with_data": [
+    "identity",
+    "web"
+   ]
+  },
+  "mc_02ca8ee1-78f::arroba": {
+   "_bucket": "discovered",
+   "engine_version": "1.0.0",
+   "fields": {
+    "identity.aliases": [
+     "Adgravity",
+     "adgravity.com"
+    ],
+    "identity.category_name": "Medios, Performance y Programmatic",
+    "identity.cif": "B86959806",
+    "identity.confidence_score": 0.45,
+    "identity.domain": "adgravity.com",
+    "identity.legal_name": "Adgravity",
+    "identity.website": "https://adgravity.com/",
+    "web._agency_result_id": "9766de4a-be4e-43ed-bd99-a201124a4dd1",
+    "web._scraped_at": "2026-03-24T21:53:35.239926+00:00",
+    "web.address.street": "Carrousel",
+    "web.category": "Medios, Performance y Programmatic",
+    "web.company_name": "Adgravity",
+    "web.confidence_category": 95,
+    "web.confidence_description": 90,
+    "web.contact_email": "info@adgravity.com",
+    "web.description": "Adgravity se presenta como un Trading Desk independiente y líder en marketing automation, con estrategia basada en análisis de datos y optimización de presupuestos publicitarios mediante tecnología multicanal para encontrar audiencias y medir la eficiencia de impactos publicitarios.",
+    "web.has_awards": false,
+    "web.phone": "+34 910 18 89 57",
+    "web.subcategory": "Programmatic / Trading desk",
+    "web.tags": [
+     "GDPR",
+     "analisis de datos",
+     "automocion",
+     "marketing automation",
+     "medicion de eficiencia",
+     "optimizacion de presupuestos publicitarios",
+     "privacidad",
+     "real estate",
+     "tecnologia multicanal",
+     "trading desk independiente",
+     "travel"
+    ]
+   },
+   "found_map": {
+    "bme": false,
+    "boe": false,
+    "borme": false,
+    "catastro": false,
+    "cnmv": false,
+    "datacomex": false,
+    "economic_intel": false,
+    "employment": false,
+    "grants": false,
+    "iberinform": false,
+    "identity": true,
+    "oepm": false,
+    "patentes": false,
+    "procurement": false,
+    "territorial": false,
+    "web": true
+   },
+   "profile": "arroba",
+   "sources_with_data": [
+    "identity",
+    "web"
+   ]
+  },
+  "mc_02ca8ee1-78f::valuo": {
+   "_bucket": "discovered",
+   "engine_version": "1.0.0",
+   "fields": {
+    "identity.aliases": [
+     "Adgravity",
+     "adgravity.com"
+    ],
+    "identity.category_name": "Medios, Performance y Programmatic",
+    "identity.cif": "B86959806",
+    "identity.confidence_score": 0.45,
+    "identity.domain": "adgravity.com",
+    "identity.legal_name": "Adgravity",
+    "identity.website": "https://adgravity.com/",
+    "web._agency_result_id": "9766de4a-be4e-43ed-bd99-a201124a4dd1",
+    "web._scraped_at": "2026-03-24T21:53:35.239926+00:00",
+    "web.address.street": "Carrousel",
+    "web.category": "Medios, Performance y Programmatic",
+    "web.company_name": "Adgravity",
+    "web.confidence_category": 95,
+    "web.confidence_description": 90,
+    "web.contact_email": "info@adgravity.com",
+    "web.description": "Adgravity se presenta como un Trading Desk independiente y líder en marketing automation, con estrategia basada en análisis de datos y optimización de presupuestos publicitarios mediante tecnología multicanal para encontrar audiencias y medir la eficiencia de impactos publicitarios.",
+    "web.has_awards": false,
+    "web.phone": "+34 910 18 89 57",
+    "web.subcategory": "Programmatic / Trading desk",
+    "web.tags": [
+     "GDPR",
+     "analisis de datos",
+     "automocion",
+     "marketing automation",
+     "medicion de eficiencia",
+     "optimizacion de presupuestos publicitarios",
+     "privacidad",
+     "real estate",
+     "tecnologia multicanal",
+     "trading desk independiente",
+     "travel"
+    ]
+   },
+   "found_map": {
+    "bme": false,
+    "economic_intel": false,
+    "grants": false,
+    "iberinform": false,
+    "identity": true,
+    "territorial": false,
+    "web": true
+   },
+   "profile": "valuo",
+   "sources_with_data": [
+    "identity",
+    "web"
+   ]
+  },
+  "mc_043746ab-3d6::arroba": {
+   "_bucket": "discovered",
+   "engine_version": "1.0.0",
+   "fields": {
+    "identity.aliases": [
+     "Ogilvy",
+     "ogilvy.com"
+    ],
+    "identity.category_name": "Creatividad y Produccion",
+    "identity.cif": "B87654321",
+    "identity.commercial_names": [
+     "Ogilvy"
+    ],
+    "identity.confidence_score": 0.45,
+    "identity.domain": "ogilvy.com",
+    "identity.legal_name": "Ogilvy",
+    "identity.website": "https://www.ogilvy.com",
+    "procurement.contracts_count": 1,
+    "procurement.recent_contracts": [
+     {
+      "buyer_name": "Turismo de Espana",
+      "contract_id": "proc_1d1c14d1-6fc",
+      "title": "Campana publicidad turismo Espana"
+     }
+    ],
+    "procurement.total_amount_eur": 0,
+    "web._agency_result_id": "e78c4a79-bbcf-4e3b-9aad-2b5b9bb9daba",
+    "web._scraped_at": "2026-03-24T12:32:29.878559+00:00",
+    "web.address.country": "United Arab Emirates",
+    "web.address.postal_code": "74170",
+    "web.category": "Creatividad y Produccion",
+    "web.company_name": "Ogilvy",
+    "web.confidence_category": 70,
+    "web.confidence_description": 90,
+    "web.contact_email": "Akua.Owusu-Nartey@ogilvy.africa",
+    "web.description": "Global agency founded by David Ogilvy that creates impact for brands through ideas across advertising, public relations, relationship design, consulting, and health, with over 120 offices in nearly 90 countries.",
+    "web.has_awards": false,
+    "web.main_clients": [
+     "Ad Council",
+     "Al-Futtaim IKEA",
+     "Alibaba Cloud",
+     "Asian Paints",
+     "Australian Steelers",
+     "Burger King",
+     "Cadbury 5 Star",
+     "Cadbury Silk",
+     "Calm",
+     "Chupa Chups",
+     "Coca-Cola",
+     "CommBank Matildas",
+     "Corona & World Surf League",
+     "Dove",
+     "Experience Abu Dhabi",
+     "Financial Times",
+     "Galp",
+     "Greek Ministry of Transportation",
+     "Heinz",
+     "Huawei",
+     "IKEA Alsulaiman",
+     "IKEA",
+     "KFC",
+     "Leroy Merlin",
+     "Loods 5",
+     "Major League Soccer",
+     "McDonald's",
+     "Ministry of Equality of Spain",
+     "Opportunity@Work & Ad Council",
+     "Premier Protein",
+     "Sainsbury's",
+     "San Pellegrino",
+     "Sour Patch Kids",
+     "Suchard",
+     "Supercell Clash of Clans",
+     "Testicular Cancer Foundation",
+     "The Chicago International Film Festival",
+     "The Directorate-General for Traffic",
+     "Thums Up",
+     "Toyota Hellas",
+     "Uber Eats",
+     "Vaseline",
+     "Volkswagen"
+    ],
+    "web.phone": "+973 1 756 1756",
+    "web.subcategory": "Agencia creativa (ATL / TTL)",
+    "web.tags": [
+     "Advertising",
+     "Borderless Creativity",
+     "Consulting",
+     "Global network (120+ offices, nearly 90 countries)",
+     "Health",
+     "PR & Influence",
+     "PR",
+     "Relationship Design"
+    ]
+   },
+   "found_map": {
+    "bme": false,
+    "boe": false,
+    "borme": false,
+    "catastro": false,
+    "cnmv": false,
+    "datacomex": false,
+    "economic_intel": false,
+    "employment": false,
+    "grants": false,
+    "iberinform": false,
+    "identity": true,
+    "oepm": false,
+    "patentes": false,
+    "procurement": true,
+    "territorial": false,
+    "web": true
+   },
+   "profile": "arroba",
+   "sources_with_data": [
+    "identity",
+    "procurement",
+    "web"
+   ]
+  },
+  "mc_043746ab-3d6::valuo": {
+   "_bucket": "discovered",
+   "engine_version": "1.0.0",
+   "fields": {
+    "identity.aliases": [
+     "Ogilvy",
+     "ogilvy.com"
+    ],
+    "identity.category_name": "Creatividad y Produccion",
+    "identity.cif": "B87654321",
+    "identity.commercial_names": [
+     "Ogilvy"
+    ],
+    "identity.confidence_score": 0.45,
+    "identity.domain": "ogilvy.com",
+    "identity.legal_name": "Ogilvy",
+    "identity.website": "https://www.ogilvy.com",
+    "web._agency_result_id": "e78c4a79-bbcf-4e3b-9aad-2b5b9bb9daba",
+    "web._scraped_at": "2026-03-24T12:32:29.878559+00:00",
+    "web.address.country": "United Arab Emirates",
+    "web.address.postal_code": "74170",
+    "web.category": "Creatividad y Produccion",
+    "web.company_name": "Ogilvy",
+    "web.confidence_category": 70,
+    "web.confidence_description": 90,
+    "web.contact_email": "Akua.Owusu-Nartey@ogilvy.africa",
+    "web.description": "Global agency founded by David Ogilvy that creates impact for brands through ideas across advertising, public relations, relationship design, consulting, and health, with over 120 offices in nearly 90 countries.",
+    "web.has_awards": false,
+    "web.main_clients": [
+     "Ad Council",
+     "Al-Futtaim IKEA",
+     "Alibaba Cloud",
+     "Asian Paints",
+     "Australian Steelers",
+     "Burger King",
+     "Cadbury 5 Star",
+     "Cadbury Silk",
+     "Calm",
+     "Chupa Chups",
+     "Coca-Cola",
+     "CommBank Matildas",
+     "Corona & World Surf League",
+     "Dove",
+     "Experience Abu Dhabi",
+     "Financial Times",
+     "Galp",
+     "Greek Ministry of Transportation",
+     "Heinz",
+     "Huawei",
+     "IKEA Alsulaiman",
+     "IKEA",
+     "KFC",
+     "Leroy Merlin",
+     "Loods 5",
+     "Major League Soccer",
+     "McDonald's",
+     "Ministry of Equality of Spain",
+     "Opportunity@Work & Ad Council",
+     "Premier Protein",
+     "Sainsbury's",
+     "San Pellegrino",
+     "Sour Patch Kids",
+     "Suchard",
+     "Supercell Clash of Clans",
+     "Testicular Cancer Foundation",
+     "The Chicago International Film Festival",
+     "The Directorate-General for Traffic",
+     "Thums Up",
+     "Toyota Hellas",
+     "Uber Eats",
+     "Vaseline",
+     "Volkswagen"
+    ],
+    "web.phone": "+973 1 756 1756",
+    "web.subcategory": "Agencia creativa (ATL / TTL)",
+    "web.tags": [
+     "Advertising",
+     "Borderless Creativity",
+     "Consulting",
+     "Global network (120+ offices, nearly 90 countries)",
+     "Health",
+     "PR & Influence",
+     "PR",
+     "Relationship Design"
+    ]
+   },
+   "found_map": {
+    "bme": false,
+    "economic_intel": false,
+    "grants": false,
+    "iberinform": false,
+    "identity": true,
+    "territorial": false,
+    "web": true
+   },
+   "profile": "valuo",
+   "sources_with_data": [
+    "identity",
+    "web"
+   ]
+  },
+  "mc_06823491-6f3::arroba": {
+   "_bucket": "baja_calidad",
+   "engine_version": "1.0.0",
+   "fields": {
+    "identity.aliases": [
+     "Ecovigo",
+     "ecovigo.com"
+    ],
+    "identity.category_name": "Creatividad y Produccion",
+    "identity.confidence_score": 0.3,
+    "identity.domain": "ecovigo.com",
+    "identity.legal_name": "Ecovigo",
+    "identity.website": "https://www.ecovigo.com",
+    "web._agency_result_id": "193ce899-5745-4df7-9832-608078be80ca",
+    "web._scraped_at": "2026-03-24T11:33:48.497869+00:00",
+    "web.category": "Creatividad y Produccion",
+    "web.company_name": "Ecovigo",
+    "web.confidence_category": 70,
+    "web.confidence_description": 85,
+    "web.description": "Agencia gallega de comunicación y publicidad (d.1962) que ofrece soluciones estratégicas de comunicación transmedia y 360º, incluyendo publicidad, branding, comunicación corporativa y digital, eventos y comunicación interna/de crisis.",
+    "web.has_awards": false,
+    "web.main_clients": [
+     "Aguas de Mondariz",
+     "Caixanova",
+     "Caixavigo",
+     "Concello de Vigo",
+     "Conservas Palacio de Oriente",
+     "Consorcio de Santiago",
+     "Deputación de Pontevedra",
+     "Electra Alto Miño",
+     "Escuela de Negocios Caixanova",
+     "Instituto de Desarrollo Caixanova",
+     "Larsa",
+     "Novacaixagalicia",
+     "Obra Social Caixanova",
+     "Palacio de Oriente",
+     "Pescanova",
+     "Puerto de Vigo",
+     "Radio Galega",
+     "Turismo Rías Baixas",
+     "Turismo de Vigo",
+     "VITRASA",
+     "Xunta de Galicia"
+    ],
+    "web.phone": "+34 986 433 000",
+    "web.subcategory": "Agencia creativa (ATL / TTL)",
+    "web.tags": [
+     "branding",
+     "comunicación 360º",
+     "comunicación corporativa",
+     "comunicación de crisis",
+     "comunicación interna",
+     "comunicación transmedia",
+     "custom publishing",
+     "digital - social media",
+     "eventos",
+     "government affairs",
+     "publicidad",
+     "transformación digital y big data"
+    ]
+   },
+   "found_map": {
+    "bme": false,
+    "boe": false,
+    "borme": false,
+    "catastro": false,
+    "cnmv": false,
+    "datacomex": false,
+    "economic_intel": false,
+    "employment": false,
+    "grants": false,
+    "iberinform": false,
+    "identity": true,
+    "oepm": false,
+    "patentes": false,
+    "procurement": false,
+    "territorial": false,
+    "web": true
+   },
+   "profile": "arroba",
+   "sources_with_data": [
+    "identity",
+    "web"
+   ]
+  },
+  "mc_06823491-6f3::valuo": {
+   "_bucket": "baja_calidad",
+   "engine_version": "1.0.0",
+   "fields": {
+    "identity.aliases": [
+     "Ecovigo",
+     "ecovigo.com"
+    ],
+    "identity.category_name": "Creatividad y Produccion",
+    "identity.confidence_score": 0.3,
+    "identity.domain": "ecovigo.com",
+    "identity.legal_name": "Ecovigo",
+    "identity.website": "https://www.ecovigo.com",
+    "web._agency_result_id": "193ce899-5745-4df7-9832-608078be80ca",
+    "web._scraped_at": "2026-03-24T11:33:48.497869+00:00",
+    "web.category": "Creatividad y Produccion",
+    "web.company_name": "Ecovigo",
+    "web.confidence_category": 70,
+    "web.confidence_description": 85,
+    "web.description": "Agencia gallega de comunicación y publicidad (d.1962) que ofrece soluciones estratégicas de comunicación transmedia y 360º, incluyendo publicidad, branding, comunicación corporativa y digital, eventos y comunicación interna/de crisis.",
+    "web.has_awards": false,
+    "web.main_clients": [
+     "Aguas de Mondariz",
+     "Caixanova",
+     "Caixavigo",
+     "Concello de Vigo",
+     "Conservas Palacio de Oriente",
+     "Consorcio de Santiago",
+     "Deputación de Pontevedra",
+     "Electra Alto Miño",
+     "Escuela de Negocios Caixanova",
+     "Instituto de Desarrollo Caixanova",
+     "Larsa",
+     "Novacaixagalicia",
+     "Obra Social Caixanova",
+     "Palacio de Oriente",
+     "Pescanova",
+     "Puerto de Vigo",
+     "Radio Galega",
+     "Turismo Rías Baixas",
+     "Turismo de Vigo",
+     "VITRASA",
+     "Xunta de Galicia"
+    ],
+    "web.phone": "+34 986 433 000",
+    "web.subcategory": "Agencia creativa (ATL / TTL)",
+    "web.tags": [
+     "branding",
+     "comunicación 360º",
+     "comunicación corporativa",
+     "comunicación de crisis",
+     "comunicación interna",
+     "comunicación transmedia",
+     "custom publishing",
+     "digital - social media",
+     "eventos",
+     "government affairs",
+     "publicidad",
+     "transformación digital y big data"
+    ]
+   },
+   "found_map": {
+    "bme": false,
+    "economic_intel": false,
+    "grants": false,
+    "iberinform": false,
+    "identity": true,
+    "territorial": false,
+    "web": true
+   },
+   "profile": "valuo",
+   "sources_with_data": [
+    "identity",
+    "web"
+   ]
+  },
+  "mc_0725dd18-bb3::arroba": {
+   "_bucket": "baja_calidad",
+   "engine_version": "1.0.0",
+   "fields": {
+    "borme.events_count": 30,
+    "borme.recent_events": [
+     {
+      "company_name_raw": "EVOLUTION MADRID SL",
+      "event_type": "governance"
+     },
+     {
+      "company_name_raw": "EVOLUTION SPORT-DANCE AÑOVER SL",
+      "event_type": "corporate"
+     },
+     {
+      "company_name_raw": "EVOLUTION SPORT-DANCE AÑOVER SL",
+      "event_type": "governance"
+     },
+     {
+      "company_name_raw": "INTELLIGENT EVOLUTION SL",
+      "event_type": "corporate"
+     },
+     {
+      "company_name_raw": "WORLD EVOLUTION SPORT SL",
+      "event_type": "other"
+     }
+    ],
+    "identity.aliases": [
+     "Evolution",
+     "evolution.com"
+    ],
+    "identity.confidence_score": 0.3,
+    "identity.domain": "evolution.com",
+    "identity.legal_name": "Evolution",
+    "identity.website": "https://www.evolution.com",
+    "web._agency_result_id": "217a6e3d-47ee-4daa-8ea1-42a2d9b69e20",
+    "web._scraped_at": "2026-03-24T18:30:22.515843+00:00",
+    "web.address.postal_code": "41655",
+    "web.company_name": "Evolution",
+    "web.confidence_category": 0,
+    "web.confidence_description": 85,
+    "web.description": "Evolution provides casino games, including Live Casino, slots, game shows, and first-person casino games.",
+    "web.has_awards": false,
+    "web.main_clients": [
+     "Hasbro"
+    ],
+    "web.tags": [
+     "Cookie consent",
+     "First Person",
+     "Game Shows",
+     "Investors",
+     "Land Based",
+     "Live Baccarat",
+     "Live Blackjack",
+     "Live Casino",
+     "Live Poker",
+     "Live Roulette",
+     "Press Releases",
+     "Slots"
+    ]
+   },
+   "found_map": {
+    "bme": false,
+    "boe": false,
+    "borme": true,
+    "catastro": false,
+    "cnmv": false,
+    "datacomex": false,
+    "economic_intel": false,
+    "employment": false,
+    "grants": false,
+    "iberinform": false,
+    "identity": true,
+    "oepm": false,
+    "patentes": false,
+    "procurement": false,
+    "territorial": false,
+    "web": true
+   },
+   "profile": "arroba",
+   "sources_with_data": [
+    "borme",
+    "identity",
+    "web"
+   ]
+  },
+  "mc_0725dd18-bb3::valuo": {
+   "_bucket": "baja_calidad",
+   "engine_version": "1.0.0",
+   "fields": {
+    "identity.aliases": [
+     "Evolution",
+     "evolution.com"
+    ],
+    "identity.confidence_score": 0.3,
+    "identity.domain": "evolution.com",
+    "identity.legal_name": "Evolution",
+    "identity.website": "https://www.evolution.com",
+    "web._agency_result_id": "217a6e3d-47ee-4daa-8ea1-42a2d9b69e20",
+    "web._scraped_at": "2026-03-24T18:30:22.515843+00:00",
+    "web.address.postal_code": "41655",
+    "web.company_name": "Evolution",
+    "web.confidence_category": 0,
+    "web.confidence_description": 85,
+    "web.description": "Evolution provides casino games, including Live Casino, slots, game shows, and first-person casino games.",
+    "web.has_awards": false,
+    "web.main_clients": [
+     "Hasbro"
+    ],
+    "web.tags": [
+     "Cookie consent",
+     "First Person",
+     "Game Shows",
+     "Investors",
+     "Land Based",
+     "Live Baccarat",
+     "Live Blackjack",
+     "Live Casino",
+     "Live Poker",
+     "Live Roulette",
+     "Press Releases",
+     "Slots"
+    ]
+   },
+   "found_map": {
+    "bme": false,
+    "economic_intel": false,
+    "grants": false,
+    "iberinform": false,
+    "identity": true,
+    "territorial": false,
+    "web": true
+   },
+   "profile": "valuo",
+   "sources_with_data": [
+    "identity",
+    "web"
+   ]
+  }
+ }
+}

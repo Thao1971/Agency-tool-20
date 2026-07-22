@@ -1,0 +1,46 @@
+{
+ "_meta": {
+  "count": 3
+ },
+ "entries": {
+  "cif_exact": {
+   "input": {
+    "cif": "A00197281",
+    "legal_name": "Transporte AGUTO SA"
+   },
+   "snapshot": {
+    "candidate_count": 1,
+    "match_id": "a13b7994-9852-4c35-bf3e-b6fb659f5cc8",
+    "method": "cif_exact",
+    "score": 1.0,
+    "status": "auto_merged"
+   }
+  },
+  "discovered_new": {
+   "input": {
+    "cif": "B00000000",
+    "legal_name": "ZZZ NONEXISTENT GOLDEN CO"
+   },
+   "snapshot": {
+    "candidate_count": 0,
+    "match_id": null,
+    "method": null,
+    "score": 0,
+    "status": "discovered"
+   }
+  },
+  "domain_exact": {
+   "input": {
+    "domain": "014media.com",
+    "legal_name": "014 Media"
+   },
+   "snapshot": {
+    "candidate_count": 1,
+    "match_id": "mc_bee66fb1-c63",
+    "method": "domain_exact",
+    "score": 0.97,
+    "status": "auto_merged"
+   }
+  }
+ }
+}

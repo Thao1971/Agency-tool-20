@@ -1,0 +1,278 @@
+"""Financial Intelligence Engine — orchestrator.
+
+Generates the full financial intelligence profile of a company FROM the Master Layer
+(+ Normalized statements, internal). Valuation is one capability among KPIs, ratios,
+evolution, quality and comparables. Rules-based, explainable, NO AI.
+"""
+
+from typing import Dict, List, Optional
+
+from database import db
+from models import now_iso
+from services.engines.financial import metrics as M
+from services.engines.financial import ratios_library as R
+from services.engines.financial import market_multiples as MM
+
+ENGINE_VERSION = "financial-intelligence-v1"
+
+# EV/EBITDA reference multiples by CNAE section (INFERRED — not market-observed).
+# Documented as low-confidence reference until real market/transaction multiples are connected.
+_SECTION_EV_EBITDA = {
+    "C": 7.5, "G": 6.0, "J": 9.5, "M": 8.0, "F": 5.5, "I": 6.5, "H": 6.0,
+    "K": 9.0, "Q": 8.5, "A": 6.0, "L": 7.0,
+}
+_DEFAULT_EV_EBITDA = 6.5
+_DEFAULT_EV_REVENUE = 0.9
+
+
+def _pct_change(new, old):
+    if new is None or old in (None, 0):
+        return None
+    return round((new - old) / abs(old), 4)
+
+
+def _cagr(series_vals: List):
+    vals = [v for v in series_vals if v not in (None, 0)]
+    if len(vals) < 2:
+        return None
+    first, last = vals[-1], vals[0]   # series is newest-first
+    n = len(vals) - 1
+    if first <= 0 or last <= 0:
+        return None
+    return round((last / first) ** (1 / n) - 1, 4)
+
+
+def compute_kpis(series: List[Dict], employees: Optional[int]) -> Dict:
+    latest = series[0]
+    prev = series[1] if len(series) > 1 else {}
+    return {
+        "revenue": latest.get("revenue"), "ebitda": latest.get("ebitda"),
+        "ebit": latest.get("ebit"), "net_income": latest.get("net_income"),
+        "revenue_growth_yoy": _pct_change(latest.get("revenue"), prev.get("revenue")),
+        "ebitda_growth_yoy": _pct_change(latest.get("ebitda"), prev.get("ebitda")),
+        "revenue_cagr": _cagr([s.get("revenue") for s in series]),
+        "ebitda_margin": R._safe_div(latest.get("ebitda"), latest.get("revenue")),
+        "net_margin": R._safe_div(latest.get("net_income"), latest.get("revenue")),
+        "roe": R._safe_div(latest.get("net_income"), latest.get("equity")),
+        "roa": R._safe_div(latest.get("net_income"), latest.get("total_assets")),
+        "solvency": R._safe_div(latest.get("equity"), latest.get("total_assets")),
+        "current_ratio": R._safe_div(latest.get("current_assets"), latest.get("current_liabilities")),
+        "debt_to_equity": R._safe_div(latest.get("financial_debt"), latest.get("equity")),
+        "revenue_per_employee": R._safe_div(latest.get("revenue"), employees),
+        "capital_intensity": R._safe_div(latest.get("total_assets"), latest.get("revenue")),
+    }
+
+
+def compute_evolution(series: List[Dict]) -> Dict:
+    if len(series) < 2:
+        return {"trend": "insufficient_history", "years": len(series), "points": []}
+    rev_growth = _pct_change(series[0].get("revenue"), series[1].get("revenue"))
+    ebitda_growth = _pct_change(series[0].get("ebitda"), series[1].get("ebitda"))
+    trend = "stable"
+    if rev_growth is not None:
+        if rev_growth > 0.1:
+            trend = "growth"
+        elif rev_growth < -0.1:
+            trend = "deterioration"
+    anomaly = bool(rev_growth is not None and abs(rev_growth) > 0.5)
+    return {
+        "trend": trend, "years": len(series), "anomaly": anomaly,
+        "revenue_growth_yoy": rev_growth, "ebitda_growth_yoy": ebitda_growth,
+        "points": [{"year": s.get("year"), "revenue": s.get("revenue"),
+                    "ebitda": s.get("ebitda"), "net_income": s.get("net_income")} for s in series],
+    }
+
+
+def financial_quality(series: List[Dict], audited: Optional[str]) -> Dict:
+    """Rules-based, fully explainable financial_quality_score (0-100). No AI."""
+    latest = series[0]
+    rules = []
+
+    def add(cond, pts, reason):
+        rules.append({"rule": reason, "points": pts if cond else 0, "max": pts, "passed": bool(cond)})
+
+    add(latest.get("revenue") is not None, 20, "Estados financieros disponibles")
+    add(len(series) >= 2, 15, "Histórico ≥ 2 ejercicios")
+    add(bool(audited) and str(audited).upper() not in ("", "NO", "N"), 10, "Cuentas auditadas")
+    add((latest.get("ebitda") or 0) > 0, 15, "EBITDA positivo")
+    add((latest.get("net_income") or 0) > 0, 10, "Beneficio neto positivo")
+    eq, ta = latest.get("equity"), latest.get("total_assets")
+    add(eq is not None and ta not in (None, 0) and 0 < eq <= ta, 15, "Balance consistente (0<PN≤Activo)")
+    add((latest.get("revenue") or 0) > 0, 5, "Ingresos positivos")
+    stable = True
+    if len(series) >= 2:
+        g = _pct_change(series[0].get("revenue"), series[1].get("revenue"))
+        stable = g is None or abs(g) <= 0.5
+    add(stable, 10, "Sin saltos anómalos de ingresos (>50%)")
+
+    score = sum(r["points"] for r in rules)
+    return {"score": score, "max": 100, "rules": rules,
+            "method": "rules_based", "ai_used": False}
+
+
+async def financial_comparables(master: Dict, latest: Dict, limit: int = 8) -> Dict:
+    """Peers by sector (CNAE section) + size band + geography. NO embeddings."""
+    section = (master.get("classification") or {}).get("cnae_section")
+    revenue = latest.get("revenue")
+    province = (master.get("location") or {}).get("provincia")
+    q: Dict = {"master_id": {"$ne": master["master_id"]},
+               "classification.cnae_section": section,
+               "financials.latest.revenue": {"$ne": None}}
+    if revenue:
+        q["financials.latest.revenue"] = {"$gte": revenue * 0.3, "$lte": revenue * 3.0}
+    peers = []
+    async for p in db.master_companies.find(q, {"_id": 0, "master_id": 1, "identity.legal_name": 1,
+                                                "classification.cnae_code": 1, "location.provincia": 1,
+                                                "financials.latest": 1}).limit(limit * 3):
+        fl = (p.get("financials") or {}).get("latest") or {}
+        peers.append({"master_id": p["master_id"],
+                      "name": (p.get("identity") or {}).get("legal_name"),
+                      "cnae_code": (p.get("classification") or {}).get("cnae_code"),
+                      "provincia": (p.get("location") or {}).get("provincia"),
+                      "revenue": fl.get("revenue"), "ebitda": fl.get("ebitda"),
+                      "ebitda_margin": fl.get("ebitda_margin"),
+                      "same_province": (p.get("location") or {}).get("provincia") == province})
+    # prefer same province, then closeness in revenue
+    peers.sort(key=lambda x: (not x["same_province"],
+                              abs((x["revenue"] or 0) - (revenue or 0))))
+    peers = peers[:limit]
+    margins = sorted([p["ebitda_margin"] for p in peers if p["ebitda_margin"] is not None])
+    subj_m = latest.get("ebitda") / latest.get("revenue") if (latest.get("ebitda") and latest.get("revenue")) else None
+    pct = None
+    if margins and subj_m is not None:
+        below = sum(1 for x in margins if x <= subj_m)
+        pct = round(below / len(margins), 2)
+    return {"criteria": {"cnae_section": section, "size_band": "0.3x–3x revenue", "geography": province},
+            "count": len(peers), "peers": peers, "subject_ebitda_margin_percentile": pct,
+            "method": "structural (sector+size+geo)", "embeddings_used": False}
+
+
+async def valuation(master: Dict, latest: Dict) -> Dict:
+    """EV/EBITDA → EV/revenue → book value → insufficient_data. Consumes Master Layer.
+
+    Q6: for companies in the marketing-agency CNAE set (Division 73), tries a REAL,
+    market-observed multiple from the M&A Radar first (`market_multiples.py`). Every
+    other sector — and marketing agencies when the M&A Radar sample is still too
+    small — keeps the inferred CNAE-section reference exactly as before. Never
+    silently claims real-market coverage it doesn't have.
+    """
+    section = (master.get("classification") or {}).get("cnae_section")
+    cnae_code = (master.get("classification") or {}).get("cnae_code")
+    revenue, ebitda = latest.get("revenue"), latest.get("ebitda")
+    equity = latest.get("equity")
+    net_debt = (latest.get("financial_debt") or 0) - (latest.get("cash") or 0)
+    hypotheses, lineage = [], {"financials_source": "master_companies.financials.latest",
+                               "basis": latest.get("basis"), "year": latest.get("year")}
+
+    if ebitda and ebitda > 0:
+        real = await MM.real_multiple_for_company(cnae_code)
+        if real:
+            mult = real["ev_ebitda_median"]
+            ev = ebitda * mult
+            equity_value = ev - net_debt
+            hypotheses = [f"Múltiplo EV/EBITDA REAL del M&A Radar (agencias de publicidad, "
+                          f"{real['sample_size']} transacciones) = {mult}x (mediana observada)",
+                          f"Deuda neta = deuda financiera - caja = {round(net_debt,0)}"]
+            return {"method": "ev_ebitda", "multiple": mult, "multiple_basis": "market_observed",
+                    "enterprise_value": round(ev, 0), "equity_value": round(equity_value, 0),
+                    "range": {"low": round(ebitda * real.get("ev_ebitda_p25", mult), 0),
+                              "high": round(ebitda * real.get("ev_ebitda_p75", mult), 0)},
+                    "confidence": 0.8, "hypotheses": hypotheses, "lineage": {**lineage, "source": real}}
+        mult = _SECTION_EV_EBITDA.get(section, _DEFAULT_EV_EBITDA)
+        ev = ebitda * mult
+        equity_value = ev - net_debt
+        hypotheses = [f"Múltiplo EV/EBITDA sectorial (sección {section}) = {mult}x (REFERENCIA inferida)",
+                      f"Deuda neta = deuda financiera - caja = {round(net_debt,0)}"]
+        return {"method": "ev_ebitda", "multiple": mult, "multiple_basis": "inferred_reference",
+                "enterprise_value": round(ev, 0), "equity_value": round(equity_value, 0),
+                "range": {"low": round(ev * 0.85, 0), "high": round(ev * 1.15, 0)},
+                "confidence": 0.6, "hypotheses": hypotheses, "lineage": lineage}
+    if revenue and revenue > 0:
+        mult = _DEFAULT_EV_REVENUE
+        ev = revenue * mult
+        hypotheses = [f"Múltiplo EV/Ingresos = {mult}x (REFERENCIA inferida; EBITDA no disponible/≤0)"]
+        return {"method": "ev_revenue", "multiple": mult, "multiple_basis": "inferred_reference",
+                "enterprise_value": round(ev, 0), "equity_value": round(ev - net_debt, 0),
+                "range": {"low": round(ev * 0.7, 0), "high": round(ev * 1.3, 0)},
+                "confidence": 0.4, "hypotheses": hypotheses, "lineage": lineage}
+    if equity and equity > 0:
+        return {"method": "book_value", "equity_value": round(equity, 0),
+                "confidence": 0.3, "hypotheses": ["Valor en libros (patrimonio neto)"],
+                "lineage": lineage}
+    return {"method": "insufficient_data", "confidence": 0.0,
+            "hypotheses": ["Sin EBITDA, ingresos ni patrimonio utilizables"], "lineage": lineage}
+
+
+async def analyze(identifier: str) -> Optional[Dict]:
+    """Full financial intelligence profile. identifier = master_id or cif_normalized."""
+    master = await db.master_companies.find_one(
+        {"$or": [{"master_id": identifier}, {"cif_normalized": identifier}]}, {"_id": 0})
+    if not master:
+        return None
+    cif = master["cif_normalized"]
+    norm = await db.norm_financials.find({"cif_normalized": cif}, {"_id": 0}).to_list(50)
+    nc = await db.norm_company.find_one({"cif_normalized": cif}, {"_id": 0, "audited": 1, "employees_total": 1})
+    employees = (master.get("size") or {}).get("employees_total") or (nc or {}).get("employees_total")
+    audited = (nc or {}).get("audited")
+
+    series = M.build_series(norm)
+    if not series:
+        return {
+            "master_id": master["master_id"], "cif_normalized": cif,
+            "identity": {"name": (master.get("identity") or {}).get("legal_name"),
+                         "cnae_code": (master.get("classification") or {}).get("cnae_code"),
+                         "cnae_section": (master.get("classification") or {}).get("cnae_section")},
+            "has_financials": False,
+            "valuation": {"method": "insufficient_data", "confidence": 0.0,
+                          "hypotheses": ["Sin estados financieros normalizados"], "lineage": {}},
+            "engine_version": ENGINE_VERSION, "generated_at": now_iso(), "confidence": 0.0,
+        }
+
+    latest = series[0]
+    kpis = compute_kpis(series, employees)
+    ratios = R.compute_all(latest, employees)
+    evolution = compute_evolution(series)
+    quality = financial_quality(series, audited)
+    comparables = await financial_comparables(master, latest)
+    val = await valuation(master, latest)
+
+    # rules-based strengths / weaknesses / risks (explainable)
+    strengths, weaknesses, risks = [], [], []
+    if (kpis.get("ebitda_margin") or 0) > 0.15:
+        strengths.append("Margen EBITDA sólido (>15%)")
+    if (kpis.get("revenue_growth_yoy") or 0) > 0.1:
+        strengths.append("Crecimiento de ingresos >10% interanual")
+    if (kpis.get("solvency") or 1) < 0.2:
+        weaknesses.append("Baja autonomía financiera (PN/Activo <20%)")
+    if kpis.get("current_ratio") is not None and kpis["current_ratio"] < 1:
+        risks.append("Liquidez ajustada (ratio corriente <1)")
+    if (kpis.get("net_income") or 0) < 0:
+        risks.append("Resultado neto negativo")
+    if evolution.get("trend") == "deterioration":
+        risks.append("Tendencia de ingresos a la baja")
+
+    overall_conf = round(min(1.0, 0.3 + 0.5 * (quality["score"] / 100) + (0.2 if len(series) >= 2 else 0)), 2)
+    return {
+        "master_id": master["master_id"], "cif_normalized": cif,
+        "identity": {"name": (master.get("identity") or {}).get("legal_name"),
+                     "cnae_code": (master.get("classification") or {}).get("cnae_code"),
+                     "cnae_section": (master.get("classification") or {}).get("cnae_section"),
+                     "provincia": (master.get("location") or {}).get("provincia")},
+        "has_financials": True,
+        "statements": M.statements(latest, employees),
+        "kpis": kpis,
+        "ratios": ratios,
+        "evolution": evolution,
+        "financial_quality": quality,
+        "comparables": comparables,
+        "valuation": val,
+        "assessment": {"strengths": strengths, "weaknesses": weaknesses, "risks": risks},
+        "explainability": {
+            "data_source": "master_companies + norm_financials (Iberinform)",
+            "source_version": master.get("sources", [{}])[-1].get("source_version"),
+            "basis": latest.get("basis"), "year": latest.get("year"),
+            "rules_applied": "KPIs/ratios/quality deterministas; valoración por múltiplos inferidos",
+            "ai_used": False,
+        },
+        "engine_version": ENGINE_VERSION, "generated_at": now_iso(), "confidence": overall_conf,
+    }

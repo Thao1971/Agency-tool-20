@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="{{locale}}">
+<head><meta charset="utf-8"><title>{{company_name}} — Valuation Report</title></head>
+<body>
+
+<!-- COVER -->
+<div class="cover">
+  <div class="cover-top">
+    <div class="cover-logo-area">
+      <img class="logo-img cover-logo-img" src="{{logo_url}}" alt="Logo" />
+      <span class="logo-text cover-logo">{{brand_logo_text}}</span>
+    </div>
+    <div class="cover-badge">Confidential</div>
+  </div>
+  <div class="cover-center">
+    <div class="cover-line"></div>
+    <h1 class="cover-title">{{company_name}}</h1>
+    <p class="cover-subtitle">Valuation Report</p>
+    <div class="cover-line"></div>
+  </div>
+  <div class="cover-bottom">
+    <div class="cover-meta">
+      {{cover_meta_line}}
+    </div>
+    <p class="cover-date">{{generated_at}}</p>
+    <p class="cover-brand">{{brand_name_upper}}</p>
+  </div>
+</div>
+
+<!-- SECTION 01: EXECUTIVE SUMMARY -->
+<div class="section-sep">
+  <div class="section-sep-num">Section 01</div>
+  <div class="section-sep-title">Executive Summary</div>
+</div>
+<div class="content-page">
+  <div class="page-header">
+    <span class="page-header-title">Executive Summary</span>
+    <img class="logo-img page-header-logo-img" src="{{logo_url}}" alt="" />
+    <span class="logo-text page-header-logo">{{brand_logo_text}}</span>
+  </div>
+  <h2 class="section-heading">{{company_name}}</h2>
+  {{executive_summary_block}}
+</div>
+
+<!-- SECTION 02: MARKET VALUATION -->
+<div class="section-sep">
+  <div class="section-sep-num">Section 02</div>
+  <div class="section-sep-title">Market Valuation</div>
+</div>
+<div class="content-page">
+  <div class="page-header">
+    <span class="page-header-title">Market Valuation</span>
+    <img class="logo-img page-header-logo-img" src="{{logo_url}}" alt="" />
+    <span class="logo-text page-header-logo">{{brand_logo_text}}</span>
+  </div>
+  {{valuation_block}}
+</div>
+
+<!-- SECTION 03: QUALITY & POSITIONING -->
+<div class="section-sep">
+  <div class="section-sep-num">Section 03</div>
+  <div class="section-sep-title">Quality & Positioning</div>
+</div>
+<div class="content-page">
+  <div class="page-header">
+    <span class="page-header-title">Quality & Positioning</span>
+    <img class="logo-img page-header-logo-img" src="{{logo_url}}" alt="" />
+    <span class="logo-text page-header-logo">{{brand_logo_text}}</span>
+  </div>
+  {{quality_block}}
+</div>
+
+<!-- SECTION 04: BENCHMARK -->
+{{benchmark_section}}
+
+<!-- SECTION 05: FINANCIAL EVOLUTION -->
+{{financial_history_section}}
+
+<!-- SECTION 06: COST STRUCTURE -->
+{{cost_structure_section}}
+
+<!-- SECTION 07: METHODOLOGY -->
+<div class="section-sep">
+  <div class="section-sep-num">Section 07</div>
+  <div class="section-sep-title">Methodology</div>
+</div>
+<div class="content-page">
+  <div class="page-header">
+    <span class="page-header-title">Methodology</span>
+    <img class="logo-img page-header-logo-img" src="{{logo_url}}" alt="" />
+    <span class="logo-text page-header-logo">{{brand_logo_text}}</span>
+  </div>
+  {{methodology_block}}
+</div>
+
+<!-- LEGAL DISCLAIMER -->
+<div class="content-page legal-page">
+  <div class="page-header">
+    <span class="page-header-title">Legal Disclaimer</span>
+    <img class="logo-img page-header-logo-img" src="{{logo_url}}" alt="" />
+    <span class="logo-text page-header-logo">{{brand_logo_text}}</span>
+  </div>
+  <h2 class="section-heading">Aviso legal y exencion de responsabilidad</h2>
+  <div class="legal-text">
+    <p>El presente documento ha sido elaborado por bud Advisors, S.L. (CIF B70821400), titular de la marca ARROBA, plataforma de M&amp;A, y del Centro de Inteligencia Sectorial, como herramienta de apoyo informativo y orientativo para el analisis de companias del sector de marketing, publicidad y tecnologia en Espana.</p>
+    <p>La informacion contenida en este documento tiene caracter preliminar, orientativo y no vinculante. En particular, cualquier valoracion mostrada constituye unicamente una estimacion automatizada de rango, elaborada a partir de informacion aportada por el usuario, fuentes sectoriales, criterios metodologicos internos y parametros de mercado, sin que haya mediado una verificacion, auditoria o contraste independiente completo por parte de bud Advisors, S.L.</p>
+    <p>En consecuencia, este documento no constituye una valoracion exhaustiva o definitiva, ni una opinion independiente, ni una recomendacion de inversion, compra, venta, fusion o financiacion, ni asesoramiento legal, fiscal, contable o regulatorio. El valor real de una compania depende de multiples factores cualitativos y cuantitativos, algunos de caracter subjetivo, que solo pueden analizarse adecuadamente mediante un proceso profesional completo y contextualizado.</p>
+    <p>Ni bud Advisors, S.L., ni ARROBA, ni el Centro de Inteligencia Sectorial otorgan manifestacion o garantia, expresa o implicita, sobre la exactitud, integridad o suficiencia de la informacion aqui contenida, ni asumen responsabilidad alguna por decisiones adoptadas sobre su base, ni por diferencias entre el rango estimado y el valor finalmente considerado, negociado o acordado en una operacion real.</p>
+    <p>Este documento es confidencial, se entrega exclusivamente a su destinatario y no podra ser reproducido, distribuido ni comunicado a terceros, total o parcialmente, sin autorizacion previa y por escrito de bud Advisors, S.L. La recepcion o uso de este documento implica la aceptacion integra de los terminos anteriores.</p>
+  </div>
+</div>
+
+<!-- CLOSING -->
+<div class="closing-page">
+  <div class="closing-line"></div>
+  <div class="closing-brand-area">
+    <img class="logo-img closing-logo-img" src="{{logo_url}}" alt="" />
+    <span class="logo-text closing-brand">{{brand_name_upper}}</span>
+  </div>
+  <p class="closing-tagline">M&amp;A Advisory | Sectoral Intelligence</p>
+  <div class="closing-line"></div>
+  <div class="closing-contact">
+    <p>daniel@wearebudadvisors.com</p>
+    <p>fernando@wearebudadvisors.com</p>
+    <p>www.wearebudadvisors.com</p>
+  </div>
+  <div class="closing-legal">
+    <p>Generated by BUD Document Engine — {{generated_at}}</p>
+  </div>
+</div>
+
+</body>
+</html>

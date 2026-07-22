@@ -1,0 +1,320 @@
+[
+ {
+  "endpoint": "company.identity",
+  "dto": "CompanyIdentityResponse",
+  "result": "MATCH",
+  "detail": "-"
+ },
+ {
+  "endpoint": "financial.analyze",
+  "dto": "FinancialAnalyzeResponse",
+  "result": "MATCH",
+  "detail": "-"
+ },
+ {
+  "endpoint": "financial.ratios_catalog",
+  "dto": "RatiosCatalogResponse",
+  "result": "MATCH",
+  "detail": "-"
+ },
+ {
+  "endpoint": "financial.valuation",
+  "dto": "FinancialValuationResponse",
+  "result": "MATCH",
+  "detail": "-"
+ },
+ {
+  "endpoint": "recommendation.advisors",
+  "dto": "RecommendationUnavailableResponse",
+  "result": "MATCH",
+  "detail": "-"
+ },
+ {
+  "endpoint": "recommendation.buyers",
+  "dto": "RecommendationSetResponse",
+  "result": "MATCH",
+  "detail": "-"
+ },
+ {
+  "endpoint": "recommendation.catalog",
+  "dto": "RecommendationCatalogResponse",
+  "result": "MATCH",
+  "detail": "-"
+ },
+ {
+  "endpoint": "recommendation.comparables",
+  "dto": "RecommendationSetResponse",
+  "result": "MATCH",
+  "detail": "-"
+ },
+ {
+  "endpoint": "recommendation.explain",
+  "dto": "RecommendationExplainResponse",
+  "result": "MATCH",
+  "detail": "-"
+ },
+ {
+  "endpoint": "recommendation.investors",
+  "dto": "RecommendationUnavailableResponse",
+  "result": "MATCH",
+  "detail": "-"
+ },
+ {
+  "endpoint": "recommendation.matching",
+  "dto": "RecommendationMatchingResponse",
+  "result": "MATCH",
+  "detail": "-"
+ },
+ {
+  "endpoint": "recommendation.memory",
+  "dto": "RecommendationMemoryResponse",
+  "result": "MATCH",
+  "detail": "-"
+ },
+ {
+  "endpoint": "recommendation.opportunities",
+  "dto": "RecommendationSetResponse",
+  "result": "MATCH",
+  "detail": "-"
+ },
+ {
+  "endpoint": "recommendation.sellers",
+  "dto": "RecommendationSetResponse",
+  "result": "MATCH",
+  "detail": "-"
+ },
+ {
+  "endpoint": "semantic.catalog",
+  "dto": "SemanticCatalogResponse",
+  "result": "MATCH",
+  "detail": "-"
+ },
+ {
+  "endpoint": "semantic.embedding",
+  "dto": "SemanticEmbeddingResponse",
+  "result": "MATCH",
+  "detail": "-"
+ },
+ {
+  "endpoint": "semantic.profile",
+  "dto": "SemanticProfileResponse",
+  "result": "MATCH",
+  "detail": "-"
+ },
+ {
+  "endpoint": "semantic.profile_schema",
+  "dto": "SemanticProfileSchemaResponse",
+  "result": "MATCH",
+  "detail": "-"
+ },
+ {
+  "endpoint": "semantic.search",
+  "dto": "SemanticSearchResponse",
+  "result": "MATCH",
+  "detail": "-"
+ },
+ {
+  "endpoint": "semantic.similar",
+  "dto": "SemanticSimilarResponse",
+  "result": "MATCH",
+  "detail": "-"
+ },
+ {
+  "endpoint": "signal.analyze",
+  "dto": "SignalAnalyzeResponse",
+  "result": "MATCH",
+  "detail": "-"
+ },
+ {
+  "endpoint": "signal.catalog",
+  "dto": "SignalCatalogResponse",
+  "result": "MATCH",
+  "detail": "-"
+ },
+ {
+  "endpoint": "signal.history",
+  "dto": "SignalHistoryResponse",
+  "result": "MATCH",
+  "detail": "-"
+ },
+ {
+  "endpoint": "signal.opportunities",
+  "dto": "SignalOpportunitiesResponse",
+  "result": "MATCH",
+  "detail": "-"
+ },
+ {
+  "endpoint": "signal.sector",
+  "dto": "SignalAggregateResponse",
+  "result": "MATCH",
+  "detail": "-"
+ },
+ {
+  "endpoint": "signal.territory",
+  "dto": "SignalAggregateResponse",
+  "result": "MATCH",
+  "detail": "-"
+ },
+ {
+  "endpoint": "strategy.acquisition",
+  "dto": "StrategyThesisResponse",
+  "result": "MATCH",
+  "detail": "-"
+ },
+ {
+  "endpoint": "strategy.capital",
+  "dto": "StrategyThesisResponse",
+  "result": "MATCH",
+  "detail": "-"
+ },
+ {
+  "endpoint": "strategy.catalog",
+  "dto": "StrategyCatalogResponse",
+  "result": "MATCH",
+  "detail": "-"
+ },
+ {
+  "endpoint": "strategy.decision",
+  "dto": "StrategyDecisionResponse",
+  "result": "MATCH",
+  "detail": "-"
+ },
+ {
+  "endpoint": "strategy.divestment",
+  "dto": "StrategyThesisResponse",
+  "result": "MATCH",
+  "detail": "-"
+ },
+ {
+  "endpoint": "strategy.growth",
+  "dto": "StrategyThesisResponse",
+  "result": "MATCH",
+  "detail": "-"
+ },
+ {
+  "endpoint": "strategy.lifecycle",
+  "dto": "StrategyThesisResponse",
+  "result": "MATCH",
+  "detail": "-"
+ },
+ {
+  "endpoint": "strategy.memory",
+  "dto": "StrategyMemoryResponse",
+  "result": "MATCH",
+  "detail": "-"
+ },
+ {
+  "endpoint": "strategy.partnership",
+  "dto": "StrategyThesisResponse",
+  "result": "MATCH",
+  "detail": "-"
+ },
+ {
+  "endpoint": "strategy.risk",
+  "dto": "StrategyThesisResponse",
+  "result": "MATCH",
+  "detail": "-"
+ },
+ {
+  "endpoint": "strategy.scenarios",
+  "dto": "StrategyScenariosResponse",
+  "result": "MATCH",
+  "detail": "-"
+ },
+ {
+  "endpoint": "strategy.thesis",
+  "dto": "StrategyThesisResponse",
+  "result": "MATCH",
+  "detail": "-"
+ },
+ {
+  "endpoint": "transaction.catalog",
+  "dto": "TransactionCatalogResponse",
+  "result": "MATCH",
+  "detail": "-"
+ },
+ {
+  "endpoint": "transaction.decision",
+  "dto": "TransactionDecisionResponse",
+  "result": "MATCH",
+  "detail": "-"
+ },
+ {
+  "endpoint": "transaction.documents",
+  "dto": "DocumentsResponse",
+  "result": "MATCH",
+  "detail": "-"
+ },
+ {
+  "endpoint": "transaction.memory",
+  "dto": "TransactionMemoryResponse",
+  "result": "MATCH",
+  "detail": "-"
+ },
+ {
+  "endpoint": "transaction.next_action",
+  "dto": "NextActionResponse",
+  "result": "MATCH",
+  "detail": "-"
+ },
+ {
+  "endpoint": "transaction.participants",
+  "dto": "ParticipantsResponse",
+  "result": "MATCH",
+  "detail": "-"
+ },
+ {
+  "endpoint": "transaction.risk",
+  "dto": "TransactionRiskResponse",
+  "result": "MATCH",
+  "detail": "-"
+ },
+ {
+  "endpoint": "transaction.stage",
+  "dto": "StageResponse",
+  "result": "MATCH",
+  "detail": "-"
+ },
+ {
+  "endpoint": "transaction.task",
+  "dto": "TaskResponse",
+  "result": "MATCH",
+  "detail": "-"
+ },
+ {
+  "endpoint": "transaction.timeline",
+  "dto": "TimelineResponse",
+  "result": "MATCH",
+  "detail": "-"
+ },
+ {
+  "endpoint": "transaction.transaction",
+  "dto": "TransactionEndpointResponse",
+  "result": "MATCH",
+  "detail": "-"
+ },
+ {
+  "endpoint": "transaction.transaction_create",
+  "dto": "TransactionEndpointResponse",
+  "result": "MATCH",
+  "detail": "-"
+ },
+ {
+  "endpoint": "transaction.workflow",
+  "dto": "WorkflowResponse",
+  "result": "MATCH",
+  "detail": "-"
+ },
+ {
+  "endpoint": "transaction.workflow_template",
+  "dto": "WorkflowResponse",
+  "result": "MATCH",
+  "detail": "-"
+ },
+ {
+  "endpoint": "transaction.workspace",
+  "dto": "WorkspaceResponse",
+  "result": "MATCH",
+  "detail": "-"
+ }
+]

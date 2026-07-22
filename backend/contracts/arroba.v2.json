@@ -1,0 +1,9619 @@
+{
+ "components": {
+  "schemas": {
+   "ApprovalItem": {
+    "additionalProperties": true,
+    "properties": {
+     "action": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Action"
+     },
+     "actor": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Actor"
+     },
+     "approval_id": {
+      "title": "Approval Id",
+      "type": "string"
+     },
+     "artifact_version": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Artifact Version"
+     },
+     "created_at": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Created At"
+     },
+     "decided_at": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Decided At"
+     },
+     "decision": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Decision"
+     },
+     "evidence_reviewed": {
+      "anyOf": [
+       {
+        "items": {},
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Evidence Reviewed"
+     },
+     "high_risk": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "High Risk"
+     },
+     "requested_by": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Requested By"
+     },
+     "role": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Role"
+     },
+     "transaction_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Transaction Id"
+     }
+    },
+    "required": [
+     "approval_id"
+    ],
+    "title": "ApprovalItem",
+    "type": "object"
+   },
+   "CnaeRef": {
+    "properties": {
+     "code": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "examples": [
+       "4941"
+      ],
+      "title": "Code"
+     },
+     "description": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "examples": [
+       "Transporte de mercanc\u00edas por carretera"
+      ],
+      "title": "Description"
+     },
+     "division": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "examples": [
+       "49"
+      ],
+      "title": "Division"
+     },
+     "section": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "examples": [
+       "H"
+      ],
+      "title": "Section"
+     }
+    },
+    "title": "CnaeRef",
+    "type": "object"
+   },
+   "CompanyIdentityRequest": {
+    "properties": {
+     "identifier": {
+      "description": "master_id o cif_normalized",
+      "examples": [
+       "B59022921"
+      ],
+      "title": "Identifier",
+      "type": "string"
+     }
+    },
+    "required": [
+     "identifier"
+    ],
+    "title": "CompanyIdentityRequest",
+    "type": "object"
+   },
+   "CompanyIdentityResponse": {
+    "properties": {
+     "activity": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Activity"
+     },
+     "activity_status": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "description": "Situaci\u00f3n de actividad (null si no verificable)",
+      "title": "Activity Status"
+     },
+     "address": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Address"
+     },
+     "aliases": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Aliases",
+      "type": "array"
+     },
+     "autonomous_community": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "description": "null si no verificable",
+      "title": "Autonomous Community"
+     },
+     "capability_version": {
+      "default": "company-intelligence-v2",
+      "title": "Capability Version",
+      "type": "string"
+     },
+     "capital_social": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "description": "Capital social (null si no verificable)",
+      "title": "Capital Social"
+     },
+     "cif": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "examples": [
+       "B59022921"
+      ],
+      "title": "Cif"
+     },
+     "cnae_primary": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/CnaeRef"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "cnae_secondary": {
+      "items": {
+       "$ref": "#/components/schemas/CnaeRef"
+      },
+      "title": "Cnae Secondary",
+      "type": "array"
+     },
+     "commercial_name": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Commercial Name"
+     },
+     "corporate_purpose": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Corporate Purpose"
+     },
+     "country": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "examples": [
+       "ES"
+      ],
+      "title": "Country"
+     },
+     "data_coverage": {
+      "additionalProperties": true,
+      "description": "Qu\u00e9 campos est\u00e1n presentes (true) o ausentes (false)",
+      "title": "Data Coverage",
+      "type": "object"
+     },
+     "description": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "description": "Solo si existe descripci\u00f3n con soporte; nunca texto inventado",
+      "title": "Description"
+     },
+     "domain": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "examples": [
+       "lamuntanyesa.com"
+      ],
+      "title": "Domain"
+     },
+     "employees_total": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "description": "N\u00ba empleados (null si no verificable)",
+      "title": "Employees Total"
+     },
+     "incorporation_date": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "description": "Fecha de constituci\u00f3n (null si no verificable)",
+      "title": "Incorporation Date"
+     },
+     "is_listed": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "description": "Cotizada (null si no verificable)",
+      "title": "Is Listed"
+     },
+     "legal_form": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "description": "Forma jur\u00eddica (null si no verificable)",
+      "title": "Legal Form"
+     },
+     "legal_name": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "examples": [
+       "TRANSPORTS LA MUNTANYESA SA"
+      ],
+      "title": "Legal Name"
+     },
+     "listed_market": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Listed Market"
+     },
+     "locality": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "examples": [
+       "Barcelona"
+      ],
+      "title": "Locality"
+     },
+     "master_id": {
+      "examples": [
+       "mc_457c000acfd3"
+      ],
+      "title": "Master Id",
+      "type": "string"
+     },
+     "mercantile_status": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "description": "Estado mercantil (null si no verificable)",
+      "title": "Mercantile Status"
+     },
+     "postal_code": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Postal Code"
+     },
+     "provenance_fields": {
+      "description": "Campos con procedencia trazada",
+      "items": {
+       "type": "string"
+      },
+      "title": "Provenance Fields",
+      "type": "array"
+     },
+     "province": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "examples": [
+       "Barcelona"
+      ],
+      "title": "Province"
+     },
+     "record_status": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "examples": [
+       "active"
+      ],
+      "title": "Record Status"
+     },
+     "sectors": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Sectors",
+      "type": "array"
+     },
+     "sources": {
+      "items": {
+       "$ref": "#/components/schemas/SourceRef"
+      },
+      "title": "Sources",
+      "type": "array"
+     },
+     "updated_at": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Updated At"
+     },
+     "website": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Website"
+     }
+    },
+    "required": [
+     "master_id"
+    ],
+    "title": "CompanyIdentityResponse",
+    "type": "object"
+   },
+   "CompanyResolveMatch": {
+    "properties": {
+     "cif": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "examples": [
+       "A87803862"
+      ],
+      "title": "Cif"
+     },
+     "cnae_section": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Cnae Section"
+     },
+     "legal_name": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Legal Name"
+     },
+     "master_id": {
+      "examples": [
+       "mc_457c000acfd3"
+      ],
+      "title": "Master Id",
+      "type": "string"
+     },
+     "match_type": {
+      "description": "cif_exact | name_exact | name_partial",
+      "examples": [
+       "cif_exact"
+      ],
+      "title": "Match Type",
+      "type": "string"
+     },
+     "province": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Province"
+     },
+     "score": {
+      "description": "1.0 exacto; <1.0 parcial",
+      "examples": [
+       1.0
+      ],
+      "title": "Score",
+      "type": "number"
+     }
+    },
+    "required": [
+     "master_id",
+     "match_type",
+     "score"
+    ],
+    "title": "CompanyResolveMatch",
+    "type": "object"
+   },
+   "CompanyResolveRequest": {
+    "properties": {
+     "cif": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "description": "CIF a resolver (exacto, normalizado)",
+      "examples": [
+       "A87803862"
+      ],
+      "title": "Cif"
+     },
+     "limit": {
+      "default": 10,
+      "description": "M\u00e1x. coincidencias para b\u00fasqueda por nombre",
+      "maximum": 50.0,
+      "minimum": 1.0,
+      "title": "Limit",
+      "type": "integer"
+     },
+     "name": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "description": "Nombre/raz\u00f3n social a resolver",
+      "examples": [
+       "Totalenergies"
+      ],
+      "title": "Name"
+     }
+    },
+    "title": "CompanyResolveRequest",
+    "type": "object"
+   },
+   "CompanyResolveResponse": {
+    "properties": {
+     "capability_version": {
+      "default": "company-intelligence-v2",
+      "title": "Capability Version",
+      "type": "string"
+     },
+     "count": {
+      "default": 0,
+      "title": "Count",
+      "type": "integer"
+     },
+     "matches": {
+      "items": {
+       "$ref": "#/components/schemas/CompanyResolveMatch"
+      },
+      "title": "Matches",
+      "type": "array"
+     },
+     "query": {
+      "additionalProperties": true,
+      "description": "Eco de la consulta (cif/name)",
+      "title": "Query",
+      "type": "object"
+     }
+    },
+    "required": [
+     "query"
+    ],
+    "title": "CompanyResolveResponse",
+    "type": "object"
+   },
+   "ConfidenceScore": {
+    "additionalProperties": true,
+    "properties": {
+     "factors": {
+      "anyOf": [
+       {},
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Factors"
+     },
+     "value": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Value"
+     }
+    },
+    "title": "ConfidenceScore",
+    "type": "object"
+   },
+   "ConvertRequest": {
+    "properties": {
+     "target": {
+      "title": "Target",
+      "type": "string"
+     },
+     "thesis_id": {
+      "title": "Thesis Id",
+      "type": "string"
+     }
+    },
+    "required": [
+     "thesis_id",
+     "target"
+    ],
+    "title": "ConvertRequest",
+    "type": "object"
+   },
+   "DocumentItem": {
+    "additionalProperties": true,
+    "properties": {
+     "content_hash": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Content Hash"
+     },
+     "created_at": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Created At"
+     },
+     "doc_key": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Doc Key"
+     },
+     "doc_type": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Doc Type"
+     },
+     "document_id": {
+      "title": "Document Id",
+      "type": "string"
+     },
+     "permissions": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "string"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Permissions"
+     },
+     "state": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "State"
+     },
+     "transaction_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Transaction Id"
+     },
+     "version": {
+      "anyOf": [
+       {},
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Version"
+     }
+    },
+    "required": [
+     "document_id"
+    ],
+    "title": "DocumentItem",
+    "type": "object"
+   },
+   "DocumentRequest": {
+    "properties": {
+     "actor": {
+      "default": "platform",
+      "title": "Actor",
+      "type": "string"
+     },
+     "content_hash": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": "sha256:placeholder",
+      "title": "Content Hash"
+     },
+     "doc_key": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Doc Key"
+     },
+     "doc_type": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Doc Type"
+     },
+     "document_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Document Id"
+     },
+     "permissions": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "string"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Permissions"
+     },
+     "state": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "State"
+     },
+     "transaction_id": {
+      "title": "Transaction Id",
+      "type": "string"
+     }
+    },
+    "required": [
+     "transaction_id"
+    ],
+    "title": "DocumentRequest",
+    "type": "object"
+   },
+   "DocumentsResponse": {
+    "additionalProperties": true,
+    "properties": {
+     "document_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Document Id"
+     },
+     "documents": {
+      "anyOf": [
+       {
+        "items": {
+         "$ref": "#/components/schemas/DocumentItem"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Documents"
+     }
+    },
+    "title": "DocumentsResponse",
+    "type": "object"
+   },
+   "EventItem": {
+    "additionalProperties": true,
+    "properties": {
+     "actor": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Actor"
+     },
+     "at": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "At"
+     },
+     "event_id": {
+      "title": "Event Id",
+      "type": "string"
+     },
+     "payload": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Payload"
+     },
+     "transaction_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Transaction Id"
+     },
+     "type": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Type"
+     }
+    },
+    "required": [
+     "event_id"
+    ],
+    "title": "EventItem",
+    "type": "object"
+   },
+   "EvidenceVersionRef": {
+    "additionalProperties": true,
+    "properties": {
+     "financial": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Financial"
+     },
+     "knowledge_graph": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Knowledge Graph"
+     },
+     "master": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Master"
+     },
+     "recommendation": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Recommendation"
+     },
+     "semantic": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Semantic"
+     },
+     "signal": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Signal"
+     },
+     "strategy": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Strategy"
+     },
+     "transaction_os": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Transaction Os"
+     }
+    },
+    "title": "EvidenceVersionRef",
+    "type": "object"
+   },
+   "ExplainRequest": {
+    "properties": {
+     "candidate": {
+      "title": "Candidate",
+      "type": "string"
+     },
+     "recommendation_type": {
+      "default": "comparable",
+      "title": "Recommendation Type",
+      "type": "string"
+     },
+     "target": {
+      "title": "Target",
+      "type": "string"
+     }
+    },
+    "required": [
+     "target",
+     "candidate"
+    ],
+    "title": "ExplainRequest",
+    "type": "object"
+   },
+   "FeedbackRequest": {
+    "properties": {
+     "event": {
+      "title": "Event",
+      "type": "string"
+     },
+     "notes": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Notes"
+     },
+     "outcome": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Outcome"
+     },
+     "recommendation_id": {
+      "title": "Recommendation Id",
+      "type": "string"
+     }
+    },
+    "required": [
+     "recommendation_id",
+     "event"
+    ],
+    "title": "FeedbackRequest",
+    "type": "object"
+   },
+   "FinancialAnalyzeResponse": {
+    "additionalProperties": true,
+    "properties": {
+     "assessment": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Assessment"
+     },
+     "cif_normalized": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Cif Normalized"
+     },
+     "comparables": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Comparables"
+     },
+     "confidence": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Confidence"
+     },
+     "engine_version": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Engine Version"
+     },
+     "evolution": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Evolution"
+     },
+     "explainability": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Explainability"
+     },
+     "financial_quality": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Financial Quality"
+     },
+     "generated_at": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Generated At"
+     },
+     "has_financials": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Has Financials"
+     },
+     "identity": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/IdentityBrief"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "kpis": {
+      "anyOf": [
+       {
+        "additionalProperties": {
+         "anyOf": [
+          {
+           "type": "number"
+          },
+          {
+           "type": "null"
+          }
+         ]
+        },
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Kpis"
+     },
+     "master_id": {
+      "title": "Master Id",
+      "type": "string"
+     },
+     "ratios": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Ratios"
+     },
+     "statements": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Statements"
+     },
+     "valuation": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/ValuationBlock"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     }
+    },
+    "required": [
+     "master_id"
+    ],
+    "title": "FinancialAnalyzeResponse",
+    "type": "object"
+   },
+   "FinancialValuationResponse": {
+    "additionalProperties": true,
+    "properties": {
+     "cif_normalized": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Cif Normalized"
+     },
+     "engine_version": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Engine Version"
+     },
+     "generated_at": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Generated At"
+     },
+     "master_id": {
+      "title": "Master Id",
+      "type": "string"
+     },
+     "valuation": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/ValuationBlock"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     }
+    },
+    "required": [
+     "master_id"
+    ],
+    "title": "FinancialValuationResponse",
+    "type": "object"
+   },
+   "HTTPValidationError": {
+    "properties": {
+     "detail": {
+      "items": {
+       "$ref": "#/components/schemas/ValidationError"
+      },
+      "title": "Detail",
+      "type": "array"
+     }
+    },
+    "title": "HTTPValidationError",
+    "type": "object"
+   },
+   "HistoryRequest": {
+    "properties": {
+     "identifier": {
+      "title": "Identifier",
+      "type": "string"
+     },
+     "signal_type": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Signal Type"
+     }
+    },
+    "required": [
+     "identifier"
+    ],
+    "title": "HistoryRequest",
+    "type": "object"
+   },
+   "IdentityBrief": {
+    "additionalProperties": true,
+    "properties": {
+     "cnae_code": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Cnae Code"
+     },
+     "cnae_section": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Cnae Section"
+     },
+     "name": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Name"
+     },
+     "provincia": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Provincia"
+     }
+    },
+    "title": "IdentityBrief",
+    "type": "object"
+   },
+   "LifecycleRequest": {
+    "properties": {
+     "learning": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Learning"
+     },
+     "result": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Result"
+     },
+     "state": {
+      "title": "State",
+      "type": "string"
+     },
+     "thesis_id": {
+      "title": "Thesis Id",
+      "type": "string"
+     }
+    },
+    "required": [
+     "thesis_id",
+     "state"
+    ],
+    "title": "LifecycleRequest",
+    "type": "object"
+   },
+   "MatchingRequest": {
+    "properties": {
+     "a": {
+      "title": "A",
+      "type": "string"
+     },
+     "b": {
+      "title": "B",
+      "type": "string"
+     }
+    },
+    "required": [
+     "a",
+     "b"
+    ],
+    "title": "MatchingRequest",
+    "type": "object"
+   },
+   "NextActionResponse": {
+    "additionalProperties": true,
+    "properties": {
+     "action_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Action Id"
+     },
+     "action_type": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Action Type"
+     },
+     "blockers": {
+      "anyOf": [
+       {
+        "items": {},
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Blockers"
+     },
+     "confidence": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/ConfidenceScore"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "description": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Description"
+     },
+     "engines_used": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "string"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Engines Used"
+     },
+     "evidence_refs": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Evidence Refs"
+     },
+     "evidence_version": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/EvidenceVersionRef"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "explainability": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Explainability"
+     },
+     "generated_at": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Generated At"
+     },
+     "high_risk": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "High Risk"
+     },
+     "recommended_actions": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "string"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Recommended Actions"
+     },
+     "requires_approval": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Requires Approval"
+     },
+     "stage": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Stage"
+     },
+     "title": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Title"
+     },
+     "transaction_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Transaction Id"
+     },
+     "transaction_version": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Transaction Version"
+     },
+     "workflow_version": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Workflow Version"
+     }
+    },
+    "title": "NextActionResponse",
+    "type": "object"
+   },
+   "OpportunitiesRequest": {
+    "properties": {
+     "cnae_section": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Cnae Section"
+     },
+     "limit": {
+      "default": 20,
+      "title": "Limit",
+      "type": "integer"
+     },
+     "provincia": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Provincia"
+     },
+     "signal_types": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "string"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Signal Types"
+     },
+     "sort_by_dimension": {
+      "default": "impact",
+      "title": "Sort By Dimension",
+      "type": "string"
+     }
+    },
+    "title": "OpportunitiesRequest",
+    "type": "object"
+   },
+   "ParticipantsResponse": {
+    "additionalProperties": true,
+    "properties": {
+     "participants": {
+      "items": {},
+      "title": "Participants",
+      "type": "array"
+     },
+     "roles": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Roles",
+      "type": "array"
+     },
+     "transaction_id": {
+      "title": "Transaction Id",
+      "type": "string"
+     }
+    },
+    "required": [
+     "transaction_id"
+    ],
+    "title": "ParticipantsResponse",
+    "type": "object"
+   },
+   "ProfileRequest": {
+    "properties": {
+     "enrich": {
+      "default": false,
+      "title": "Enrich",
+      "type": "boolean"
+     },
+     "identifier": {
+      "title": "Identifier",
+      "type": "string"
+     },
+     "with_relationships": {
+      "default": false,
+      "title": "With Relationships",
+      "type": "boolean"
+     }
+    },
+    "required": [
+     "identifier"
+    ],
+    "title": "ProfileRequest",
+    "type": "object"
+   },
+   "RatioDef": {
+    "additionalProperties": true,
+    "properties": {
+     "category": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Category"
+     },
+     "explanation": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Explanation"
+     },
+     "formula": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Formula"
+     },
+     "key": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Key"
+     },
+     "name": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Name"
+     }
+    },
+    "title": "RatioDef",
+    "type": "object"
+   },
+   "RatiosCatalogResponse": {
+    "additionalProperties": true,
+    "properties": {
+     "ratios": {
+      "items": {
+       "$ref": "#/components/schemas/RatioDef"
+      },
+      "title": "Ratios",
+      "type": "array"
+     },
+     "source": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Source"
+     }
+    },
+    "title": "RatiosCatalogResponse",
+    "type": "object"
+   },
+   "RecommendationCatalogResponse": {
+    "additionalProperties": true,
+    "properties": {
+     "actions_version": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Actions Version"
+     },
+     "available_types": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Available Types",
+      "type": "array"
+     },
+     "canonical_actions": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Canonical Actions",
+      "type": "array"
+     },
+     "deferred": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Deferred",
+      "type": "array"
+     },
+     "engine_version": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Engine Version"
+     },
+     "evidence_version": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/EvidenceVersionRef"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "feedback_events": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Feedback Events",
+      "type": "array"
+     },
+     "fit_dimensions": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Fit Dimensions",
+      "type": "array"
+     },
+     "lifecycle_states": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Lifecycle States",
+      "type": "array"
+     },
+     "recommendation_method": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Recommendation Method"
+     },
+     "recommendation_roles": {
+      "items": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "title": "Recommendation Roles",
+      "type": "array"
+     },
+     "recommendation_types": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Recommendation Types",
+      "type": "array"
+     },
+     "unavailable_types": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Unavailable Types"
+     },
+     "weights": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Weights"
+     }
+    },
+    "title": "RecommendationCatalogResponse",
+    "type": "object"
+   },
+   "RecommendationExplainResponse": {
+    "additionalProperties": true,
+    "properties": {
+     "candidate": {
+      "anyOf": [
+       {},
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Candidate"
+     },
+     "composed_of": {
+      "anyOf": [
+       {
+        "items": {},
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Composed Of"
+     },
+     "confidence": {
+      "anyOf": [
+       {},
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Confidence"
+     },
+     "engines_used": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "string"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Engines Used"
+     },
+     "evidence": {
+      "anyOf": [
+       {},
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Evidence"
+     },
+     "evidence_version": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/EvidenceVersionRef"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "explanation": {
+      "anyOf": [
+       {},
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Explanation"
+     },
+     "fit_dimensions": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Fit Dimensions"
+     },
+     "generated_at": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Generated At"
+     },
+     "graph_edges": {
+      "anyOf": [
+       {
+        "items": {},
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Graph Edges"
+     },
+     "recommendation_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Recommendation Id"
+     },
+     "recommendation_method": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Recommendation Method"
+     },
+     "recommendation_role": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Recommendation Role"
+     },
+     "recommendation_type": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Recommendation Type"
+     },
+     "recommendation_version": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Recommendation Version"
+     },
+     "recommended_actions": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "string"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Recommended Actions"
+     },
+     "score": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Score"
+     },
+     "score_method": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Score Method"
+     },
+     "target": {
+      "anyOf": [
+       {},
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Target"
+     }
+    },
+    "title": "RecommendationExplainResponse",
+    "type": "object"
+   },
+   "RecommendationFeedbackResponse": {
+    "additionalProperties": true,
+    "properties": {
+     "event": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Event"
+     },
+     "recommendation_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Recommendation Id"
+     }
+    },
+    "title": "RecommendationFeedbackResponse",
+    "type": "object"
+   },
+   "RecommendationItem": {
+    "additionalProperties": true,
+    "properties": {
+     "candidate": {
+      "anyOf": [
+       {},
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Candidate"
+     },
+     "composed_of": {
+      "anyOf": [
+       {
+        "items": {},
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Composed Of"
+     },
+     "confidence": {
+      "anyOf": [
+       {},
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Confidence"
+     },
+     "evidence": {
+      "anyOf": [
+       {},
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Evidence"
+     },
+     "explanation": {
+      "anyOf": [
+       {},
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Explanation"
+     },
+     "fit_dimensions": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Fit Dimensions"
+     },
+     "graph_edges": {
+      "anyOf": [
+       {
+        "items": {},
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Graph Edges"
+     },
+     "recommendation_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Recommendation Id"
+     },
+     "recommendation_role": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Recommendation Role"
+     },
+     "recommendation_type": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Recommendation Type"
+     },
+     "recommended_actions": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "string"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Recommended Actions"
+     },
+     "score": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Score"
+     },
+     "score_method": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Score Method"
+     },
+     "target": {
+      "anyOf": [
+       {},
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Target"
+     }
+    },
+    "title": "RecommendationItem",
+    "type": "object"
+   },
+   "RecommendationMatchingResponse": {
+    "additionalProperties": true,
+    "properties": {
+     "a": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/SubjectRef"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "b": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/SubjectRef"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "generated_at": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Generated At"
+     },
+     "match": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/RecommendationItem"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "recommendation_type": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Recommendation Type"
+     },
+     "recommendation_version": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Recommendation Version"
+     }
+    },
+    "title": "RecommendationMatchingResponse",
+    "type": "object"
+   },
+   "RecommendationMemoryResponse": {
+    "additionalProperties": true,
+    "properties": {
+     "count": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Count"
+     },
+     "memory": {
+      "items": {},
+      "title": "Memory",
+      "type": "array"
+     }
+    },
+    "title": "RecommendationMemoryResponse",
+    "type": "object"
+   },
+   "RecommendationSetResponse": {
+    "additionalProperties": true,
+    "properties": {
+     "count": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Count"
+     },
+     "evidence_version": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/EvidenceVersionRef"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "generated_at": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Generated At"
+     },
+     "method": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Method"
+     },
+     "recommendation_type": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Recommendation Type"
+     },
+     "recommendation_version": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Recommendation Version"
+     },
+     "recommendations": {
+      "items": {
+       "$ref": "#/components/schemas/RecommendationItem"
+      },
+      "title": "Recommendations",
+      "type": "array"
+     },
+     "status": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Status"
+     },
+     "target": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/SubjectRef"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     }
+    },
+    "title": "RecommendationSetResponse",
+    "type": "object"
+   },
+   "RecommendationUnavailableResponse": {
+    "additionalProperties": true,
+    "properties": {
+     "generated_at": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Generated At"
+     },
+     "reason": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Reason"
+     },
+     "recommendation_type": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Recommendation Type"
+     },
+     "recommendation_version": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Recommendation Version"
+     },
+     "recommendations": {
+      "items": {},
+      "title": "Recommendations",
+      "type": "array"
+     },
+     "status": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Status"
+     }
+    },
+    "title": "RecommendationUnavailableResponse",
+    "type": "object"
+   },
+   "ScenarioRequest": {
+    "properties": {
+     "identifier": {
+      "title": "Identifier",
+      "type": "string"
+     },
+     "scenario_types": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "string"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Scenario Types"
+     }
+    },
+    "required": [
+     "identifier"
+    ],
+    "title": "ScenarioRequest",
+    "type": "object"
+   },
+   "SearchHit": {
+    "additionalProperties": true,
+    "properties": {
+     "cnae_section": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Cnae Section"
+     },
+     "master_id": {
+      "title": "Master Id",
+      "type": "string"
+     },
+     "name": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Name"
+     },
+     "score": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Score"
+     }
+    },
+    "required": [
+     "master_id"
+    ],
+    "title": "SearchHit",
+    "type": "object"
+   },
+   "SectorRequest": {
+    "properties": {
+     "cnae_code": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Cnae Code"
+     },
+     "cnae_section": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Cnae Section"
+     },
+     "limit": {
+      "default": 25,
+      "title": "Limit",
+      "type": "integer"
+     }
+    },
+    "title": "SectorRequest",
+    "type": "object"
+   },
+   "SemanticCatalogResponse": {
+    "additionalProperties": true,
+    "properties": {
+     "deferred": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Deferred",
+      "type": "array"
+     },
+     "dimensions": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Dimensions",
+      "type": "array"
+     },
+     "embedding_model": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Embedding Model"
+     },
+     "embedding_provider": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Embedding Provider"
+     },
+     "embedding_version": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Embedding Version"
+     },
+     "engine_version": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Engine Version"
+     },
+     "profile_version": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Profile Version"
+     },
+     "scope_v1": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Scope V1",
+      "type": "array"
+     },
+     "vector_search_backend": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Vector Search Backend"
+     }
+    },
+    "title": "SemanticCatalogResponse",
+    "type": "object"
+   },
+   "SemanticEmbeddingResponse": {
+    "additionalProperties": true,
+    "properties": {
+     "embedding": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Embedding"
+     },
+     "engine_version": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Engine Version"
+     },
+     "master_id": {
+      "title": "Master Id",
+      "type": "string"
+     },
+     "profile_checksum": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Profile Checksum"
+     }
+    },
+    "required": [
+     "master_id"
+    ],
+    "title": "SemanticEmbeddingResponse",
+    "type": "object"
+   },
+   "SemanticProfileResponse": {
+    "additionalProperties": true,
+    "properties": {
+     "cif_normalized": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Cif Normalized"
+     },
+     "confidence": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Confidence"
+     },
+     "coverage": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Coverage"
+     },
+     "embedding": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Embedding"
+     },
+     "engine_version": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Engine Version"
+     },
+     "generated_at": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Generated At"
+     },
+     "identity": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/IdentityBrief"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "lineage": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Lineage"
+     },
+     "master_id": {
+      "title": "Master Id",
+      "type": "string"
+     },
+     "profile_version": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Profile Version"
+     },
+     "semantic_profile": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Semantic Profile"
+     },
+     "semantic_summary": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Semantic Summary"
+     }
+    },
+    "required": [
+     "master_id"
+    ],
+    "title": "SemanticProfileResponse",
+    "type": "object"
+   },
+   "SemanticProfileSchemaResponse": {
+    "additionalProperties": true,
+    "properties": {
+     "dimension_count": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Dimension Count"
+     },
+     "dimensions": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Dimensions",
+      "type": "array"
+     },
+     "embedding_sources": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Embedding Sources",
+      "type": "array"
+     },
+     "methods": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Methods",
+      "type": "array"
+     },
+     "profile_version": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Profile Version"
+     },
+     "status_values": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Status Values",
+      "type": "array"
+     }
+    },
+    "title": "SemanticProfileSchemaResponse",
+    "type": "object"
+   },
+   "SemanticSearchResponse": {
+    "additionalProperties": true,
+    "properties": {
+     "backend": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Backend"
+     },
+     "count": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Count"
+     },
+     "embedding_model": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Embedding Model"
+     },
+     "engine_version": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Engine Version"
+     },
+     "query": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Query"
+     },
+     "results": {
+      "items": {
+       "$ref": "#/components/schemas/SearchHit"
+      },
+      "title": "Results",
+      "type": "array"
+     }
+    },
+    "title": "SemanticSearchResponse",
+    "type": "object"
+   },
+   "SemanticSimilarResponse": {
+    "additionalProperties": true,
+    "properties": {
+     "backend": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Backend"
+     },
+     "blocking": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Blocking"
+     },
+     "count": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Count"
+     },
+     "engine_version": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Engine Version"
+     },
+     "master_id": {
+      "title": "Master Id",
+      "type": "string"
+     },
+     "similar": {
+      "items": {},
+      "title": "Similar",
+      "type": "array"
+     }
+    },
+    "required": [
+     "master_id"
+    ],
+    "title": "SemanticSimilarResponse",
+    "type": "object"
+   },
+   "SignalAggregateResponse": {
+    "additionalProperties": true,
+    "properties": {
+     "companies_analyzed": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Companies Analyzed"
+     },
+     "counts_by_category": {
+      "anyOf": [
+       {
+        "additionalProperties": {
+         "type": "integer"
+        },
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Counts By Category"
+     },
+     "counts_by_type": {
+      "anyOf": [
+       {
+        "additionalProperties": {
+         "type": "integer"
+        },
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Counts By Type"
+     },
+     "criteria": {
+      "anyOf": [
+       {
+        "additionalProperties": {
+         "anyOf": [
+          {
+           "type": "string"
+          },
+          {
+           "type": "null"
+          }
+         ]
+        },
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Criteria"
+     },
+     "engine_version": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Engine Version"
+     },
+     "top_opportunities": {
+      "items": {},
+      "title": "Top Opportunities",
+      "type": "array"
+     }
+    },
+    "title": "SignalAggregateResponse",
+    "type": "object"
+   },
+   "SignalAnalyzeResponse": {
+    "additionalProperties": true,
+    "properties": {
+     "actions_version": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Actions Version"
+     },
+     "cif_normalized": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Cif Normalized"
+     },
+     "composites_version": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Composites Version"
+     },
+     "confidence": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Confidence"
+     },
+     "counts_by_category": {
+      "anyOf": [
+       {
+        "additionalProperties": {
+         "type": "integer"
+        },
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Counts By Category"
+     },
+     "dependencies": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "string"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Dependencies"
+     },
+     "engine_version": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Engine Version"
+     },
+     "generated_at": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Generated At"
+     },
+     "identity": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/IdentityBrief"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "master_id": {
+      "title": "Master Id",
+      "type": "string"
+     },
+     "score": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/SignalScore"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "signals": {
+      "items": {
+       "$ref": "#/components/schemas/SignalItem"
+      },
+      "title": "Signals",
+      "type": "array"
+     },
+     "taxonomy_version": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Taxonomy Version"
+     },
+     "thresholds_version": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Thresholds Version"
+     },
+     "windows_evaluated": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "string"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Windows Evaluated"
+     }
+    },
+    "required": [
+     "master_id"
+    ],
+    "title": "SignalAnalyzeResponse",
+    "type": "object"
+   },
+   "SignalCatalogResponse": {
+    "additionalProperties": true,
+    "properties": {
+     "actions_version": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Actions Version"
+     },
+     "canonical_actions": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Canonical Actions",
+      "type": "array"
+     },
+     "categories": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Categories",
+      "type": "array"
+     },
+     "composites": {
+      "items": {
+       "additionalProperties": true,
+       "type": "object"
+      },
+      "title": "Composites",
+      "type": "array"
+     },
+     "composites_version": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Composites Version"
+     },
+     "signal_types": {
+      "items": {
+       "additionalProperties": true,
+       "type": "object"
+      },
+      "title": "Signal Types",
+      "type": "array"
+     },
+     "taxonomy_version": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Taxonomy Version"
+     },
+     "thresholds_version": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Thresholds Version"
+     }
+    },
+    "title": "SignalCatalogResponse",
+    "type": "object"
+   },
+   "SignalHistoryResponse": {
+    "additionalProperties": true,
+    "properties": {
+     "master_id": {
+      "title": "Master Id",
+      "type": "string"
+     },
+     "signals": {
+      "items": {
+       "additionalProperties": true,
+       "type": "object"
+      },
+      "title": "Signals",
+      "type": "array"
+     }
+    },
+    "required": [
+     "master_id"
+    ],
+    "title": "SignalHistoryResponse",
+    "type": "object"
+   },
+   "SignalItem": {
+    "additionalProperties": true,
+    "properties": {
+     "category": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Category"
+     },
+     "confidence": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Confidence"
+     },
+     "detected_at": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Detected At"
+     },
+     "dimensions": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Dimensions"
+     },
+     "evidence": {
+      "anyOf": [
+       {},
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Evidence"
+     },
+     "is_composite": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Is Composite"
+     },
+     "master_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Master Id"
+     },
+     "polarity": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Polarity"
+     },
+     "recommended_actions": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "string"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Recommended Actions"
+     },
+     "rule": {
+      "anyOf": [
+       {},
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Rule"
+     },
+     "severity": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Severity"
+     },
+     "signal_id": {
+      "title": "Signal Id",
+      "type": "string"
+     },
+     "signal_type": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Signal Type"
+     },
+     "source": {
+      "anyOf": [
+       {},
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Source"
+     }
+    },
+    "required": [
+     "signal_id"
+    ],
+    "title": "SignalItem",
+    "type": "object"
+   },
+   "SignalOpportunitiesResponse": {
+    "additionalProperties": true,
+    "properties": {
+     "count": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Count"
+     },
+     "engine_version": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Engine Version"
+     },
+     "opportunities": {
+      "items": {},
+      "title": "Opportunities",
+      "type": "array"
+     },
+     "sorted_by": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Sorted By"
+     }
+    },
+    "title": "SignalOpportunitiesResponse",
+    "type": "object"
+   },
+   "SignalRecord": {
+    "additionalProperties": true,
+    "properties": {
+     "signal_id": {
+      "title": "Signal Id",
+      "type": "string"
+     }
+    },
+    "required": [
+     "signal_id"
+    ],
+    "title": "SignalRecord",
+    "type": "object"
+   },
+   "SignalScore": {
+    "additionalProperties": true,
+    "properties": {
+     "aggregate_dimensions": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Aggregate Dimensions"
+     },
+     "formula_version": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Formula Version"
+     },
+     "method": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Method"
+     },
+     "signal_score": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Signal Score"
+     }
+    },
+    "title": "SignalScore",
+    "type": "object"
+   },
+   "SimilarRequest": {
+    "properties": {
+     "identifier": {
+      "title": "Identifier",
+      "type": "string"
+     },
+     "limit": {
+      "default": 10,
+      "title": "Limit",
+      "type": "integer"
+     },
+     "same_section": {
+      "default": true,
+      "title": "Same Section",
+      "type": "boolean"
+     }
+    },
+    "required": [
+     "identifier"
+    ],
+    "title": "SimilarRequest",
+    "type": "object"
+   },
+   "SourceRef": {
+    "properties": {
+     "external_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "examples": [
+       "B59022921"
+      ],
+      "title": "External Id"
+     },
+     "ingested_at": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "examples": [
+       "2026-07-04T19:45:10Z"
+      ],
+      "title": "Ingested At"
+     },
+     "source": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "examples": [
+       "iberinform"
+      ],
+      "title": "Source"
+     },
+     "source_version": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "examples": [
+       "20260519"
+      ],
+      "title": "Source Version"
+     }
+    },
+    "title": "SourceRef",
+    "type": "object"
+   },
+   "StageRequest": {
+    "properties": {
+     "actor": {
+      "default": "platform",
+      "title": "Actor",
+      "type": "string"
+     },
+     "actor_role": {
+      "default": "platform",
+      "title": "Actor Role",
+      "type": "string"
+     },
+     "event": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Event"
+     },
+     "stage": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Stage"
+     },
+     "transaction_id": {
+      "title": "Transaction Id",
+      "type": "string"
+     }
+    },
+    "required": [
+     "transaction_id"
+    ],
+    "title": "StageRequest",
+    "type": "object"
+   },
+   "StageResponse": {
+    "additionalProperties": true,
+    "properties": {
+     "current_stage": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Current Stage"
+     },
+     "stages": {
+      "anyOf": [
+       {
+        "items": {
+         "$ref": "#/components/schemas/StageState"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Stages"
+     },
+     "state": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "State"
+     }
+    },
+    "title": "StageResponse",
+    "type": "object"
+   },
+   "StageState": {
+    "additionalProperties": true,
+    "properties": {
+     "entered_at": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Entered At"
+     },
+     "milestones": {
+      "anyOf": [
+       {
+        "items": {},
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Milestones"
+     },
+     "stage": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Stage"
+     },
+     "state": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "State"
+     }
+    },
+    "title": "StageState",
+    "type": "object"
+   },
+   "StrategyCatalogResponse": {
+    "additionalProperties": true,
+    "properties": {
+     "canonical_actions": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Canonical Actions",
+      "type": "array"
+     },
+     "canonical_entity": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Canonical Entity"
+     },
+     "convert_targets": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Convert Targets",
+      "type": "array"
+     },
+     "default_scenarios": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Default Scenarios",
+      "type": "array"
+     },
+     "engine_version": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Engine Version"
+     },
+     "evidence_version": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/EvidenceVersionRef"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "lifecycle_states": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Lifecycle States",
+      "type": "array"
+     },
+     "strategic_dimensions": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Strategic Dimensions",
+      "type": "array"
+     },
+     "strategy_method": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Strategy Method"
+     },
+     "thesis_types": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Thesis Types",
+      "type": "array"
+     },
+     "weights": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Weights"
+     }
+    },
+    "title": "StrategyCatalogResponse",
+    "type": "object"
+   },
+   "StrategyConvertResponse": {
+    "additionalProperties": true,
+    "properties": {
+     "converts_to": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Converts To"
+     },
+     "thesis_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Thesis Id"
+     }
+    },
+    "title": "StrategyConvertResponse",
+    "type": "object"
+   },
+   "StrategyDecisionResponse": {
+    "additionalProperties": true,
+    "properties": {
+     "alternative": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Alternative"
+     },
+     "comparison": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Comparison"
+     },
+     "generated_at": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Generated At"
+     },
+     "preferred": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Preferred"
+     },
+     "strategy_version": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Strategy Version"
+     },
+     "subject": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Subject"
+     },
+     "theses": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Theses"
+     }
+    },
+    "title": "StrategyDecisionResponse",
+    "type": "object"
+   },
+   "StrategyMemoryResponse": {
+    "additionalProperties": true,
+    "properties": {
+     "theses": {
+      "items": {
+       "additionalProperties": true,
+       "type": "object"
+      },
+      "title": "Theses",
+      "type": "array"
+     }
+    },
+    "title": "StrategyMemoryResponse",
+    "type": "object"
+   },
+   "StrategyScenariosResponse": {
+    "additionalProperties": true,
+    "properties": {
+     "decision_support": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Decision Support"
+     },
+     "generated_at": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Generated At"
+     },
+     "scenario_types_requested": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "string"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Scenario Types Requested"
+     },
+     "scenarios": {
+      "items": {
+       "additionalProperties": true,
+       "type": "object"
+      },
+      "title": "Scenarios",
+      "type": "array"
+     },
+     "strategy_version": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Strategy Version"
+     },
+     "subject": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/SubjectRef"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     }
+    },
+    "title": "StrategyScenariosResponse",
+    "type": "object"
+   },
+   "StrategyThesisResponse": {
+    "additionalProperties": true,
+    "properties": {
+     "alternatives": {
+      "anyOf": [
+       {
+        "items": {
+         "$ref": "#/components/schemas/ThesisAlternative"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Alternatives"
+     },
+     "company_master_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Company Master Id"
+     },
+     "confidence": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/ConfidenceScore"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "constraints": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "string"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Constraints"
+     },
+     "converts_to": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Converts To"
+     },
+     "created_at": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Created At"
+     },
+     "engines_used": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "string"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Engines Used"
+     },
+     "evidence_tree": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Evidence Tree"
+     },
+     "evidence_version": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/EvidenceVersionRef"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "financial_snapshot_version": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Financial Snapshot Version"
+     },
+     "generated_at": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Generated At"
+     },
+     "graph_edges": {
+      "anyOf": [
+       {
+        "items": {},
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Graph Edges"
+     },
+     "hypotheses": {
+      "anyOf": [
+       {
+        "items": {},
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Hypotheses"
+     },
+     "lifecycle": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Lifecycle"
+     },
+     "narrative_method": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Narrative Method"
+     },
+     "opportunity_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Opportunity Id"
+     },
+     "owner": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Owner"
+     },
+     "preferred_rationale": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Preferred Rationale"
+     },
+     "rationale": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "string"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Rationale"
+     },
+     "recommendation_ids": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "string"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Recommendation Ids"
+     },
+     "recommendation_version": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Recommendation Version"
+     },
+     "recommended_actions": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "string"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Recommended Actions"
+     },
+     "representation": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Representation"
+     },
+     "score": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Score"
+     },
+     "semantic_profile_version": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Semantic Profile Version"
+     },
+     "signal_ids": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "string"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Signal Ids"
+     },
+     "statement": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Statement"
+     },
+     "status": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Status"
+     },
+     "strategic_dimensions": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Strategic Dimensions"
+     },
+     "strategy_method": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Strategy Method"
+     },
+     "strategy_version": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Strategy Version"
+     },
+     "subject": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/SubjectRef"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "thesis_id": {
+      "title": "Thesis Id",
+      "type": "string"
+     },
+     "thesis_type": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Thesis Type"
+     },
+     "time_horizon": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Time Horizon"
+     },
+     "updated_at": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Updated At"
+     }
+    },
+    "required": [
+     "thesis_id"
+    ],
+    "title": "StrategyThesisResponse",
+    "type": "object"
+   },
+   "SubjectRef": {
+    "additionalProperties": true,
+    "properties": {
+     "master_id": {
+      "title": "Master Id",
+      "type": "string"
+     },
+     "name": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Name"
+     }
+    },
+    "required": [
+     "master_id"
+    ],
+    "title": "SubjectRef",
+    "type": "object"
+   },
+   "TargetRequest": {
+    "properties": {
+     "identifier": {
+      "title": "Identifier",
+      "type": "string"
+     },
+     "limit": {
+      "default": 10,
+      "title": "Limit",
+      "type": "integer"
+     }
+    },
+    "required": [
+     "identifier"
+    ],
+    "title": "TargetRequest",
+    "type": "object"
+   },
+   "TaskItem": {
+    "additionalProperties": true,
+    "properties": {
+     "assignee": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Assignee"
+     },
+     "completed_at": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Completed At"
+     },
+     "created_at": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Created At"
+     },
+     "stage": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Stage"
+     },
+     "state": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "State"
+     },
+     "task_id": {
+      "title": "Task Id",
+      "type": "string"
+     },
+     "title": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Title"
+     },
+     "transaction_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Transaction Id"
+     }
+    },
+    "required": [
+     "task_id"
+    ],
+    "title": "TaskItem",
+    "type": "object"
+   },
+   "TaskRequest": {
+    "properties": {
+     "action": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Action"
+     },
+     "actor": {
+      "default": "platform",
+      "title": "Actor",
+      "type": "string"
+     },
+     "assignee": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Assignee"
+     },
+     "stage": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Stage"
+     },
+     "task_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Task Id"
+     },
+     "title": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Title"
+     },
+     "transaction_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Transaction Id"
+     }
+    },
+    "title": "TaskRequest",
+    "type": "object"
+   },
+   "TaskResponse": {
+    "additionalProperties": true,
+    "properties": {
+     "task_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Task Id"
+     },
+     "tasks": {
+      "anyOf": [
+       {
+        "items": {
+         "$ref": "#/components/schemas/TaskItem"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Tasks"
+     }
+    },
+    "title": "TaskResponse",
+    "type": "object"
+   },
+   "TerritoryRequest": {
+    "properties": {
+     "limit": {
+      "default": 25,
+      "title": "Limit",
+      "type": "integer"
+     },
+     "municipio": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Municipio"
+     },
+     "provincia": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Provincia"
+     }
+    },
+    "title": "TerritoryRequest",
+    "type": "object"
+   },
+   "ThesisAlternative": {
+    "additionalProperties": true,
+    "properties": {
+     "score": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Score"
+     },
+     "statement": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Statement"
+     },
+     "thesis_type": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Thesis Type"
+     },
+     "why_not_preferred": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Why Not Preferred"
+     }
+    },
+    "title": "ThesisAlternative",
+    "type": "object"
+   },
+   "ThesisRequest": {
+    "properties": {
+     "identifier": {
+      "title": "Identifier",
+      "type": "string"
+     },
+     "opportunity_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Opportunity Id"
+     },
+     "owner": {
+      "default": "system",
+      "title": "Owner",
+      "type": "string"
+     },
+     "thesis_type": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Thesis Type"
+     }
+    },
+    "required": [
+     "identifier"
+    ],
+    "title": "ThesisRequest",
+    "type": "object"
+   },
+   "TimelineResponse": {
+    "additionalProperties": true,
+    "properties": {
+     "count": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Count"
+     },
+     "events": {
+      "items": {
+       "$ref": "#/components/schemas/EventItem"
+      },
+      "title": "Events",
+      "type": "array"
+     },
+     "transaction_id": {
+      "title": "Transaction Id",
+      "type": "string"
+     }
+    },
+    "required": [
+     "transaction_id"
+    ],
+    "title": "TimelineResponse",
+    "type": "object"
+   },
+   "TransactionCatalogResponse": {
+    "additionalProperties": true,
+    "properties": {
+     "action_types": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Action Types",
+      "type": "array"
+     },
+     "canonical_actions": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Canonical Actions",
+      "type": "array"
+     },
+     "canonical_entities": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Canonical Entities"
+     },
+     "domain_events": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Domain Events",
+      "type": "array"
+     },
+     "engine_version": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Engine Version"
+     },
+     "evidence_version": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/EvidenceVersionRef"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "global_states": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Global States",
+      "type": "array"
+     },
+     "high_risk_actions": {
+      "items": {
+       "type": "string"
+      },
+      "title": "High Risk Actions",
+      "type": "array"
+     },
+     "os_version": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Os Version"
+     },
+     "stages_deferred": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Stages Deferred",
+      "type": "array"
+     },
+     "stages_v1": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Stages V1",
+      "type": "array"
+     },
+     "state_machine_version": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "State Machine Version"
+     },
+     "terminal_states": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Terminal States",
+      "type": "array"
+     },
+     "transitions": {
+      "items": {
+       "additionalProperties": true,
+       "type": "object"
+      },
+      "title": "Transitions",
+      "type": "array"
+     },
+     "workflow_templates": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Workflow Templates",
+      "type": "array"
+     }
+    },
+    "title": "TransactionCatalogResponse",
+    "type": "object"
+   },
+   "TransactionDecisionResponse": {
+    "additionalProperties": true,
+    "properties": {
+     "approval_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Approval Id"
+     },
+     "approvals": {
+      "anyOf": [
+       {
+        "items": {
+         "$ref": "#/components/schemas/ApprovalItem"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Approvals"
+     }
+    },
+    "title": "TransactionDecisionResponse",
+    "type": "object"
+   },
+   "TransactionEndpointResponse": {
+    "additionalProperties": true,
+    "description": "Polymorphic /transaction response: canonical record (query) or create wrapper.",
+    "properties": {
+     "created_at": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Created At"
+     },
+     "current_stage": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Current Stage"
+     },
+     "engine_version": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Engine Version"
+     },
+     "from_thesis": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "From Thesis"
+     },
+     "generated_at": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Generated At"
+     },
+     "organization_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Organization Id"
+     },
+     "os_version": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Os Version"
+     },
+     "parties": {
+      "anyOf": [
+       {
+        "items": {},
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Parties"
+     },
+     "stages": {
+      "anyOf": [
+       {
+        "items": {
+         "$ref": "#/components/schemas/StageState"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Stages"
+     },
+     "state": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "State"
+     },
+     "state_machine_version": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "State Machine Version"
+     },
+     "target_master_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Target Master Id"
+     },
+     "transaction": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/TransactionRecord"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "transaction_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Transaction Id"
+     },
+     "updated_at": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Updated At"
+     },
+     "visibility": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Visibility"
+     },
+     "workflow_version": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Workflow Version"
+     }
+    },
+    "title": "TransactionEndpointResponse",
+    "type": "object"
+   },
+   "TransactionMemoryResponse": {
+    "additionalProperties": true,
+    "properties": {
+     "approvals": {
+      "items": {
+       "$ref": "#/components/schemas/ApprovalItem"
+      },
+      "title": "Approvals",
+      "type": "array"
+     },
+     "decisions": {
+      "items": {
+       "additionalProperties": true,
+       "type": "object"
+      },
+      "title": "Decisions",
+      "type": "array"
+     },
+     "documents": {
+      "items": {
+       "$ref": "#/components/schemas/DocumentItem"
+      },
+      "title": "Documents",
+      "type": "array"
+     },
+     "domain_events": {
+      "items": {
+       "additionalProperties": true,
+       "type": "object"
+      },
+      "title": "Domain Events",
+      "type": "array"
+     },
+     "event_count": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Event Count"
+     },
+     "tasks": {
+      "items": {
+       "$ref": "#/components/schemas/TaskItem"
+      },
+      "title": "Tasks",
+      "type": "array"
+     },
+     "transaction_id": {
+      "title": "Transaction Id",
+      "type": "string"
+     }
+    },
+    "required": [
+     "transaction_id"
+    ],
+    "title": "TransactionMemoryResponse",
+    "type": "object"
+   },
+   "TransactionRecord": {
+    "additionalProperties": true,
+    "properties": {
+     "created_at": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Created At"
+     },
+     "current_stage": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Current Stage"
+     },
+     "from_thesis": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "From Thesis"
+     },
+     "organization_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Organization Id"
+     },
+     "os_version": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Os Version"
+     },
+     "parties": {
+      "anyOf": [
+       {
+        "items": {},
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Parties"
+     },
+     "stages": {
+      "anyOf": [
+       {
+        "items": {
+         "$ref": "#/components/schemas/StageState"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Stages"
+     },
+     "state": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "State"
+     },
+     "state_machine_version": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "State Machine Version"
+     },
+     "target_master_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Target Master Id"
+     },
+     "transaction_id": {
+      "title": "Transaction Id",
+      "type": "string"
+     },
+     "updated_at": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Updated At"
+     },
+     "visibility": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Visibility"
+     },
+     "workflow_version": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Workflow Version"
+     }
+    },
+    "required": [
+     "transaction_id"
+    ],
+    "title": "TransactionRecord",
+    "type": "object"
+   },
+   "TransactionRequest": {
+    "properties": {
+     "actor": {
+      "default": "platform",
+      "title": "Actor",
+      "type": "string"
+     },
+     "organization_id": {
+      "default": "org_default",
+      "title": "Organization Id",
+      "type": "string"
+     },
+     "parties": {
+      "anyOf": [
+       {
+        "items": {
+         "additionalProperties": true,
+         "type": "object"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Parties"
+     },
+     "thesis_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Thesis Id"
+     },
+     "transaction_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Transaction Id"
+     },
+     "workflow_name": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Workflow Name"
+     }
+    },
+    "title": "TransactionRequest",
+    "type": "object"
+   },
+   "TransactionRiskResponse": {
+    "additionalProperties": true,
+    "properties": {
+     "blockers": {
+      "anyOf": [
+       {
+        "items": {},
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Blockers"
+     },
+     "engine_version": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Engine Version"
+     },
+     "evidence_version": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/EvidenceVersionRef"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "generated_at": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Generated At"
+     },
+     "risks": {
+      "items": {
+       "additionalProperties": true,
+       "type": "object"
+      },
+      "title": "Risks",
+      "type": "array"
+     },
+     "stage": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Stage"
+     },
+     "transaction_id": {
+      "title": "Transaction Id",
+      "type": "string"
+     }
+    },
+    "required": [
+     "transaction_id"
+    ],
+    "title": "TransactionRiskResponse",
+    "type": "object"
+   },
+   "TxRef": {
+    "properties": {
+     "transaction_id": {
+      "title": "Transaction Id",
+      "type": "string"
+     }
+    },
+    "required": [
+     "transaction_id"
+    ],
+    "title": "TxRef",
+    "type": "object"
+   },
+   "ValidationError": {
+    "properties": {
+     "loc": {
+      "items": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "integer"
+        }
+       ]
+      },
+      "title": "Location",
+      "type": "array"
+     },
+     "msg": {
+      "title": "Message",
+      "type": "string"
+     },
+     "type": {
+      "title": "Error Type",
+      "type": "string"
+     }
+    },
+    "required": [
+     "loc",
+     "msg",
+     "type"
+    ],
+    "title": "ValidationError",
+    "type": "object"
+   },
+   "ValuationBlock": {
+    "additionalProperties": true,
+    "properties": {
+     "confidence": {
+      "anyOf": [
+       {},
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Confidence"
+     },
+     "enterprise_value": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Enterprise Value"
+     },
+     "equity_value": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Equity Value"
+     },
+     "hypotheses": {
+      "anyOf": [
+       {
+        "items": {},
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Hypotheses"
+     },
+     "lineage": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Lineage"
+     },
+     "method": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Method"
+     },
+     "multiple": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Multiple"
+     },
+     "multiple_basis": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Multiple Basis"
+     },
+     "range": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Range"
+     }
+    },
+    "title": "ValuationBlock",
+    "type": "object"
+   },
+   "WorkflowRequest": {
+    "properties": {
+     "transaction_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Transaction Id"
+     },
+     "workflow_name": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Workflow Name"
+     }
+    },
+    "title": "WorkflowRequest",
+    "type": "object"
+   },
+   "WorkflowResponse": {
+    "additionalProperties": true,
+    "properties": {
+     "current_stage": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Current Stage"
+     },
+     "side": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Side"
+     },
+     "stages": {
+      "anyOf": [
+       {
+        "items": {},
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Stages"
+     },
+     "state_machine_version": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "State Machine Version"
+     },
+     "transaction_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Transaction Id"
+     },
+     "version": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Version"
+     },
+     "workflow_version": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Workflow Version"
+     }
+    },
+    "title": "WorkflowResponse",
+    "type": "object"
+   },
+   "WorkspaceResponse": {
+    "additionalProperties": true,
+    "properties": {
+     "approvals": {
+      "anyOf": [
+       {
+        "items": {
+         "$ref": "#/components/schemas/ApprovalItem"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Approvals"
+     },
+     "current_stage": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Current Stage"
+     },
+     "documents": {
+      "anyOf": [
+       {
+        "items": {
+         "$ref": "#/components/schemas/DocumentItem"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Documents"
+     },
+     "engine_version": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Engine Version"
+     },
+     "generated_at": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Generated At"
+     },
+     "next_action": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Next Action"
+     },
+     "os_version": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Os Version"
+     },
+     "participants": {
+      "anyOf": [
+       {
+        "items": {},
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Participants"
+     },
+     "stages": {
+      "anyOf": [
+       {
+        "items": {
+         "$ref": "#/components/schemas/StageState"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Stages"
+     },
+     "tasks": {
+      "anyOf": [
+       {
+        "items": {
+         "$ref": "#/components/schemas/TaskItem"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Tasks"
+     },
+     "timeline": {
+      "anyOf": [
+       {
+        "items": {
+         "$ref": "#/components/schemas/EventItem"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Timeline"
+     },
+     "transaction": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/TransactionRecord"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     }
+    },
+    "title": "WorkspaceResponse",
+    "type": "object"
+   },
+   "routes__financial_intelligence__AnalyzeRequest": {
+    "properties": {
+     "identifier": {
+      "title": "Identifier",
+      "type": "string"
+     }
+    },
+    "required": [
+     "identifier"
+    ],
+    "title": "AnalyzeRequest",
+    "type": "object"
+   },
+   "routes__recommendation_intelligence__MemoryRequest": {
+    "properties": {
+     "recommendation_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Recommendation Id"
+     },
+     "state": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "State"
+     },
+     "target": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Target"
+     }
+    },
+    "title": "MemoryRequest",
+    "type": "object"
+   },
+   "routes__semantic_intelligence__SearchRequest": {
+    "properties": {
+     "cnae_section": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Cnae Section"
+     },
+     "limit": {
+      "default": 10,
+      "title": "Limit",
+      "type": "integer"
+     },
+     "query": {
+      "title": "Query",
+      "type": "string"
+     }
+    },
+    "required": [
+     "query"
+    ],
+    "title": "SearchRequest",
+    "type": "object"
+   },
+   "routes__signal_intelligence__AnalyzeRequest": {
+    "properties": {
+     "identifier": {
+      "title": "Identifier",
+      "type": "string"
+     },
+     "windows": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "string"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Windows"
+     }
+    },
+    "required": [
+     "identifier"
+    ],
+    "title": "AnalyzeRequest",
+    "type": "object"
+   },
+   "routes__strategy_intelligence__DecisionRequest": {
+    "properties": {
+     "identifier": {
+      "title": "Identifier",
+      "type": "string"
+     },
+     "type_a": {
+      "title": "Type A",
+      "type": "string"
+     },
+     "type_b": {
+      "title": "Type B",
+      "type": "string"
+     }
+    },
+    "required": [
+     "identifier",
+     "type_a",
+     "type_b"
+    ],
+    "title": "DecisionRequest",
+    "type": "object"
+   },
+   "routes__strategy_intelligence__MemoryRequest": {
+    "properties": {
+     "company_master_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Company Master Id"
+     },
+     "state": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "State"
+     },
+     "thesis_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Thesis Id"
+     },
+     "thesis_type": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Thesis Type"
+     }
+    },
+    "title": "MemoryRequest",
+    "type": "object"
+   },
+   "routes__transaction_intelligence__DecisionRequest": {
+    "properties": {
+     "action": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Action"
+     },
+     "actor": {
+      "default": "platform",
+      "title": "Actor",
+      "type": "string"
+     },
+     "actor_role": {
+      "default": "platform",
+      "title": "Actor Role",
+      "type": "string"
+     },
+     "approval_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Approval Id"
+     },
+     "artifact_version": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Artifact Version"
+     },
+     "decision": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Decision"
+     },
+     "evidence_reviewed": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "string"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Evidence Reviewed"
+     },
+     "requested_by": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Requested By"
+     },
+     "transaction_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Transaction Id"
+     }
+    },
+    "title": "DecisionRequest",
+    "type": "object"
+   }
+  }
+ },
+ "info": {
+  "description": "Contrato p\u00fablico v2 para arroba.com. Superset TIPADO de v1: los 6 motores de inteligencia con DTO de respuesta expl\u00edcitos + la capacidad p\u00fablica Company/Identity (/api/v2/company-intelligence). Auth: cabecera X-API-Key. Runtime id\u00e9ntico a v1 (los DTO documentan, no filtran). Permite generar SDK tipado.",
+  "title": "Agency Tool \u2014 Intelligence API (arroba.com) \u2014 v2",
+  "version": "arroba-integration-contract-v2"
+ },
+ "openapi": "3.1.0",
+ "paths": {
+  "/api/v1/financial-intelligence/analyze": {
+   "post": {
+    "description": "Full financial intelligence profile (statements, KPIs, ratios, evolution, quality,\ncomparables, valuation, assessment, explainability).",
+    "operationId": "analyze_api_v1_financial_intelligence_analyze_post",
+    "parameters": [
+     {
+      "in": "header",
+      "name": "X-API-Key",
+      "required": false,
+      "schema": {
+       "title": "X-Api-Key",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/routes__financial_intelligence__AnalyzeRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/FinancialAnalyzeResponse"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Analyze",
+    "tags": [
+     "financial_intelligence"
+    ]
+   }
+  },
+  "/api/v1/financial-intelligence/ratios/catalog": {
+   "get": {
+    "description": "The reusable ratio library: formula + explanation + category for each ratio.",
+    "operationId": "ratios_catalog_api_v1_financial_intelligence_ratios_catalog_get",
+    "parameters": [
+     {
+      "in": "header",
+      "name": "X-API-Key",
+      "required": false,
+      "schema": {
+       "title": "X-Api-Key",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/RatiosCatalogResponse"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Ratios Catalog",
+    "tags": [
+     "financial_intelligence"
+    ]
+   }
+  },
+  "/api/v1/financial-intelligence/valuation": {
+   "post": {
+    "description": "Valuation capability only (parity surface with the legacy Value Engine).",
+    "operationId": "valuation_api_v1_financial_intelligence_valuation_post",
+    "parameters": [
+     {
+      "in": "header",
+      "name": "X-API-Key",
+      "required": false,
+      "schema": {
+       "title": "X-Api-Key",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/routes__financial_intelligence__AnalyzeRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/FinancialValuationResponse"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Valuation",
+    "tags": [
+     "financial_intelligence"
+    ]
+   }
+  },
+  "/api/v1/recommendation-intelligence/advisors": {
+   "post": {
+    "operationId": "advisors_api_v1_recommendation_intelligence_advisors_post",
+    "parameters": [
+     {
+      "in": "header",
+      "name": "X-API-Key",
+      "required": false,
+      "schema": {
+       "title": "X-Api-Key",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/TargetRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/RecommendationUnavailableResponse"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Advisors",
+    "tags": [
+     "recommendation_intelligence"
+    ]
+   }
+  },
+  "/api/v1/recommendation-intelligence/buyers": {
+   "post": {
+    "operationId": "buyers_api_v1_recommendation_intelligence_buyers_post",
+    "parameters": [
+     {
+      "in": "header",
+      "name": "X-API-Key",
+      "required": false,
+      "schema": {
+       "title": "X-Api-Key",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/TargetRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/RecommendationSetResponse"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Buyers",
+    "tags": [
+     "recommendation_intelligence"
+    ]
+   }
+  },
+  "/api/v1/recommendation-intelligence/catalog": {
+   "get": {
+    "operationId": "catalog_api_v1_recommendation_intelligence_catalog_get",
+    "parameters": [
+     {
+      "in": "header",
+      "name": "X-API-Key",
+      "required": false,
+      "schema": {
+       "title": "X-Api-Key",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/RecommendationCatalogResponse"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Catalog",
+    "tags": [
+     "recommendation_intelligence"
+    ]
+   }
+  },
+  "/api/v1/recommendation-intelligence/comparables": {
+   "post": {
+    "operationId": "comparables_api_v1_recommendation_intelligence_comparables_post",
+    "parameters": [
+     {
+      "in": "header",
+      "name": "X-API-Key",
+      "required": false,
+      "schema": {
+       "title": "X-Api-Key",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/TargetRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/RecommendationSetResponse"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Comparables",
+    "tags": [
+     "recommendation_intelligence"
+    ]
+   }
+  },
+  "/api/v1/recommendation-intelligence/explain": {
+   "post": {
+    "operationId": "explain_api_v1_recommendation_intelligence_explain_post",
+    "parameters": [
+     {
+      "in": "header",
+      "name": "X-API-Key",
+      "required": false,
+      "schema": {
+       "title": "X-Api-Key",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ExplainRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/RecommendationExplainResponse"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Explain",
+    "tags": [
+     "recommendation_intelligence"
+    ]
+   }
+  },
+  "/api/v1/recommendation-intelligence/feedback": {
+   "post": {
+    "operationId": "feedback_api_v1_recommendation_intelligence_feedback_post",
+    "parameters": [
+     {
+      "in": "header",
+      "name": "X-API-Key",
+      "required": false,
+      "schema": {
+       "title": "X-Api-Key",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/FeedbackRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/RecommendationFeedbackResponse"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Feedback",
+    "tags": [
+     "recommendation_intelligence"
+    ]
+   }
+  },
+  "/api/v1/recommendation-intelligence/investors": {
+   "post": {
+    "operationId": "investors_api_v1_recommendation_intelligence_investors_post",
+    "parameters": [
+     {
+      "in": "header",
+      "name": "X-API-Key",
+      "required": false,
+      "schema": {
+       "title": "X-Api-Key",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/TargetRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/RecommendationUnavailableResponse"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Investors",
+    "tags": [
+     "recommendation_intelligence"
+    ]
+   }
+  },
+  "/api/v1/recommendation-intelligence/matching": {
+   "post": {
+    "operationId": "matching_api_v1_recommendation_intelligence_matching_post",
+    "parameters": [
+     {
+      "in": "header",
+      "name": "X-API-Key",
+      "required": false,
+      "schema": {
+       "title": "X-Api-Key",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/MatchingRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/RecommendationMatchingResponse"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Matching",
+    "tags": [
+     "recommendation_intelligence"
+    ]
+   }
+  },
+  "/api/v1/recommendation-intelligence/memory": {
+   "post": {
+    "operationId": "memory_api_v1_recommendation_intelligence_memory_post",
+    "parameters": [
+     {
+      "in": "header",
+      "name": "X-API-Key",
+      "required": false,
+      "schema": {
+       "title": "X-Api-Key",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/routes__recommendation_intelligence__MemoryRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/RecommendationMemoryResponse"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Memory",
+    "tags": [
+     "recommendation_intelligence"
+    ]
+   }
+  },
+  "/api/v1/recommendation-intelligence/opportunities": {
+   "post": {
+    "operationId": "opportunities_api_v1_recommendation_intelligence_opportunities_post",
+    "parameters": [
+     {
+      "in": "header",
+      "name": "X-API-Key",
+      "required": false,
+      "schema": {
+       "title": "X-Api-Key",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/TargetRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/RecommendationSetResponse"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Opportunities",
+    "tags": [
+     "recommendation_intelligence"
+    ]
+   }
+  },
+  "/api/v1/recommendation-intelligence/sellers": {
+   "post": {
+    "operationId": "sellers_api_v1_recommendation_intelligence_sellers_post",
+    "parameters": [
+     {
+      "in": "header",
+      "name": "X-API-Key",
+      "required": false,
+      "schema": {
+       "title": "X-Api-Key",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/TargetRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/RecommendationSetResponse"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Sellers",
+    "tags": [
+     "recommendation_intelligence"
+    ]
+   }
+  },
+  "/api/v1/semantic-intelligence/catalog": {
+   "get": {
+    "operationId": "catalog_api_v1_semantic_intelligence_catalog_get",
+    "parameters": [
+     {
+      "in": "header",
+      "name": "X-API-Key",
+      "required": false,
+      "schema": {
+       "title": "X-Api-Key",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/SemanticCatalogResponse"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Catalog",
+    "tags": [
+     "semantic_intelligence"
+    ]
+   }
+  },
+  "/api/v1/semantic-intelligence/embedding": {
+   "post": {
+    "operationId": "embedding_api_v1_semantic_intelligence_embedding_post",
+    "parameters": [
+     {
+      "in": "header",
+      "name": "X-API-Key",
+      "required": false,
+      "schema": {
+       "title": "X-Api-Key",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ProfileRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/SemanticEmbeddingResponse"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Embedding",
+    "tags": [
+     "semantic_intelligence"
+    ]
+   }
+  },
+  "/api/v1/semantic-intelligence/profile": {
+   "post": {
+    "operationId": "profile_api_v1_semantic_intelligence_profile_post",
+    "parameters": [
+     {
+      "in": "header",
+      "name": "X-API-Key",
+      "required": false,
+      "schema": {
+       "title": "X-Api-Key",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ProfileRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/SemanticProfileResponse"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Profile",
+    "tags": [
+     "semantic_intelligence"
+    ]
+   }
+  },
+  "/api/v1/semantic-intelligence/profile/schema": {
+   "get": {
+    "operationId": "profile_schema_api_v1_semantic_intelligence_profile_schema_get",
+    "parameters": [
+     {
+      "in": "header",
+      "name": "X-API-Key",
+      "required": false,
+      "schema": {
+       "title": "X-Api-Key",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/SemanticProfileSchemaResponse"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Profile Schema",
+    "tags": [
+     "semantic_intelligence"
+    ]
+   }
+  },
+  "/api/v1/semantic-intelligence/search": {
+   "post": {
+    "operationId": "search_api_v1_semantic_intelligence_search_post",
+    "parameters": [
+     {
+      "in": "header",
+      "name": "X-API-Key",
+      "required": false,
+      "schema": {
+       "title": "X-Api-Key",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/routes__semantic_intelligence__SearchRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/SemanticSearchResponse"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Search",
+    "tags": [
+     "semantic_intelligence"
+    ]
+   }
+  },
+  "/api/v1/semantic-intelligence/similar": {
+   "post": {
+    "operationId": "similar_api_v1_semantic_intelligence_similar_post",
+    "parameters": [
+     {
+      "in": "header",
+      "name": "X-API-Key",
+      "required": false,
+      "schema": {
+       "title": "X-Api-Key",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/SimilarRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/SemanticSimilarResponse"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Similar",
+    "tags": [
+     "semantic_intelligence"
+    ]
+   }
+  },
+  "/api/v1/signal-intelligence/analyze": {
+   "post": {
+    "operationId": "analyze_api_v1_signal_intelligence_analyze_post",
+    "parameters": [
+     {
+      "in": "header",
+      "name": "X-API-Key",
+      "required": false,
+      "schema": {
+       "title": "X-Api-Key",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/routes__signal_intelligence__AnalyzeRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/SignalAnalyzeResponse"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Analyze",
+    "tags": [
+     "signal_intelligence"
+    ]
+   }
+  },
+  "/api/v1/signal-intelligence/catalog": {
+   "get": {
+    "operationId": "catalog_api_v1_signal_intelligence_catalog_get",
+    "parameters": [
+     {
+      "in": "header",
+      "name": "X-API-Key",
+      "required": false,
+      "schema": {
+       "title": "X-Api-Key",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/SignalCatalogResponse"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Catalog",
+    "tags": [
+     "signal_intelligence"
+    ]
+   }
+  },
+  "/api/v1/signal-intelligence/history": {
+   "post": {
+    "operationId": "history_api_v1_signal_intelligence_history_post",
+    "parameters": [
+     {
+      "in": "header",
+      "name": "X-API-Key",
+      "required": false,
+      "schema": {
+       "title": "X-Api-Key",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/HistoryRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/SignalHistoryResponse"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "History",
+    "tags": [
+     "signal_intelligence"
+    ]
+   }
+  },
+  "/api/v1/signal-intelligence/opportunities": {
+   "post": {
+    "description": "Ranking of opportunities from persisted signals (run /analyze or /sector first).",
+    "operationId": "opportunities_api_v1_signal_intelligence_opportunities_post",
+    "parameters": [
+     {
+      "in": "header",
+      "name": "X-API-Key",
+      "required": false,
+      "schema": {
+       "title": "X-Api-Key",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/OpportunitiesRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/SignalOpportunitiesResponse"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Opportunities",
+    "tags": [
+     "signal_intelligence"
+    ]
+   }
+  },
+  "/api/v1/signal-intelligence/sector": {
+   "post": {
+    "operationId": "by_sector_api_v1_signal_intelligence_sector_post",
+    "parameters": [
+     {
+      "in": "header",
+      "name": "X-API-Key",
+      "required": false,
+      "schema": {
+       "title": "X-Api-Key",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/SectorRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/SignalAggregateResponse"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "By Sector",
+    "tags": [
+     "signal_intelligence"
+    ]
+   }
+  },
+  "/api/v1/signal-intelligence/signal/{signal_id}": {
+   "get": {
+    "operationId": "get_signal_api_v1_signal_intelligence_signal__signal_id__get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "signal_id",
+      "required": true,
+      "schema": {
+       "title": "Signal Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "header",
+      "name": "X-API-Key",
+      "required": false,
+      "schema": {
+       "title": "X-Api-Key",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/SignalRecord"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Get Signal",
+    "tags": [
+     "signal_intelligence"
+    ]
+   }
+  },
+  "/api/v1/signal-intelligence/territory": {
+   "post": {
+    "operationId": "by_territory_api_v1_signal_intelligence_territory_post",
+    "parameters": [
+     {
+      "in": "header",
+      "name": "X-API-Key",
+      "required": false,
+      "schema": {
+       "title": "X-Api-Key",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/TerritoryRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/SignalAggregateResponse"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "By Territory",
+    "tags": [
+     "signal_intelligence"
+    ]
+   }
+  },
+  "/api/v1/strategy-intelligence/acquisition": {
+   "post": {
+    "operationId": "acquisition_api_v1_strategy_intelligence_acquisition_post",
+    "parameters": [
+     {
+      "in": "header",
+      "name": "X-API-Key",
+      "required": false,
+      "schema": {
+       "title": "X-Api-Key",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ThesisRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/StrategyThesisResponse"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Acquisition",
+    "tags": [
+     "strategy_intelligence"
+    ]
+   }
+  },
+  "/api/v1/strategy-intelligence/capital": {
+   "post": {
+    "operationId": "capital_api_v1_strategy_intelligence_capital_post",
+    "parameters": [
+     {
+      "in": "header",
+      "name": "X-API-Key",
+      "required": false,
+      "schema": {
+       "title": "X-Api-Key",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ThesisRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/StrategyThesisResponse"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Capital",
+    "tags": [
+     "strategy_intelligence"
+    ]
+   }
+  },
+  "/api/v1/strategy-intelligence/catalog": {
+   "get": {
+    "operationId": "catalog_api_v1_strategy_intelligence_catalog_get",
+    "parameters": [
+     {
+      "in": "header",
+      "name": "X-API-Key",
+      "required": false,
+      "schema": {
+       "title": "X-Api-Key",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/StrategyCatalogResponse"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Catalog",
+    "tags": [
+     "strategy_intelligence"
+    ]
+   }
+  },
+  "/api/v1/strategy-intelligence/convert": {
+   "post": {
+    "operationId": "convert_api_v1_strategy_intelligence_convert_post",
+    "parameters": [
+     {
+      "in": "header",
+      "name": "X-API-Key",
+      "required": false,
+      "schema": {
+       "title": "X-Api-Key",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ConvertRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/StrategyConvertResponse"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Convert",
+    "tags": [
+     "strategy_intelligence"
+    ]
+   }
+  },
+  "/api/v1/strategy-intelligence/decision": {
+   "post": {
+    "operationId": "decision_api_v1_strategy_intelligence_decision_post",
+    "parameters": [
+     {
+      "in": "header",
+      "name": "X-API-Key",
+      "required": false,
+      "schema": {
+       "title": "X-Api-Key",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/routes__strategy_intelligence__DecisionRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/StrategyDecisionResponse"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Decision",
+    "tags": [
+     "strategy_intelligence"
+    ]
+   }
+  },
+  "/api/v1/strategy-intelligence/divestment": {
+   "post": {
+    "operationId": "divestment_api_v1_strategy_intelligence_divestment_post",
+    "parameters": [
+     {
+      "in": "header",
+      "name": "X-API-Key",
+      "required": false,
+      "schema": {
+       "title": "X-Api-Key",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ThesisRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/StrategyThesisResponse"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Divestment",
+    "tags": [
+     "strategy_intelligence"
+    ]
+   }
+  },
+  "/api/v1/strategy-intelligence/growth": {
+   "post": {
+    "operationId": "growth_api_v1_strategy_intelligence_growth_post",
+    "parameters": [
+     {
+      "in": "header",
+      "name": "X-API-Key",
+      "required": false,
+      "schema": {
+       "title": "X-Api-Key",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ThesisRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/StrategyThesisResponse"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Growth",
+    "tags": [
+     "strategy_intelligence"
+    ]
+   }
+  },
+  "/api/v1/strategy-intelligence/lifecycle": {
+   "post": {
+    "operationId": "lifecycle_api_v1_strategy_intelligence_lifecycle_post",
+    "parameters": [
+     {
+      "in": "header",
+      "name": "X-API-Key",
+      "required": false,
+      "schema": {
+       "title": "X-Api-Key",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/LifecycleRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/StrategyThesisResponse"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Lifecycle",
+    "tags": [
+     "strategy_intelligence"
+    ]
+   }
+  },
+  "/api/v1/strategy-intelligence/memory": {
+   "post": {
+    "operationId": "memory_api_v1_strategy_intelligence_memory_post",
+    "parameters": [
+     {
+      "in": "header",
+      "name": "X-API-Key",
+      "required": false,
+      "schema": {
+       "title": "X-Api-Key",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/routes__strategy_intelligence__MemoryRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/StrategyMemoryResponse"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Memory",
+    "tags": [
+     "strategy_intelligence"
+    ]
+   }
+  },
+  "/api/v1/strategy-intelligence/partnership": {
+   "post": {
+    "operationId": "partnership_api_v1_strategy_intelligence_partnership_post",
+    "parameters": [
+     {
+      "in": "header",
+      "name": "X-API-Key",
+      "required": false,
+      "schema": {
+       "title": "X-Api-Key",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ThesisRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/StrategyThesisResponse"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Partnership",
+    "tags": [
+     "strategy_intelligence"
+    ]
+   }
+  },
+  "/api/v1/strategy-intelligence/risk": {
+   "post": {
+    "operationId": "risk_api_v1_strategy_intelligence_risk_post",
+    "parameters": [
+     {
+      "in": "header",
+      "name": "X-API-Key",
+      "required": false,
+      "schema": {
+       "title": "X-Api-Key",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ThesisRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/StrategyThesisResponse"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Risk",
+    "tags": [
+     "strategy_intelligence"
+    ]
+   }
+  },
+  "/api/v1/strategy-intelligence/scenarios": {
+   "post": {
+    "operationId": "scenarios_api_v1_strategy_intelligence_scenarios_post",
+    "parameters": [
+     {
+      "in": "header",
+      "name": "X-API-Key",
+      "required": false,
+      "schema": {
+       "title": "X-Api-Key",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ScenarioRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/StrategyScenariosResponse"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Scenarios",
+    "tags": [
+     "strategy_intelligence"
+    ]
+   }
+  },
+  "/api/v1/strategy-intelligence/thesis": {
+   "post": {
+    "operationId": "thesis_api_v1_strategy_intelligence_thesis_post",
+    "parameters": [
+     {
+      "in": "header",
+      "name": "X-API-Key",
+      "required": false,
+      "schema": {
+       "title": "X-Api-Key",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ThesisRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/StrategyThesisResponse"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Thesis",
+    "tags": [
+     "strategy_intelligence"
+    ]
+   }
+  },
+  "/api/v1/transaction-intelligence/catalog": {
+   "get": {
+    "operationId": "catalog_api_v1_transaction_intelligence_catalog_get",
+    "parameters": [
+     {
+      "in": "header",
+      "name": "X-API-Key",
+      "required": false,
+      "schema": {
+       "title": "X-Api-Key",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/TransactionCatalogResponse"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Catalog",
+    "tags": [
+     "transaction_intelligence"
+    ]
+   }
+  },
+  "/api/v1/transaction-intelligence/decision": {
+   "post": {
+    "operationId": "decision_api_v1_transaction_intelligence_decision_post",
+    "parameters": [
+     {
+      "in": "header",
+      "name": "X-API-Key",
+      "required": false,
+      "schema": {
+       "title": "X-Api-Key",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/routes__transaction_intelligence__DecisionRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/TransactionDecisionResponse"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Decision",
+    "tags": [
+     "transaction_intelligence"
+    ]
+   }
+  },
+  "/api/v1/transaction-intelligence/documents": {
+   "post": {
+    "operationId": "documents_api_v1_transaction_intelligence_documents_post",
+    "parameters": [
+     {
+      "in": "header",
+      "name": "X-API-Key",
+      "required": false,
+      "schema": {
+       "title": "X-Api-Key",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/DocumentRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/DocumentsResponse"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Documents",
+    "tags": [
+     "transaction_intelligence"
+    ]
+   }
+  },
+  "/api/v1/transaction-intelligence/memory": {
+   "post": {
+    "operationId": "memory_api_v1_transaction_intelligence_memory_post",
+    "parameters": [
+     {
+      "in": "header",
+      "name": "X-API-Key",
+      "required": false,
+      "schema": {
+       "title": "X-Api-Key",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/TxRef"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/TransactionMemoryResponse"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Memory",
+    "tags": [
+     "transaction_intelligence"
+    ]
+   }
+  },
+  "/api/v1/transaction-intelligence/next-action": {
+   "post": {
+    "operationId": "next_action_api_v1_transaction_intelligence_next_action_post",
+    "parameters": [
+     {
+      "in": "header",
+      "name": "X-API-Key",
+      "required": false,
+      "schema": {
+       "title": "X-Api-Key",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/TxRef"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/NextActionResponse"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Next Action",
+    "tags": [
+     "transaction_intelligence"
+    ]
+   }
+  },
+  "/api/v1/transaction-intelligence/participants": {
+   "post": {
+    "operationId": "participants_api_v1_transaction_intelligence_participants_post",
+    "parameters": [
+     {
+      "in": "header",
+      "name": "X-API-Key",
+      "required": false,
+      "schema": {
+       "title": "X-Api-Key",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/TxRef"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ParticipantsResponse"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Participants",
+    "tags": [
+     "transaction_intelligence"
+    ]
+   }
+  },
+  "/api/v1/transaction-intelligence/risk": {
+   "post": {
+    "operationId": "risk_api_v1_transaction_intelligence_risk_post",
+    "parameters": [
+     {
+      "in": "header",
+      "name": "X-API-Key",
+      "required": false,
+      "schema": {
+       "title": "X-Api-Key",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/TxRef"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/TransactionRiskResponse"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Risk",
+    "tags": [
+     "transaction_intelligence"
+    ]
+   }
+  },
+  "/api/v1/transaction-intelligence/stage": {
+   "post": {
+    "operationId": "stage_api_v1_transaction_intelligence_stage_post",
+    "parameters": [
+     {
+      "in": "header",
+      "name": "X-API-Key",
+      "required": false,
+      "schema": {
+       "title": "X-Api-Key",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/StageRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/StageResponse"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Stage",
+    "tags": [
+     "transaction_intelligence"
+    ]
+   }
+  },
+  "/api/v1/transaction-intelligence/task": {
+   "post": {
+    "operationId": "task_api_v1_transaction_intelligence_task_post",
+    "parameters": [
+     {
+      "in": "header",
+      "name": "X-API-Key",
+      "required": false,
+      "schema": {
+       "title": "X-Api-Key",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/TaskRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/TaskResponse"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Task",
+    "tags": [
+     "transaction_intelligence"
+    ]
+   }
+  },
+  "/api/v1/transaction-intelligence/timeline": {
+   "post": {
+    "operationId": "timeline_api_v1_transaction_intelligence_timeline_post",
+    "parameters": [
+     {
+      "in": "header",
+      "name": "X-API-Key",
+      "required": false,
+      "schema": {
+       "title": "X-Api-Key",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/TxRef"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/TimelineResponse"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Timeline",
+    "tags": [
+     "transaction_intelligence"
+    ]
+   }
+  },
+  "/api/v1/transaction-intelligence/transaction": {
+   "post": {
+    "operationId": "transaction_api_v1_transaction_intelligence_transaction_post",
+    "parameters": [
+     {
+      "in": "header",
+      "name": "X-API-Key",
+      "required": false,
+      "schema": {
+       "title": "X-Api-Key",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/TransactionRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/TransactionEndpointResponse"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Transaction",
+    "tags": [
+     "transaction_intelligence"
+    ]
+   }
+  },
+  "/api/v1/transaction-intelligence/workflow": {
+   "post": {
+    "operationId": "workflow_api_v1_transaction_intelligence_workflow_post",
+    "parameters": [
+     {
+      "in": "header",
+      "name": "X-API-Key",
+      "required": false,
+      "schema": {
+       "title": "X-Api-Key",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/WorkflowRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/WorkflowResponse"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Workflow",
+    "tags": [
+     "transaction_intelligence"
+    ]
+   }
+  },
+  "/api/v1/transaction-intelligence/workspace": {
+   "post": {
+    "description": "DTX12 Transaction Workspace aggregate (+ DTX11 Universal Timeline).",
+    "operationId": "workspace_api_v1_transaction_intelligence_workspace_post",
+    "parameters": [
+     {
+      "in": "header",
+      "name": "X-API-Key",
+      "required": false,
+      "schema": {
+       "title": "X-Api-Key",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/TxRef"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/WorkspaceResponse"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Workspace",
+    "tags": [
+     "transaction_intelligence"
+    ]
+   }
+  },
+  "/api/v2/company-intelligence/identity": {
+   "post": {
+    "operationId": "company_identity_api_v2_company_intelligence_identity_post",
+    "parameters": [
+     {
+      "in": "header",
+      "name": "X-API-Key",
+      "required": false,
+      "schema": {
+       "title": "X-Api-Key",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/CompanyIdentityRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/CompanyIdentityResponse"
+        }
+       }
+      },
+      "description": "Identidad can\u00f3nica p\u00fablica de la empresa"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Identidad can\u00f3nica p\u00fablica de una empresa (COMP-1001/1002/1003)",
+    "tags": [
+     "company-intelligence (v2)"
+    ]
+   }
+  },
+  "/api/v2/company-intelligence/resolve": {
+   "post": {
+    "description": "Public resolver (CIF or name \u2192 master_id). No JWT, no /master/*, no Mongo access needed.\n\nCIF: exact match on the normalized CIF. Name: exact name_key first, then partial (diacritics/\ncase-insensitive), ranked. Returns the canonical master_id + a brief identity for each match.",
+    "operationId": "resolve_api_v2_company_intelligence_resolve_post",
+    "parameters": [
+     {
+      "in": "header",
+      "name": "X-API-Key",
+      "required": false,
+      "schema": {
+       "title": "X-Api-Key",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/CompanyResolveRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/CompanyResolveResponse"
+        }
+       }
+      },
+      "description": "Resoluci\u00f3n p\u00fablica CIF/Nombre \u2192 master_id"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Resolver un CIF o nombre a master_id can\u00f3nico (solo X-API-Key)",
+    "tags": [
+     "company-intelligence (v2)"
+    ]
+   }
+  }
+ }
+}

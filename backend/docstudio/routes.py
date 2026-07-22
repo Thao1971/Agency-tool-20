@@ -1,0 +1,947 @@
+"""Document Intelligence Studio — API routes."""
+
+from fastapi import APIRouter, Depends, Query, HTTPException
+from fastapi.responses import Response
+from database import db
+from models import now_iso
+from auth_utils import get_current_user
+from docstudio.composer import compose_sector_report, compose_company_profile, compose_benchmark_report, compose_investment_memo, compose_teaser, compose_information_memorandum, compute_quality_score, compose_company_snapshot, compose_benchmark_advanced, compose_from_template, generate_template_preview
+from docstudio.pdf_export import export_to_pdf
+from docstudio.templates import TEMPLATES, BRANDS
+import time
+
+router = APIRouter(prefix="/api/v1/docstudio", tags=["docstudio"])
+
+
+def _meta(t0):
+    return {"contract_version": "1.0", "generated_at": now_iso(),
+            "response_time_ms": round((time.time() - t0) * 1000, 1)}
+
+
+async def _record_timing(doc_id: str, t0: float):
+    """Record generation time in document metadata."""
+    ms = round((time.time() - t0) * 1000, 1)
+    await db.docstudio_documents.update_one(
+        {"document_id": doc_id},
+        {"$set": {"metadata.generation_time_ms": ms}}
+    )
+    return ms
+
+
+# ══════════════════════════════════════════
+# DASHBOARD
+# ══════════════════════════════════════════
+
+@router.get("/dashboard")
+async def dashboard(user=Depends(get_current_user)):
+    t0 = time.time()
+    docs_total = await db.docstudio_documents.count_documents({})
+    templates = await db.docstudio_templates.count_documents({})
+    brands = await db.docstudio_brands.count_documents({})
+    exports_total = await db.docstudio_exports.count_documents({})
+    ai_calls = await db.docstudio_ai_audit.count_documents({})
+    pdf_exports = await db.docstudio_exports.count_documents({"format": "pdf"})
+    pptx_exports = await db.docstudio_exports.count_documents({"format": "pptx"})
+
+    recent = await db.docstudio_documents.find(
+        {}, {"_id": 0, "document_id": 1, "title": 1, "status": 1, "created_at": 1, "template_id": 1}
+    ).sort("created_at", -1).limit(10).to_list(10)
+
+    # Telemetry: by template
+    tpl_pipeline = [
+        {"$group": {"_id": "$template_id", "count": {"$sum": 1}}},
+        {"$sort": {"count": -1}},
+    ]
+    by_template = {r["_id"]: r["count"] for r in await db.docstudio_documents.aggregate(tpl_pipeline).to_list(20)}
+
+    # Telemetry: avg generation time
+    time_pipeline = [
+        {"$match": {"metadata.generation_time_ms": {"$exists": True}}},
+        {"$group": {"_id": None, "avg_ms": {"$avg": "$metadata.generation_time_ms"}}},
+    ]
+    avg_time = await db.docstudio_documents.aggregate(time_pipeline).to_list(1)
+
+    # Export ratio
+    export_ratio = round(exports_total / max(docs_total, 1) * 100, 1)
+
+    return {
+        **_meta(t0),
+        "kpis": {
+            "documents": docs_total, "templates": templates, "brands": brands,
+            "exports": exports_total, "ai_calls": ai_calls,
+            "pdf_exports": pdf_exports, "pptx_exports": pptx_exports,
+        },
+        "telemetry": {
+            "by_template": by_template,
+            "export_ratio_pct": export_ratio,
+            "avg_generation_ms": round(avg_time[0]["avg_ms"]) if avg_time else None,
+        },
+        "recent_documents": recent,
+    }
+
+
+# ══════════════════════════════════════════
+# DOCUMENTS
+# ══════════════════════════════════════════
+
+@router.get("/documents")
+async def list_documents(limit: int = Query(20, ge=1, le=100), user=Depends(get_current_user)):
+    t0 = time.time()
+    docs = await db.docstudio_documents.find(
+        {}, {"_id": 0}
+    ).sort("created_at", -1).limit(limit).to_list(limit)
+    total = await db.docstudio_documents.count_documents({})
+    return {**_meta(t0), "documents": docs, "total": total}
+
+
+@router.get("/documents/{document_id}")
+async def get_document(document_id: str, user=Depends(get_current_user)):
+    t0 = time.time()
+    doc = await db.docstudio_documents.find_one({"document_id": document_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(404, "Document not found")
+    return {**_meta(t0), "document": doc}
+
+
+@router.delete("/documents/{document_id}")
+async def delete_document(document_id: str, user=Depends(get_current_user)):
+    await db.docstudio_documents.delete_one({"document_id": document_id})
+    return {"status": "deleted", "document_id": document_id}
+
+
+# ══════════════════════════════════════════
+# EDITOR — Save, update blocks, reorder, regenerate
+# ══════════════════════════════════════════
+
+from pydantic import BaseModel
+from typing import Optional, List, Any
+
+
+class BlockUpdate(BaseModel):
+    block_id: str
+    data: dict
+
+
+class SectionUpdate(BaseModel):
+    section_id: str
+    title: Optional[str] = None
+    blocks: Optional[List[dict]] = None
+
+
+@router.put("/documents/{document_id}/save")
+async def save_document(document_id: str, sections: List[SectionUpdate], user=Depends(get_current_user)):
+    """Save full document (all sections with their blocks). Main editor save."""
+    doc = await db.docstudio_documents.find_one({"document_id": document_id})
+    if not doc:
+        raise HTTPException(404, "Document not found")
+
+    # Rebuild sections from the editor payload
+    now = now_iso()
+    new_sections = []
+    for su in sections:
+        existing = next((s for s in doc.get("sections", []) if s["section_id"] == su.section_id), None)
+        if existing:
+            if su.title is not None:
+                existing["title"] = su.title
+            if su.blocks is not None:
+                existing["blocks"] = su.blocks
+            new_sections.append(existing)
+
+    await db.docstudio_documents.update_one(
+        {"document_id": document_id},
+        {"$set": {
+            "sections": new_sections,
+            "version": doc.get("version", 1) + 1,
+            "updated_at": now,
+            "last_edited_by": user.get("email"),
+        }}
+    )
+
+    return {"status": "saved", "version": doc.get("version", 1) + 1}
+
+
+@router.put("/documents/{document_id}/block/{block_id}")
+async def update_block(document_id: str, block_id: str, update: BlockUpdate, user=Depends(get_current_user)):
+    """Update a single block's data."""
+    doc = await db.docstudio_documents.find_one({"document_id": document_id})
+    if not doc:
+        raise HTTPException(404, "Document not found")
+
+    now = now_iso()
+    updated = False
+    for section in doc.get("sections", []):
+        for block in section.get("blocks", []):
+            if block.get("block_id") == block_id:
+                block["data"] = update.data
+                block["data_lineage"] = {
+                    "source": "manual_edit",
+                    "edited_by": user.get("email"),
+                    "date": now,
+                }
+                updated = True
+                break
+
+    if not updated:
+        raise HTTPException(404, "Block not found")
+
+    await db.docstudio_documents.update_one(
+        {"document_id": document_id},
+        {"$set": {"sections": doc["sections"], "updated_at": now, "version": doc.get("version", 1) + 1}}
+    )
+    return {"status": "updated", "block_id": block_id}
+
+
+@router.post("/documents/{document_id}/section/{section_id}/regenerate")
+async def regenerate_section(document_id: str, section_id: str, user=Depends(get_current_user)):
+    """Regenerate a section's AI content using current data context."""
+    doc = await db.docstudio_documents.find_one({"document_id": document_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(404, "Document not found")
+
+    section = next((s for s in doc.get("sections", []) if s["section_id"] == section_id), None)
+    if not section:
+        raise HTTPException(404, "Section not found")
+
+    # Gather context from the document's metadata
+    from docstudio.model_provider import generate_summary
+    cnae = doc.get("metadata", {}).get("cnae_code")
+    context = doc.get("metadata", {})
+
+    if cnae:
+        from services.economic_intelligence import get_cnae_economic_profile
+        try:
+            econ = await get_cnae_economic_profile(cnae)
+            context.update({
+                "revenue": econ.get("revenue"),
+                "employment": econ.get("employment"),
+                "exports": econ.get("exports_eur"),
+                "trend": econ.get("trend"),
+                "signals": [s.get("signal_type") for s in econ.get("signals", [])],
+            })
+        except Exception:
+            pass
+
+    doc_type = "sector_report" if "sector" in doc.get("template_id", "") else "company_profile"
+    ai_result = await generate_summary(context, doc_type=doc_type, document_id=document_id)
+
+    # Replace text/insight blocks in this section with new AI content
+    from docstudio import text_block, insight_block
+    now = now_iso()
+    new_blocks = []
+
+    if section["title"].lower() in ("resumen ejecutivo", "resumen"):
+        if ai_result.get("executive_summary"):
+            b = text_block(ai_result["executive_summary"], style="executive_summary")
+            b["data_lineage"] = {"source": "ai", "model": "gpt-5.2", "task": "regenerated_summary", "date": now}
+            new_blocks.append(b)
+        for f in ai_result.get("key_findings", []):
+            b = insight_block("Hallazgo clave", f, importance="high")
+            b["data_lineage"] = {"source": "ai", "model": "gpt-5.2", "task": "regenerated_findings", "date": now}
+            new_blocks.append(b)
+    elif section["title"].lower() in ("conclusiones", "conclusion"):
+        if ai_result.get("conclusion"):
+            b = text_block(ai_result["conclusion"], style="conclusion")
+            b["data_lineage"] = {"source": "ai", "model": "gpt-5.2", "task": "regenerated_conclusion", "date": now}
+            new_blocks.append(b)
+        for r in ai_result.get("recommendations", []):
+            b = insight_block("Recomendacion", r, importance="medium")
+            new_blocks.append(b)
+
+    if new_blocks:
+        section["blocks"] = new_blocks
+        await db.docstudio_documents.update_one(
+            {"document_id": document_id},
+            {"$set": {"sections": doc["sections"], "updated_at": now, "version": doc.get("version", 1) + 1}}
+        )
+
+    return {"status": "regenerated", "section_id": section_id, "blocks": len(new_blocks)}
+
+
+# ══════════════════════════════════════════
+# COMPOSE
+# ══════════════════════════════════════════
+
+@router.post("/compose/sector-report")
+async def compose_sector(
+    cnae_code: str = Query(...),
+    brand_id: str = Query("brand_bud"),
+    user=Depends(get_current_user),
+):
+    """Compose a sector intelligence report for a CNAE code."""
+    t0 = time.time()
+    doc = await compose_sector_report(cnae_code, brand_id, user.get("email"))
+    if "error" in doc:
+        raise HTTPException(400, doc["error"])
+    gen_ms = await _record_timing(doc["document_id"], t0)
+
+    return {
+        **_meta(t0),
+        "document_id": doc["document_id"],
+        "title": doc["title"],
+        "sections": len(doc["sections"]),
+        "status": doc["status"],
+        "generation_time_ms": gen_ms,
+    }
+
+
+@router.post("/compose/company-profile")
+async def compose_company(
+    company_id: str = Query(None),
+    cif: str = Query(None),
+    brand_id: str = Query("brand_bud"),
+    user=Depends(get_current_user),
+):
+    """Compose a company profile document."""
+    if not company_id and not cif:
+        raise HTTPException(400, "Provide company_id or cif")
+    t0 = time.time()
+    doc = await compose_company_profile(company_id, cif, brand_id, user.get("email"))
+    if "error" in doc:
+        raise HTTPException(400, doc["error"])
+
+    return {
+        **_meta(t0),
+        "document_id": doc["document_id"],
+        "title": doc["title"],
+        "sections": len(doc["sections"]),
+        "status": doc["status"],
+    }
+
+
+@router.post("/compose/benchmark")
+async def compose_benchmark(
+    cnae_code: str = Query(...),
+    brand_id: str = Query("brand_bud"),
+    user=Depends(get_current_user),
+):
+    """Compose a sector benchmark report with Financial Engine data."""
+    t0 = time.time()
+    doc = await compose_benchmark_report(cnae_code, brand_id, user.get("email"))
+    if "error" in doc:
+        raise HTTPException(400, doc["error"])
+    return {**_meta(t0), "document_id": doc["document_id"], "title": doc["title"],
+            "sections": len(doc["sections"]), "status": doc["status"]}
+
+
+@router.post("/compose/investment-memo")
+async def compose_invest_memo(
+    company_id: str = Query(None), cif: str = Query(None),
+    brand_id: str = Query("brand_bud"), user=Depends(get_current_user),
+):
+    """Compose an Investment Memo for a company."""
+    if not company_id and not cif:
+        raise HTTPException(400, "Provide company_id or cif")
+    t0 = time.time()
+    doc = await compose_investment_memo(company_id, cif, brand_id, user.get("email"))
+    if "error" in doc:
+        raise HTTPException(400, doc["error"])
+    return {**_meta(t0), "document_id": doc["document_id"], "title": doc["title"],
+            "sections": len(doc["sections"]), "status": doc["status"]}
+
+
+@router.post("/compose/teaser")
+async def compose_teaser_endpoint(
+    company_id: str = Query(None), cif: str = Query(None),
+    brand_id: str = Query("brand_bud"), user=Depends(get_current_user),
+):
+    """Compose a Teaser (blind profile) for a company."""
+    if not company_id and not cif:
+        raise HTTPException(400, "Provide company_id or cif")
+    t0 = time.time()
+    doc = await compose_teaser(company_id, cif, brand_id, user.get("email"))
+    if "error" in doc:
+        raise HTTPException(400, doc["error"])
+    return {**_meta(t0), "document_id": doc["document_id"], "title": doc["title"],
+            "sections": len(doc["sections"]), "status": doc["status"]}
+
+
+@router.post("/compose/information-memorandum")
+async def compose_im(
+    company_id: str = Query(None), cif: str = Query(None),
+    brand_id: str = Query("brand_bud"), user=Depends(get_current_user),
+):
+    """Compose a full Information Memorandum."""
+    if not company_id and not cif:
+        raise HTTPException(400, "Provide company_id or cif")
+    t0 = time.time()
+    doc = await compose_information_memorandum(company_id, cif, brand_id, user.get("email"))
+    if "error" in doc:
+        raise HTTPException(400, doc["error"])
+    return {**_meta(t0), "document_id": doc["document_id"], "title": doc["title"],
+            "sections": len(doc["sections"]), "status": doc["status"]}
+
+
+@router.get("/documents/{document_id}/quality")
+async def document_quality(document_id: str, user=Depends(get_current_user)):
+    """Compute quality score for a document."""
+    t0 = time.time()
+    doc = await db.docstudio_documents.find_one({"document_id": document_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(404, "Document not found")
+    quality = compute_quality_score(doc)
+    return {**_meta(t0), "document_id": document_id, "quality": quality}
+
+
+@router.post("/compose/company-snapshot")
+async def compose_snapshot(
+    company_id: str = Query(None), cif: str = Query(None),
+    brand_id: str = Query("brand_bud"), user=Depends(get_current_user),
+):
+    """Company Snapshot — minimal intelligence unit. <30 seconds."""
+    if not company_id and not cif:
+        raise HTTPException(400, "Provide company_id or cif")
+    t0 = time.time()
+    doc = await compose_company_snapshot(company_id, cif, brand_id, user.get("email"))
+    if "error" in doc:
+        raise HTTPException(400, doc["error"])
+    return {**_meta(t0), "document_id": doc["document_id"], "title": doc["title"],
+            "sections": len(doc["sections"]), "status": doc["status"]}
+
+
+@router.post("/compose/benchmark-advanced")
+async def compose_bm_advanced(
+    cnae_code: str = Query(...),
+    company_id: str = Query(None),
+    brand_id: str = Query("brand_bud"),
+    user=Depends(get_current_user),
+):
+    """Advanced Benchmark with comparables, positioning, SWOT. <60 seconds."""
+    t0 = time.time()
+    doc = await compose_benchmark_advanced(cnae_code, company_id, brand_id, user.get("email"))
+    if "error" in doc:
+        raise HTTPException(400, doc["error"])
+    return {**_meta(t0), "document_id": doc["document_id"], "title": doc["title"],
+            "sections": len(doc["sections"]), "status": doc["status"]}
+
+
+@router.post("/compose/from-template")
+async def compose_generic(
+    template_id: str = Query(...),
+    company_id: str = Query(None),
+    cif: str = Query(None),
+    cnae_code: str = Query(None),
+    brand_id: str = Query(None),
+    user=Depends(get_current_user),
+):
+    """Compose a document from ANY user-created template. Universal composer."""
+    t0 = time.time()
+    doc = await compose_from_template(
+        template_id, company_id=company_id, cif=cif,
+        cnae_code=cnae_code, brand_id=brand_id, user=user.get("email"),
+    )
+    if "error" in doc:
+        raise HTTPException(400, doc["error"])
+    gen_ms = await _record_timing(doc["document_id"], t0)
+    return {**_meta(t0), "document_id": doc["document_id"], "title": doc["title"],
+            "sections": len(doc["sections"]), "status": doc["status"], "generation_time_ms": gen_ms}
+
+
+@router.post("/templates/{template_id}/preview")
+async def preview_template(template_id: str, brand_id: str = Query("brand_bud"), user=Depends(get_current_user)):
+    """Preview how a template will look with sample data. Instant, no AI, no DB writes."""
+    t0 = time.time()
+    template = await db.docstudio_templates.find_one({"template_id": template_id}, {"_id": 0})
+    if not template:
+        raise HTTPException(404, "Template not found")
+
+    brand = await db.docstudio_brands.find_one({"brand_id": brand_id}, {"_id": 0})
+    if not brand:
+        brand = BRANDS.get("bud_advisors", {})
+
+    preview_doc = generate_template_preview(template, brand)
+    return {**_meta(t0), "document": preview_doc}
+
+
+# ══════════════════════════════════════════
+# TELEMETRY
+# ══════════════════════════════════════════
+
+@router.get("/telemetry")
+async def telemetry(user=Depends(get_current_user)):
+    """Business metrics for DIS."""
+    t0 = time.time()
+
+    # By document type
+    type_pipeline = [
+        {"$group": {
+            "_id": "$metadata.type",
+            "count": {"$sum": 1},
+        }},
+        {"$sort": {"count": -1}},
+    ]
+    by_type = await db.docstudio_documents.aggregate(type_pipeline).to_list(20)
+
+    # By template
+    tpl_pipeline = [
+        {"$group": {"_id": "$template_id", "count": {"$sum": 1}}},
+        {"$sort": {"count": -1}},
+    ]
+    by_template = await db.docstudio_documents.aggregate(tpl_pipeline).to_list(20)
+
+    # Export stats
+    export_pipeline = [
+        {"$group": {"_id": "$format", "count": {"$sum": 1}, "total_bytes": {"$sum": "$size_bytes"}}},
+    ]
+    by_format = await db.docstudio_exports.aggregate(export_pipeline).to_list(10)
+
+    # Quality scores
+    all_docs = await db.docstudio_documents.find({}, {"_id": 0}).to_list(100)
+    from docstudio.composer import compute_quality_score
+    grades = {"A": 0, "B": 0, "C": 0, "D": 0}
+    total_score = 0
+    for d in all_docs:
+        q = compute_quality_score(d)
+        grades[q["grade"]] = grades.get(q["grade"], 0) + 1
+        total_score += q["global_score"]
+
+    avg_quality = round(total_score / max(len(all_docs), 1))
+
+    # AI usage
+    ai_pipeline = [
+        {"$group": {"_id": "$task", "count": {"$sum": 1}}},
+        {"$sort": {"count": -1}},
+    ]
+    ai_by_task = await db.docstudio_ai_audit.aggregate(ai_pipeline).to_list(20)
+
+    total_docs = await db.docstudio_documents.count_documents({})
+    total_exports = await db.docstudio_exports.count_documents({})
+
+    return {
+        **_meta(t0),
+        "total_documents": total_docs,
+        "total_exports": total_exports,
+        "export_ratio_pct": round(total_exports / max(total_docs, 1) * 100, 1),
+        "by_document_type": [{"type": r["_id"] or "unknown", "count": r["count"]} for r in by_type],
+        "by_template": [{"template": r["_id"], "count": r["count"]} for r in by_template],
+        "by_export_format": [{"format": r["_id"], "count": r["count"], "total_mb": round(r["total_bytes"] / 1024 / 1024, 2)} for r in by_format],
+        "quality": {"avg_score": avg_quality, "grades": grades},
+        "ai_usage": [{"task": r["_id"], "calls": r["count"]} for r in ai_by_task],
+    }
+
+
+# ══════════════════════════════════════════
+# EXPORT
+# ══════════════════════════════════════════
+
+@router.get("/export/{document_id}/pdf")
+async def export_pdf(document_id: str, user=Depends(get_current_user)):
+    """Export document to PDF."""
+    doc = await db.docstudio_documents.find_one({"document_id": document_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(404, "Document not found")
+
+    brand = await db.docstudio_brands.find_one({"brand_id": doc.get("brand_id", "brand_bud")}, {"_id": 0})
+    if not brand:
+        brand = BRANDS["bud_advisors"]
+
+    pdf_bytes = await export_to_pdf(doc, brand)
+
+    # Log export
+    await db.docstudio_exports.insert_one({
+        "export_id": now_iso(),
+        "document_id": document_id,
+        "format": "pdf",
+        "size_bytes": len(pdf_bytes),
+        "exported_at": now_iso(),
+        "exported_by": user.get("email"),
+    })
+
+    filename = doc.get("title", "document").replace(" ", "_")[:50]
+    filename = ''.join(c for c in filename if c.isascii() and c not in '<>:"/\\|?*')
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}.pdf"'},
+    )
+
+
+@router.get("/export/{document_id}/pptx")
+async def export_pptx(document_id: str, user=Depends(get_current_user)):
+    """Export document to editable PowerPoint."""
+    doc = await db.docstudio_documents.find_one({"document_id": document_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(404, "Document not found")
+
+    brand = await db.docstudio_brands.find_one({"brand_id": doc.get("brand_id", "brand_bud")}, {"_id": 0})
+    if not brand:
+        brand = BRANDS["bud_advisors"]
+
+    from docstudio.pptx_export import export_to_pptx
+    pptx_bytes = export_to_pptx(doc, brand)
+
+    await db.docstudio_exports.insert_one({
+        "export_id": now_iso(),
+        "document_id": document_id,
+        "format": "pptx",
+        "size_bytes": len(pptx_bytes),
+        "exported_at": now_iso(),
+        "exported_by": user.get("email"),
+    })
+
+    filename = doc.get("title", "document").replace(" ", "_")[:50]
+    filename = ''.join(c for c in filename if c.isascii() and c not in '<>:"/\\|?*')
+    return Response(
+        content=pptx_bytes,
+        media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        headers={"Content-Disposition": f'attachment; filename="{filename}.pptx"'},
+    )
+
+
+# ══════════════════════════════════════════
+# TEMPLATES & BRANDS
+# ══════════════════════════════════════════
+
+@router.get("/templates")
+async def list_templates(user=Depends(get_current_user)):
+    t0 = time.time()
+    templates = await db.docstudio_templates.find({}, {"_id": 0}).to_list(50)
+    return {**_meta(t0), "templates": templates}
+
+
+@router.get("/brands")
+async def list_brands(user=Depends(get_current_user)):
+    t0 = time.time()
+    brands = await db.docstudio_brands.find({}, {"_id": 0}).to_list(20)
+    return {**_meta(t0), "brands": brands}
+
+
+# ══════════════════════════════════════════
+# AI AUDIT
+# ══════════════════════════════════════════
+
+@router.get("/ai-audit")
+async def ai_audit(limit: int = Query(20, ge=1, le=100), user=Depends(get_current_user)):
+    t0 = time.time()
+    audits = await db.docstudio_ai_audit.find(
+        {}, {"_id": 0}
+    ).sort("created_at", -1).limit(limit).to_list(limit)
+    total = await db.docstudio_ai_audit.count_documents({})
+    return {**_meta(t0), "audits": audits, "total": total}
+
+
+# ══════════════════════════════════════════
+# TEMPLATE BUILDER
+# ══════════════════════════════════════════
+
+class TemplateSection(BaseModel):
+    title: str
+    order: int
+    block_types: List[str] = []
+    data_source: Optional[str] = None
+    ai_prompt: Optional[str] = None
+    fields: Optional[List[str]] = None
+
+
+class TemplateCreate(BaseModel):
+    name: str
+    description: str = ""
+    category: str = "intelligence"
+    brand_id: Optional[str] = None
+    analysis_model: str = "openai"
+    narrative_model: str = "openai"
+    sections: List[TemplateSection] = []
+
+
+class TemplateUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    category: Optional[str] = None
+    brand_id: Optional[str] = None
+    analysis_model: Optional[str] = None
+    narrative_model: Optional[str] = None
+    sections: Optional[List[TemplateSection]] = None
+
+
+@router.post("/templates")
+async def create_template(tpl: TemplateCreate, user=Depends(get_current_user)):
+    """Create a new template from scratch."""
+    t0 = time.time()
+    now = now_iso()
+    template = {
+        "template_id": f"tpl_{now_iso()[:10].replace('-', '')}_{now_iso()[11:19].replace(':', '')}",
+        "name": tpl.name,
+        "description": tpl.description,
+        "category": tpl.category,
+        "brand_id": tpl.brand_id,
+        "version": 1,
+        "analysis_model": tpl.analysis_model,
+        "narrative_model": tpl.narrative_model,
+        "sections": [s.dict() for s in tpl.sections],
+        "provider": "custom",
+        "owner": user.get("email"),
+        "status": "active",
+        "visibility": "private",
+        "created_at": now,
+        "updated_at": now,
+    }
+    await db.docstudio_templates.insert_one(template)
+    return {**_meta(t0), "template_id": template["template_id"], "version": 1}
+
+
+@router.put("/templates/{template_id}")
+async def update_template(template_id: str, update: TemplateUpdate, user=Depends(get_current_user)):
+    """Update a template. Increments version."""
+    t0 = time.time()
+    existing = await db.docstudio_templates.find_one({"template_id": template_id})
+    if not existing:
+        raise HTTPException(404, "Template not found")
+
+    now = now_iso()
+    new_version = existing.get("version", 1) + 1
+
+    # Save version history
+    await db.docstudio_template_versions.insert_one({
+        "template_id": template_id,
+        "version": existing.get("version", 1),
+        "snapshot": {k: v for k, v in existing.items() if k != "_id"},
+        "saved_at": now,
+        "saved_by": user.get("email"),
+    })
+
+    # Apply updates
+    changes = {"version": new_version, "updated_at": now}
+    for field in ["name", "description", "category", "brand_id", "analysis_model", "narrative_model"]:
+        val = getattr(update, field, None)
+        if val is not None:
+            changes[field] = val
+    if update.sections is not None:
+        changes["sections"] = [s.dict() for s in update.sections]
+
+    await db.docstudio_templates.update_one(
+        {"template_id": template_id}, {"$set": changes}
+    )
+    return {**_meta(t0), "template_id": template_id, "version": new_version}
+
+
+@router.post("/templates/{template_id}/duplicate")
+async def duplicate_template(template_id: str, new_name: str = Query(...), user=Depends(get_current_user)):
+    """Duplicate a template."""
+    t0 = time.time()
+    existing = await db.docstudio_templates.find_one({"template_id": template_id}, {"_id": 0})
+    if not existing:
+        raise HTTPException(404, "Template not found")
+
+    now = now_iso()
+    new_tpl = {**existing}
+    new_tpl["template_id"] = f"tpl_{now_iso()[:10].replace('-', '')}_{now_iso()[11:19].replace(':', '')}"
+    new_tpl["name"] = new_name
+    new_tpl["version"] = 1
+    new_tpl["owner"] = user.get("email")
+    new_tpl["provider"] = "custom"
+    new_tpl["created_at"] = now
+    new_tpl["updated_at"] = now
+
+    await db.docstudio_templates.insert_one(new_tpl)
+    return {**_meta(t0), "template_id": new_tpl["template_id"], "name": new_name}
+
+
+@router.get("/templates/{template_id}")
+async def get_template(template_id: str, user=Depends(get_current_user)):
+    """Get a single template with full detail."""
+    t0 = time.time()
+    tpl = await db.docstudio_templates.find_one({"template_id": template_id}, {"_id": 0})
+    if not tpl:
+        raise HTTPException(404, "Template not found")
+    return {**_meta(t0), "template": tpl}
+
+
+@router.get("/templates/{template_id}/versions")
+async def template_versions(template_id: str, user=Depends(get_current_user)):
+    """Get version history of a template."""
+    t0 = time.time()
+    versions = await db.docstudio_template_versions.find(
+        {"template_id": template_id}, {"_id": 0}
+    ).sort("version", -1).to_list(50)
+    return {**_meta(t0), "template_id": template_id, "versions": versions}
+
+
+@router.delete("/templates/{template_id}")
+async def delete_template(template_id: str, user=Depends(get_current_user)):
+    """Delete a custom template (not built-in ones)."""
+    tpl = await db.docstudio_templates.find_one({"template_id": template_id}, {"_id": 0})
+    if not tpl:
+        raise HTTPException(404, "Template not found")
+    if tpl.get("provider") != "custom":
+        raise HTTPException(400, "Cannot delete built-in templates")
+    await db.docstudio_templates.delete_one({"template_id": template_id})
+    return {"status": "deleted", "template_id": template_id}
+
+
+@router.post("/documents/{document_id}/save-as-template")
+async def save_document_as_template(
+    document_id: str,
+    name: str = Query(...),
+    category: str = Query("intelligence"),
+    user=Depends(get_current_user),
+):
+    """Save an existing document's structure as a reusable template."""
+    t0 = time.time()
+    doc = await db.docstudio_documents.find_one({"document_id": document_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(404, "Document not found")
+
+    now = now_iso()
+
+    # Extract section structure from the document (block types, not data)
+    sections = []
+    for s in doc.get("sections", []):
+        block_types = list(set(b.get("block_type") for b in s.get("blocks", [])))
+        data_sources = list(set(b.get("data_lineage", {}).get("source", "manual") for b in s.get("blocks", [])))
+        sections.append({
+            "title": s.get("title", ""),
+            "order": s.get("order", 0),
+            "block_types": block_types,
+            "data_source": data_sources[0] if len(data_sources) == 1 else "mixed",
+        })
+
+    template = {
+        "template_id": f"tpl_{now[:10].replace('-', '')}_{now[11:19].replace(':', '')}",
+        "name": name,
+        "description": f"Plantilla creada desde documento: {doc.get('title', '')}",
+        "category": category,
+        "brand_id": doc.get("brand_id"),
+        "version": 1,
+        "analysis_model": "openai",
+        "narrative_model": "openai",
+        "sections": sections,
+        "provider": "custom",
+        "owner": user.get("email"),
+        "source_document_id": document_id,
+        "status": "active",
+        "visibility": "private",
+        "created_at": now,
+        "updated_at": now,
+    }
+
+    await db.docstudio_templates.insert_one(template)
+    return {**_meta(t0), "template_id": template["template_id"], "name": name, "sections": len(sections)}
+
+
+# ══════════════════════════════════════════
+# FINANCIAL ENGINE
+# ══════════════════════════════════════════
+
+@router.get("/financial/company/{company_id}")
+async def financial_analysis_company(company_id: str, user=Depends(get_current_user)):
+    """Run full financial analysis for a company (deterministic, no AI)."""
+    t0 = time.time()
+    from docstudio.financial_engine import analyze_company_financials
+
+    financials = await db.iberinform_financials.find(
+        {"company_id": company_id}, {"_id": 0}
+    ).sort("year", 1).to_list(10)
+
+    if not financials:
+        raise HTTPException(404, "No financial data for this company")
+
+    analysis = analyze_company_financials(financials)
+    return {**_meta(t0), "company_id": company_id, "analysis": analysis}
+
+
+@router.get("/financial/sector-benchmark/{cnae_code}")
+async def sector_benchmark(cnae_code: str, user=Depends(get_current_user)):
+    """Sector benchmark: quartiles, percentiles, rankings (deterministic, no AI)."""
+    t0 = time.time()
+    from docstudio.financial_engine import analyze_sector_benchmark
+
+    benchmark = await analyze_sector_benchmark(cnae_code)
+    return {**_meta(t0), **benchmark}
+
+
+@router.get("/financial/compare")
+async def compare_company_to_sector(
+    company_id: str = Query(...),
+    cnae_code: str = Query(...),
+    user=Depends(get_current_user),
+):
+    """Compare a company against its sector peers (deterministic, no AI)."""
+    t0 = time.time()
+    from docstudio.financial_engine import (
+        analyze_company_financials, analyze_sector_benchmark,
+        sector_comparison, revenue_per_employee, ebitda_margin as calc_ebitda_margin,
+    )
+
+    financials = await db.iberinform_financials.find(
+        {"company_id": company_id}, {"_id": 0}
+    ).sort("year", -1).limit(1).to_list(1)
+
+    if not financials:
+        raise HTTPException(404, "No financial data")
+
+    latest = financials[0]
+    benchmark = await analyze_sector_benchmark(cnae_code)
+
+    company_metrics = {
+        "revenue": latest.get("revenue"),
+        "ebitda": latest.get("ebitda"),
+        "employees": latest.get("employees"),
+        "ebitda_margin": latest.get("ebitda_margin"),
+    }
+    rev = latest.get("revenue", 0)
+    emp = latest.get("employees", 0)
+    if rev and emp:
+        company_metrics["revenue_per_employee"] = revenue_per_employee(rev, emp)
+
+    # Build comparison against sector benchmarks
+    if benchmark.get("peers", 0) > 0:
+        # Use quartile data as proxy for comparison
+        for metric in ["revenue", "ebitda", "ebitda_margin", "revenue_per_employee"]:
+            q = benchmark.get(metric, {})
+            if q and company_metrics.get(metric) is not None:
+                from docstudio.financial_engine import gap_vs_benchmark
+                company_metrics[f"{metric}_vs_median"] = gap_vs_benchmark(
+                    company_metrics[metric], q.get("median", 0)
+                )
+
+    return {
+        **_meta(t0),
+        "company_id": company_id,
+        "cnae_code": cnae_code,
+        "company_metrics": company_metrics,
+        "sector_benchmark": benchmark,
+    }
+
+
+# ══════════════════════════════════════════
+# TEMPLATE REGISTRY
+# ══════════════════════════════════════════
+
+TEMPLATE_REGISTRY = [
+    # Intelligence
+    {"id": "tpl_sector_report", "name": "Informe Sectorial", "category": "intelligence", "status": "active"},
+    {"id": "tpl_company_profile", "name": "Ficha de Compania", "category": "intelligence", "status": "active"},
+    {"id": "tpl_benchmark", "name": "Benchmark Report", "category": "intelligence", "status": "planned"},
+    {"id": "tpl_snapshot", "name": "Company Snapshot", "category": "intelligence", "status": "planned"},
+    # M&A
+    {"id": "tpl_teaser", "name": "Teaser", "category": "mna", "status": "planned"},
+    {"id": "tpl_im", "name": "Information Memorandum", "category": "mna", "status": "planned"},
+    {"id": "tpl_investment_memo", "name": "Investment Memo", "category": "mna", "status": "planned"},
+    {"id": "tpl_vdd", "name": "Vendor Due Diligence", "category": "mna", "status": "planned"},
+    {"id": "tpl_cdd", "name": "Commercial Due Diligence", "category": "mna", "status": "planned"},
+    # Legal
+    {"id": "tpl_nda", "name": "NDA", "category": "legal", "status": "planned"},
+    {"id": "tpl_spa", "name": "SPA (Share Purchase Agreement)", "category": "legal", "status": "planned"},
+    {"id": "tpl_sha", "name": "SHA (Shareholders Agreement)", "category": "legal", "status": "planned"},
+    {"id": "tpl_loi", "name": "LOI (Letter of Intent)", "category": "legal", "status": "planned"},
+]
+
+
+@router.get("/registry")
+async def template_registry(user=Depends(get_current_user)):
+    """Full template registry with categories and status."""
+    t0 = time.time()
+    categories = {}
+    for t in TEMPLATE_REGISTRY:
+        cat = t["category"]
+        if cat not in categories:
+            categories[cat] = []
+        categories[cat].append(t)
+
+    return {
+        **_meta(t0),
+        "registry": TEMPLATE_REGISTRY,
+        "by_category": categories,
+        "total": len(TEMPLATE_REGISTRY),
+        "active": sum(1 for t in TEMPLATE_REGISTRY if t["status"] == "active"),
+        "planned": sum(1 for t in TEMPLATE_REGISTRY if t["status"] == "planned"),
+    }
