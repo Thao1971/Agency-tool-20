@@ -13,6 +13,7 @@ Flow:
 import logging
 import random
 import string
+import unicodedata
 from typing import Dict, List, Optional
 from database import db
 from models import new_id, now_iso
@@ -20,6 +21,26 @@ from services.cnae_catalog import CNAE_DIVISIONS, CNAE_GROUPS, get_section_for_d
 from services.geo_catalog import PROVINCES, get_ccaa_for_province
 
 logger = logging.getLogger(__name__)
+
+
+def _strip_accents_local(s: str) -> str:
+    return "".join(c for c in unicodedata.normalize("NFKD", s) if not unicodedata.combining(c))
+
+
+# Real Iberinform deliveries give province as a NAME (e.g. "ALAVA"), not the 2-digit
+# code the rest of the app uses — PROVINCES is keyed by code with accented/bilingual
+# labels (e.g. "Araba/Álava"). Build a best-effort reverse lookup once at import time;
+# never fabricates a code when no match is found (falls back to storing the raw name).
+_PROVINCE_NAME_TO_CODE: Dict[str, str] = {}
+for _code, _info in PROVINCES.items():
+    for _part in _info["label"].split("/"):
+        _PROVINCE_NAME_TO_CODE[_strip_accents_local(_part).strip().upper()] = _code
+
+
+def _resolve_province_code(name: str) -> str:
+    if not name:
+        return ""
+    return _PROVINCE_NAME_TO_CODE.get(_strip_accents_local(name).strip().upper(), "")
 
 
 # ══════════════════════════════════════════
@@ -277,7 +298,10 @@ async def _update_companies_master(companies: List[Dict]) -> int:
                 "status": comp["status"],
                 "employees_latest": comp["employees_latest"],
                 "revenue_latest": comp["revenue_latest"],
-                "data_source": "iberinform",
+                # Was hardcoded "iberinform" regardless of real vs synthetic — the
+                # exact same masking bug found and fixed elsewhere in the data
+                # layer (master_builder.py _build_sources). Now reflects reality.
+                "data_source": comp.get("source", "iberinform"),
                 "updated_at": comp["updated_at"],
             },
             "$setOnInsert": {
@@ -295,6 +319,192 @@ async def _update_companies_master(companies: List[Dict]) -> int:
             updated += 1
 
     return updated
+
+
+async def process_real_iberinform_tab_directory(directory: str, source_version: str = "real-2026-07") -> Dict:
+    """Process a real Iberinform delivery (Datos_GENERALES.tab + Datos_BALANCES.tab)
+    into the LEGACY iberinform_companies / iberinform_financials / companies_master
+    collections — the ones still read by Sector/Geo/Cross Intelligence, DocStudio,
+    Valuo integration, and the CNMV/BME company-matching connectors.
+
+    This is a parallel, differently-shaped delivery from Daniel's 25,000-company real
+    sample (2026-07): tab-separated, English field names, financials as a long
+    (BALANCE_SHEET_ITEM code, value) table rather than the single flat CSV row this
+    module's older `_parse_row`/`process_real_iberinform_file` expects. Verified
+    against `Diccionario_Datos_Financial_Info.pdf` + `Financial Info Translated
+    V2.xlsx`: the BALANCE_SHEET_ITEM codes are the SAME numbering as
+    `services.data_layer.ingestion.account_map.ACCOUNT_MAP` (10000=total_assets,
+    20000=equity, 40100=revenue, 40800=depreciation, 49100=operating_income,
+    49500=net_income) — reused as-is here rather than re-deriving.
+
+    See services/data_layer/ingestion/iberinform_tab_ingest.py for the modern-schema
+    (norm_company/master_companies) counterpart of this same source data — the app
+    has two parallel company data models today, this function only fills the legacy
+    one. Upserts by CIF (does not wipe existing data), so re-running with a bigger
+    or updated delivery is safe.
+    """
+    import csv
+    import os
+    from pymongo import UpdateOne
+    from services.data_layer.ingestion.account_map import parse_amount, derive_metrics, ACCOUNT_MAP
+
+    generales_path = os.path.join(directory, "Datos_GENERALES.tab")
+    balances_path = os.path.join(directory, "Datos_BALANCES.tab")
+    if not os.path.isfile(generales_path):
+        return {"status": "error", "message": f"No se encontro {generales_path}"}
+
+    now = now_iso()
+    account_codes = set(ACCOUNT_MAP.keys())
+
+    # ── Financials pivot: (cif -> year -> {code: value}), filtered to the 6 codes
+    # derive_metrics() actually reads (same reasoning as the modern ingestor: the
+    # file carries ~900 possible line items per company-year, no need to keep them
+    # all in memory for a 25k-company batch). ──
+    fin_by_cif: Dict[str, Dict[int, Dict[str, float]]] = {}
+    if os.path.isfile(balances_path):
+        with open(balances_path, encoding="utf-8", errors="replace", newline="") as fh:
+            reader = csv.DictReader(fh, delimiter="\t")
+            for row in reader:
+                cif = (row.get("REG_NUMBER") or "").strip()
+                code = (row.get("BALANCE_SHEET_ITEM") or "").strip()
+                if not cif or code not in account_codes:
+                    continue
+                year_f = parse_amount(row.get("BALANCE_SHEET_YEAR"))
+                val = parse_amount(row.get("BALANCE_SHEET_ITEM_VALUE"))
+                if year_f is None or val is None:
+                    continue
+                fin_by_cif.setdefault(cif, {}).setdefault(int(year_f), {})[code] = val
+    else:
+        logger.warning(f"process_real_iberinform_tab_directory: {balances_path} not found — companies will have no financials")
+
+    # ── Company file (GENERALES) ──
+    companies: List[Dict] = []
+    fiscal_years: List[Dict] = []
+    with open(generales_path, encoding="latin-1", errors="replace", newline="") as fh:
+        reader = csv.DictReader(fh, delimiter="\t")
+        for row in reader:
+            cif = (row.get("REG_NUMBER") or "").strip()
+            if not cif or len(cif) < 5:
+                continue
+            name = (row.get("COMPANY_NAME") or "").strip()
+            cnae = (row.get("ACTIVITY_CODE") or "").strip()
+            cnae_div = cnae[:2] if len(cnae) >= 2 else ""
+            section = get_section_for_division(cnae_div) if cnae_div else None
+            province_name = (row.get("PROVINCE") or "").strip()
+            province_code = _resolve_province_code(province_name)
+
+            employees = 0
+            try:
+                employees = int(float(row.get("EMPLOYEES") or 0))
+            except (ValueError, TypeError):
+                pass
+
+            company_years = fin_by_cif.get(cif, {})
+            latest_year = max(company_years.keys()) if company_years else None
+            latest_metrics = derive_metrics(company_years[latest_year]) if latest_year is not None else {}
+
+            company = {
+                "company_id": new_id(),
+                "cif": cif,
+                "cif_normalized": cif.upper().replace("-", "").replace(" ", ""),
+                "legal_name": name,
+                "trade_name": (row.get("TRADE_NAME") or "").strip() or name,
+                "cnae_code": cnae,
+                "cnae_division": cnae_div,
+                "cnae_section": section,
+                "cnae_label": CNAE_DIVISIONS.get(cnae_div, {}).get("label", ""),
+                "province_code": province_code,
+                "province_name": PROVINCES.get(province_code, {}).get("label", "") if province_code else province_name,
+                "ccaa_code": PROVINCES.get(province_code, {}).get("ccaa") if province_code else None,
+                "legal_form": (row.get("SHORT_ES") or "").strip(),
+                "status": "active",
+                "employees_latest": employees,
+                "revenue_latest": latest_metrics.get("revenue") or 0,
+                "source": "iberinform",
+                "source_version": source_version,
+                "imported_at": now,
+                "updated_at": now,
+            }
+            companies.append(company)
+
+            for year, accounts in company_years.items():
+                metrics = derive_metrics(accounts)
+                fiscal_years.append({
+                    "fiscal_year_id": new_id(),
+                    "company_id": company["company_id"],
+                    "cif": cif,
+                    "year": year,
+                    "revenue": metrics.get("revenue"),
+                    "ebitda": metrics.get("ebitda"),
+                    "ebitda_margin": metrics.get("ebitda_margin"),
+                    "employees": employees,
+                    "total_assets": metrics.get("total_assets"),
+                    "equity": metrics.get("equity"),
+                    "net_income": metrics.get("net_income"),
+                    "source": "iberinform",
+                    "imported_at": now,
+                })
+
+    if not companies:
+        return {"status": "error", "message": "No se encontraron empresas validas en Datos_GENERALES.tab"}
+
+    # Persist via chunked bulk_write (25k+ individual round trips would be slow
+    # against a real remote Mongo) — upsert by cif_normalized/cif+year+source, never
+    # delete_many first, so a re-run with an updated delivery only ever adds/refreshes.
+    CHUNK = 2000
+    company_ops = [UpdateOne({"cif_normalized": c["cif_normalized"]}, {"$set": c}, upsert=True) for c in companies]
+    for i in range(0, len(company_ops), CHUNK):
+        await db.iberinform_companies.bulk_write(company_ops[i:i + CHUNK], ordered=False)
+
+    fy_ops = [UpdateOne({"cif": fy["cif"], "year": fy["year"], "source": "iberinform"}, {"$set": fy}, upsert=True)
+              for fy in fiscal_years]
+    for i in range(0, len(fy_ops), CHUNK):
+        await db.iberinform_financials.bulk_write(fy_ops[i:i + CHUNK], ordered=False)
+
+    master_updates = await _update_companies_master(companies)
+
+    return {
+        "status": "completed",
+        "companies_imported": len(companies),
+        "fiscal_years_imported": len(fiscal_years),
+        "companies_master_updated": master_updates,
+        "source": "iberinform",
+        "source_version": source_version,
+        "generated_at": now,
+    }
+
+
+async def purge_synthetic_dataset() -> Dict:
+    """Remove the synthetic Iberinform dataset (source == "iberinform_synthetic")
+    from iberinform_companies, iberinform_financials, AND the companies_master
+    records that only exist because of it.
+
+    Intentionally conservative: only deletes companies_master docs whose
+    master_company_id came from a synthetic company_id AND whose data_source is
+    still "iberinform_synthetic" (i.e. nothing else has legitimately claimed/updated
+    that record since). A company_id that a real delivery has since re-upserted over
+    (same CIF, now source="iberinform") is left alone — real data always wins,
+    nothing here can delete real data.
+    """
+    synthetic_ids = await db.iberinform_companies.distinct("company_id", {"source": "iberinform_synthetic"})
+
+    companies_deleted = (await db.iberinform_companies.delete_many({"source": "iberinform_synthetic"})).deleted_count
+    financials_deleted = (await db.iberinform_financials.delete_many({"source": "iberinform_synthetic"})).deleted_count
+
+    master_deleted = 0
+    if synthetic_ids:
+        result = await db.companies_master.delete_many({
+            "master_company_id": {"$in": synthetic_ids},
+            "data_source": "iberinform_synthetic",
+        })
+        master_deleted = result.deleted_count
+
+    return {
+        "status": "completed",
+        "iberinform_companies_deleted": companies_deleted,
+        "iberinform_financials_deleted": financials_deleted,
+        "companies_master_deleted": master_deleted,
+    }
 
 
 async def process_real_iberinform_file(file_id: str) -> Dict:

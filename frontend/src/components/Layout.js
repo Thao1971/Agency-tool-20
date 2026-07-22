@@ -8,7 +8,7 @@ import {
   TrendingUp, Globe, BarChart3, Zap, ArrowRightLeft, Database,
   Landmark, Shield, Heart, Workflow, ListChecks, ScrollText,
   Users, Lock, History, Flag, Plug, Gauge, Sparkles,
-  Eye, PieChart, Combine, Network, GitCompareArrows
+  Eye, PieChart, Combine, Network, GitCompareArrows, Upload
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -82,6 +82,7 @@ const navSections = [
       { path: '/taxonomy-intelligence', label: 'Taxonomía Intel', icon: Layers },
       { path: '/review', label: 'Cola de revisión', icon: ClipboardCheck },
       { path: '/data-providers', label: 'Proveedores de datos', icon: Database },
+      { path: '/data-providers/iberinform-delivery', label: 'Entregas Iberinform', icon: Upload },
       { path: '/data-quality', label: 'Calidad de datos', icon: Gauge },
     ],
   },

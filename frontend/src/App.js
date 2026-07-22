@@ -21,6 +21,7 @@ import BormePage from "@/pages/BormePage";
 import MAPage from "@/pages/MAPage";
 import EditorialPage from "@/pages/editorial/EditorialPage";
 import DataProvidersPage from "@/pages/DataProvidersPage";
+import IberinformDeliveryPage from "@/pages/IberinformDeliveryPage";
 import MasterEntitiesPage from "@/pages/MasterEntitiesPage";
 import MacroIntelligencePage from "@/pages/MacroIntelligencePage";
 import SectorIntelligencePage from "@/pages/SectorIntelligencePage";
@@ -88,6 +89,7 @@ function AppRoutes() {
         <Route path="borme" element={<BormePage />} />
         <Route path="ma-radar" element={<MAPage />} />
         <Route path="data-providers" element={<DataProvidersPage />} />
+        <Route path="data-providers/iberinform-delivery" element={<IberinformDeliveryPage />} />
         <Route path="master-entities" element={<MasterEntitiesPage />} />
         <Route path="macro" element={<MacroIntelligencePage />} />
         <Route path="sector-intelligence" element={<SectorIntelligencePage />} />

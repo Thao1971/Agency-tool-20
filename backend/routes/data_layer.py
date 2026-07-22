@@ -28,6 +28,45 @@ class BootstrapRequest(BaseModel):
     canonical_n: int = 50
 
 
+class BootstrapTabRequest(BaseModel):
+    directory: str
+    rebuild_intelligence: bool = True
+    canonical_n: int = 50
+    source_version: Optional[str] = None
+
+
+@router.post("/bootstrap-tab")
+async def start_bootstrap_tab(req: BootstrapTabRequest, user=Depends(get_current_user)):
+    """Same as /bootstrap, but for Daniel's real 2026-07 Iberinform delivery format
+    (Datos_GENERALES.tab, Datos_BALANCES.tab, Datos_ACCIONISTAS.tab, Datos_PARTICIPADAS.tab,
+    Datos_ORG_SOCIALES.tab, Datos_RESTO_ORG_SOCIALES.tab, Datos_APODERADOS.tab — extracted
+    from Muestra_25000_base.zip into `directory` server-side). Populates the MODERN schema
+    (master_companies / master_relationships) used by Control&Synergy, Roll-up, Fragmentación,
+    Watchlist, and all the newer engines.
+
+    This is one half of the real-data load. Run POST /admin/iberinform/process-tab-directory
+    (routes/iberinform_admin.py) separately for the LEGACY schema (companies_master) used by
+    Sector/Geo Intelligence and Valuo. Run both, verify counts, THEN
+    POST /admin/iberinform/purge-synthetic to remove the 5,000 synthetic companies.
+
+    Runs in background. Poll GET /bootstrap/{run_id} for progress (same collection/shape
+    as the regular /bootstrap endpoint)."""
+    run_id = f"bootstrap_tab_{now_iso()}"
+    run_id = "bootstrap_tab_" + run_id.replace(":", "").replace("-", "")[:18]
+
+    async def _run():
+        try:
+            await bootstrap_svc.run_bootstrap_tab(
+                directory=req.directory, rebuild_intelligence=req.rebuild_intelligence,
+                canonical_n=req.canonical_n, run_id=run_id, source_version=req.source_version)
+        except Exception:  # noqa: BLE001 — status persisted inside run_bootstrap_tab
+            pass
+
+    asyncio.create_task(_run())
+    return {"run_id": run_id, "status": "started",
+            "poll": f"/api/v1/data-layer/bootstrap/{run_id}"}
+
+
 @router.post("/bootstrap")
 async def start_bootstrap(req: BootstrapRequest, user=Depends(get_current_user)):
     """Reproducibly rebuild the ENTIRE canonical Data Layer from the official sources.

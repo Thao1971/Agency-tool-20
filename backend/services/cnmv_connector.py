@@ -26,10 +26,6 @@ logger = logging.getLogger(__name__)
 
 CNMV_BASE = "https://www.cnmv.es/portal/consultas"
 
-# Chromium stability: same flags used by services/scraper.py. The headless
-# browser degrades and gets killed by the OS after ~50 continuous navigations
-# on the CNMV listings, raising "Target page/browser has been closed"; recycling
-# the browser process every N navigations keeps long syncs stable.
 _LAUNCH_ARGS = ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
 _RECYCLE_EVERY = 30
 
@@ -132,9 +128,9 @@ async def sync_cnmv_entities(entity_types: List[str] = None, max_pages_per_type:
 async def _scrape_listing(p, entity_id: int, max_pages: int) -> List[Dict]:
     """Scrape all pages of a CNMV entity listing.
 
-    Owns its Chromium browser and recycles the process every _RECYCLE_EVERY
-    navigations: a single long-lived headless browser degrades and gets killed
-    after ~50 continuous CNMV page loads, so recycling keeps 100-page syncs stable.
+    Owns and recycles its Chromium browser every _RECYCLE_EVERY navigations:
+    a single long-lived headless browser degrades and is killed after ~50
+    continuous CNMV page loads ('Target page/browser has been closed').
     """
     all_entities = []
     pg = 1

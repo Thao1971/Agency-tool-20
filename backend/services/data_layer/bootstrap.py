@@ -224,6 +224,53 @@ async def run_bootstrap(source: Optional[str] = None, rebuild_intelligence: bool
         raise
 
 
+async def run_bootstrap_tab(directory: str, rebuild_intelligence: bool = True,
+                             canonical_n: int = 50, run_id: Optional[str] = None,
+                             source_version: Optional[str] = None) -> Dict:
+    """Same reconstruction chain as `run_bootstrap()`, but for Daniel's real 2026-07
+    Iberinform delivery format (10 tab-separated Datos_*.tab files) instead of the
+    original Valu8 CSV format. Only step 1 (ingestion) differs — everything downstream
+    (master builder, ownership graph, signals, semantic index, verification) is the
+    exact same, unmodified code, since both ingestors write to the same norm_* shape.
+
+    Use this instead of run_bootstrap() when `source` points at a directory containing
+    Datos_GENERALES.tab / Datos_BALANCES.tab / etc. (see
+    services/data_layer/ingestion/iberinform_tab_ingest.py for the full format mapping).
+    """
+    from services.data_layer.ingestion.iberinform_tab_ingest import ingest_tab_directory
+    from services.data_layer.master.master_builder import rebuild_master
+    from services.data_layer.master.ownership_graph import rebuild_ownership_graph
+
+    run_id = run_id or f"bootstrap_tab_{uuid.uuid4().hex[:12]}"
+    steps: List[Dict] = []
+    t0 = time.time()
+    await _set(run_id, {"run_id": run_id, "status": "running", "source": directory,
+                        "bootstrap_version": BOOTSTRAP_VERSION, "pipeline": "tab",
+                        "started_at": now_iso(), "steps": []})
+    logger.info(f"[bootstrap-tab {run_id}] start · source={directory}")
+    try:
+        await _step(run_id, steps, "ingestion", ingest_tab_directory(directory, source_version=source_version))
+        await _step(run_id, steps, "master_builder", rebuild_master(scope="full", force=True))
+        await _step(run_id, steps, "ownership_graph", rebuild_ownership_graph())
+        if rebuild_intelligence:
+            await _step(run_id, steps, "signal_builder", build_signals_canonical())
+            await _step(run_id, steps, "semantic_index", build_semantic_canonical())
+        report = await _step(run_id, steps, "verification", verify())
+        canonical = await _step(run_id, steps, "canonical_set", select_canonical_set(canonical_n))
+        status = "completed" if report.get("ok") else "completed_with_warnings"
+        await _set(run_id, {"status": status, "finished_at": now_iso(),
+                            "duration_s": round(time.time() - t0, 1),
+                            "verification": report, "canonical_set": canonical})
+        logger.info(f"[bootstrap-tab {run_id}] {status} in {round(time.time()-t0,1)}s")
+        return {"run_id": run_id, "status": status, "duration_s": round(time.time() - t0, 1),
+                "verification": report, "canonical_set": canonical, "steps": steps}
+    except Exception as e:  # noqa: BLE001
+        await _set(run_id, {"status": "failed", "finished_at": now_iso(),
+                            "duration_s": round(time.time() - t0, 1), "error": str(e)})
+        logger.error(f"[bootstrap-tab {run_id}] failed: {e}")
+        raise
+
+
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     out = asyncio.run(run_bootstrap())
