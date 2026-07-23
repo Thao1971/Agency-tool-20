@@ -5,12 +5,13 @@ Transaction engines, external APIs) obtains ALL signal intelligence here, never 
 master_companies directly. Protected with the service API key (X-API-Key).
 """
 
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 
 from database import db
+from auth_utils import get_current_user
 from services.engines.signal import engine as sig_engine
 from services.engines.signal import taxonomy, thresholds, actions, composites
 from services.engines.signal import persistence as P
@@ -125,32 +126,32 @@ async def by_territory(req: TerritoryRequest, _key=Depends(require_service_key))
             "engine_version": sig_engine.ENGINE_VERSION}
 
 
-@router.post("/opportunities", responses=_ok(S.SignalOpportunitiesResponse))
-async def opportunities(req: OpportunitiesRequest, _key=Depends(require_service_key)):
-    """Q4 — Ranking of opportunities from persisted signals (populated at scale by
-    `bootstrap.py::build_signals_canonical()`; run /bootstrap or /analyze/​/sector first).
-    `new_since_days`/`trend` use the lifecycle fields `persistence.py::persist()` already
-    tracks (`first_detected_at`, `trend`) — no new data, just exposing what was write-only."""
+async def _list_opportunities(cnae_section: Optional[str], provincia: Optional[str],
+                               signal_types: Optional[List[str]], sort_by_dimension: str,
+                               new_since_days: Optional[int], trend: Optional[str], limit: int) -> Dict:
+    """Shared query logic behind POST /opportunities (X-API-Key) and GET /opportunities/view
+    (JWT, for the app's own frontend) — same convention as
+    routes/investment_intelligence.py's fragmentation/rollup-thesis /view endpoints."""
     q = {"category": "opportunity", "status": "active"}
-    if req.signal_types:
-        q["signal_type"] = {"$in": req.signal_types}
-    if req.trend:
-        q["trend"] = req.trend
-    if req.new_since_days is not None:
+    if signal_types:
+        q["signal_type"] = {"$in": signal_types}
+    if trend:
+        q["trend"] = trend
+    if new_since_days is not None:
         from datetime import datetime, timedelta, timezone
-        cutoff = (datetime.now(timezone.utc) - timedelta(days=req.new_since_days)).isoformat()
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=new_since_days)).isoformat()
         q["first_detected_at"] = {"$gte": cutoff}
-    dim = req.sort_by_dimension if req.sort_by_dimension in ("impact", "confidence", "urgency", "persistence") else "impact"
+    dim = sort_by_dimension if sort_by_dimension in ("impact", "confidence", "urgency", "persistence") else "impact"
     rows = []
-    async for s in db.signals.find(q, {"_id": 0}).sort(f"dimensions.{dim}", -1).limit(req.limit * 3):
+    async for s in db.signals.find(q, {"_id": 0}).sort(f"dimensions.{dim}", -1).limit(limit * 3):
         m = await db.master_companies.find_one({"master_id": s["master_id"]},
                                                {"_id": 0, "identity.legal_name": 1,
                                                 "classification.cnae_section": 1, "location.provincia": 1})
         if not m:
             continue
-        if req.cnae_section and (m.get("classification") or {}).get("cnae_section") != req.cnae_section:
+        if cnae_section and (m.get("classification") or {}).get("cnae_section") != cnae_section:
             continue
-        if req.provincia and (m.get("location") or {}).get("provincia") != req.provincia:
+        if provincia and (m.get("location") or {}).get("provincia") != provincia:
             continue
         rows.append({"master_id": s["master_id"], "name": (m.get("identity") or {}).get("legal_name"),
                      "signal_type": s["signal_type"], "dimensions": s["dimensions"],
@@ -158,18 +159,16 @@ async def opportunities(req: OpportunitiesRequest, _key=Depends(require_service_
                      "explanation": s.get("explanation"), "is_composite": s.get("is_composite", False),
                      "first_detected_at": s.get("first_detected_at"), "last_seen_at": s.get("last_seen_at"),
                      "trend": s.get("trend"), "occurrences": s.get("occurrences")})
-        if len(rows) >= req.limit:
+        if len(rows) >= limit:
             break
     return {"sorted_by": dim, "count": len(rows), "opportunities": rows,
             "engine_version": sig_engine.ENGINE_VERSION}
 
 
-@router.get("/opportunities/feed")
-async def opportunities_feed(days: int = 7, limit: int = 50, cnae_section: Optional[str] = None,
-                              provincia: Optional[str] = None, _key=Depends(require_service_key)):
-    """Q4 — chronological feed: opportunities FIRST DETECTED in the last N days, newest
-    first. Complements /opportunities (ranked snapshot by impact) with the "what's new
-    since I last checked" view the roadmap names — same underlying data, different sort."""
+async def _opportunities_feed(days: int, limit: int, cnae_section: Optional[str],
+                               provincia: Optional[str]) -> Dict:
+    """Shared query logic behind GET /opportunities/feed (X-API-Key) and
+    GET /opportunities/feed/view (JWT)."""
     from datetime import datetime, timedelta, timezone
     cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
     q = {"category": "opportunity", "status": "active", "first_detected_at": {"$gte": cutoff}}
@@ -192,6 +191,57 @@ async def opportunities_feed(days: int = 7, limit: int = 50, cnae_section: Optio
             break
     return {"window_days": days, "since": cutoff, "count": len(rows), "opportunities": rows,
             "engine_version": sig_engine.ENGINE_VERSION}
+
+
+@router.post("/opportunities", responses=_ok(S.SignalOpportunitiesResponse))
+async def opportunities(req: OpportunitiesRequest, _key=Depends(require_service_key)):
+    """Q4 — Ranking of opportunities from persisted signals (populated at scale by
+    `bootstrap.py::build_signals_canonical()`; run /bootstrap or /analyze/​/sector first).
+    `new_since_days`/`trend` use the lifecycle fields `persistence.py::persist()` already
+    tracks (`first_detected_at`, `trend`) — no new data, just exposing what was write-only."""
+    return await _list_opportunities(req.cnae_section, req.provincia, req.signal_types,
+                                     req.sort_by_dimension, req.new_since_days, req.trend, req.limit)
+
+
+@router.get("/opportunities/feed")
+async def opportunities_feed(days: int = 7, limit: int = 50, cnae_section: Optional[str] = None,
+                              provincia: Optional[str] = None, _key=Depends(require_service_key)):
+    """Q4 — chronological feed: opportunities FIRST DETECTED in the last N days, newest
+    first. Complements /opportunities (ranked snapshot by impact) with the "what's new
+    since I last checked" view the roadmap names — same underlying data, different sort."""
+    return await _opportunities_feed(days, limit, cnae_section, provincia)
+
+
+# ── JWT-friendly variants for the app's own frontend (same convention as
+# routes/investment_intelligence.py wrapping fragmentation/rollup-thesis: the endpoints
+# above use X-API-Key for external/service consumers, which a browser can never safely
+# hold — these call the exact same query logic, just gated by the logged-in user's
+# session instead). ──
+
+@router.get("/opportunities/view", responses=_ok(S.SignalOpportunitiesResponse))
+async def opportunities_view(cnae_section: Optional[str] = None, provincia: Optional[str] = None,
+                              signal_types: Optional[str] = None, sort_by_dimension: str = "impact",
+                              new_since_days: Optional[int] = None, trend: Optional[str] = None,
+                              limit: int = 20, user=Depends(get_current_user)):
+    """Same as POST /opportunities, JWT-gated for the app's own frontend.
+    signal_types is a comma-separated string here (query params can't carry a list cleanly)."""
+    types = [t.strip() for t in signal_types.split(",") if t.strip()] if signal_types else None
+    return await _list_opportunities(cnae_section, provincia, types, sort_by_dimension,
+                                     new_since_days, trend, limit)
+
+
+@router.get("/opportunities/feed/view")
+async def opportunities_feed_view(days: int = 7, limit: int = 50, cnae_section: Optional[str] = None,
+                                   provincia: Optional[str] = None, user=Depends(get_current_user)):
+    """Same as GET /opportunities/feed, JWT-gated for the app's own frontend."""
+    return await _opportunities_feed(days, limit, cnae_section, provincia)
+
+
+@router.get("/catalog/view", responses=_ok(S.SignalCatalogResponse))
+async def catalog_view(user=Depends(get_current_user)):
+    """Same as GET /catalog, JWT-gated — lets the frontend show human-readable signal
+    type labels/categories/actions for the Opportunities screen's filters."""
+    return await catalog()
 
 
 @router.get("/catalog", responses=_ok(S.SignalCatalogResponse))

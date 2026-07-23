@@ -145,9 +145,13 @@ export default function DataQualityPage() {
   const macroRecords = 1742; // Known from audit
   const borme = bormeP;
 
-  // Real vs synthetic breakdown
-  const realCompanies = cm.total - (ib.total_companies || 0);
-  const synthCompanies = ib.total_companies || 0;
+  // Real vs synthetic breakdown — read explicit backend counts (data_source-based), never
+  // inferred by subtraction. Subtracting cm.total - ib.total_companies broke the moment real
+  // Iberinform data became the near-totality of companies_master (both counts converge to the
+  // same ~25k, making the subtraction ~0 and mislabeling real data as synthetic).
+  const realCompanies = ib.real_companies ?? 0;
+  const synthCompanies = ib.synthetic_companies ?? 0;
+  const hasIberinformStats = ib.total_companies !== undefined;
 
   // Score traceability
   const realDataPct = 83;
@@ -176,15 +180,15 @@ export default function DataQualityPage() {
         <Card className="bg-zinc-900/50 border-zinc-800">
           <CardContent className="p-4 text-center">
             <p className="text-[10px] uppercase tracking-wider text-zinc-500 mb-1">Empresas reales</p>
-            <p className="text-3xl font-bold text-zinc-100 tabular-nums" data-testid="real-companies">{realCompanies > 0 ? realCompanies.toLocaleString('es-ES') : '265'}</p>
+            <p className="text-3xl font-bold text-zinc-100 tabular-nums" data-testid="real-companies">{(hasIberinformStats ? realCompanies : 265).toLocaleString('es-ES')}</p>
             <p className="text-xs text-zinc-500 mt-1">de {(cm.total || 5265).toLocaleString('es-ES')} total</p>
           </CardContent>
         </Card>
         <Card className="bg-zinc-900/50 border-zinc-800">
           <CardContent className="p-4 text-center">
             <p className="text-[10px] uppercase tracking-wider text-zinc-500 mb-1">Empresas sinteticas</p>
-            <p className="text-3xl font-bold text-amber-400 tabular-nums" data-testid="synthetic-companies">{(synthCompanies || 5000).toLocaleString('es-ES')}</p>
-            <p className="text-xs text-zinc-500 mt-1">distribucion DIRCE 2025</p>
+            <p className="text-3xl font-bold text-amber-400 tabular-nums" data-testid="synthetic-companies">{(hasIberinformStats ? synthCompanies : 5000).toLocaleString('es-ES')}</p>
+            <p className="text-xs text-zinc-500 mt-1">{synthCompanies > 0 ? 'pendiente de purgar' : 'purgadas — solo datos reales'}</p>
           </CardContent>
         </Card>
       </div>
@@ -203,8 +207,15 @@ export default function DataQualityPage() {
             description="Actos mercantiles del Registro Mercantil (BOE)" />
           <SourceCard name="Contratacion Publica" status="real" records={19}
             description="Contratos con CPV, importes, adjudicatarios" />
-          <SourceCard name="Iberinform" status="synthetic" records={ib.total_companies || 5000}
-            description="Dataset sintetico basado en DIRCE 2025. Esperando fichero real." />
+          <SourceCard name="Iberinform"
+            status={!hasIberinformStats ? 'empty' : synthCompanies > 0 ? 'synthetic' : realCompanies > 0 ? 'real' : 'empty'}
+            records={hasIberinformStats ? (ib.total_companies || 0) : 5000}
+            description={
+              !hasIberinformStats ? 'Esperando fichero real.'
+              : synthCompanies > 0 ? `${realCompanies.toLocaleString('es-ES')} reales + ${synthCompanies.toLocaleString('es-ES')} sinteticas pendientes de purgar`
+              : realCompanies > 0 ? `${realCompanies.toLocaleString('es-ES')} empresas reales (entrega Iberinform)`
+              : 'Esperando fichero real.'
+            } />
           <SourceCard name="Agency Scraper" status="real" records={265}
             description="Agencias analizadas con Playwright + GPT-5.2" />
         </div>
@@ -218,7 +229,7 @@ export default function DataQualityPage() {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <CoverageBar label="Companies Master" real={realCompanies > 0 ? realCompanies : 265} synthetic={synthCompanies || 5000} total={cm.total || 5265} />
+          <CoverageBar label="Companies Master" real={hasIberinformStats ? realCompanies : 265} synthetic={hasIberinformStats ? synthCompanies : 5000} total={cm.total || 5265} />
           <CoverageBar label="Cobertura CNAE" real={0} synthetic={ib.cnae_divisions_covered || 83} total={88} />
           <CoverageBar label="Cobertura Provincias" real={0} synthetic={ib.provinces_covered || 52} total={52} />
           <CoverageBar label="Ejercicios Financieros" real={0} synthetic={ib.total_fiscal_years || 11657} total={ib.total_fiscal_years || 11657} />

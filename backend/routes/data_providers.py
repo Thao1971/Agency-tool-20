@@ -20,15 +20,24 @@ VALID_PROVIDERS = {"borme", "ine", "iberinform"}
 REASON_CODES = ["wrong_company_match", "duplicate", "irrelevant", "outdated", "low_confidence", "outside_scope", "incorrect_source", "manual_quality_control", "other"]
 
 # Provider → collection mapping for records
+# NOTE (2026-07-23): "iberinform" used to point at provider_files/file_id — a leftover from
+# the old single-file-upload mechanism. The real ingestion pipelines built this session
+# (bootstrap-tab, upload-delivery, process-tab-directory) write companies directly into
+# iberinform_companies and never touch provider_files, so this governance page always showed
+# 0 registros / Inactivo regardless of how much real data had been loaded. Repointed to the
+# actual company records, at the same per-record granularity BORME/INE already use, keyed by
+# cif_normalized (NOT company_id — company_id is regenerated on every re-ingestion run in
+# process_real_iberinform_tab_directory(), so it isn't stable across monthly deliveries;
+# cif_normalized is Daniel's confirmed authoritative company identifier).
 PROVIDER_COLLECTIONS = {
     "borme": "borme_events",
     "ine": "ine_observations",
-    "iberinform": "provider_files",
+    "iberinform": "iberinform_companies",
 }
 PROVIDER_ID_FIELDS = {
     "borme": "idempotency_key",
     "ine": "observation_id",
-    "iberinform": "file_id",
+    "iberinform": "cif_normalized",
 }
 
 
@@ -91,21 +100,27 @@ async def providers_health(user=Depends(get_current_user)):
         "sync_status": "idle",
     })
 
-    # Iberinform
+    # Iberinform — counts real companies ingested via bootstrap-tab/upload-delivery
+    # (iberinform_companies, excluding the synthetic seed), not the old provider_files
+    # upload-tracking mechanism the real pipelines never write to.
     ib = await db.data_providers.find_one({"provider_id": "iberinform"}, {"_id": 0, "api_key": 0})
-    ib_total = await db.provider_files.count_documents({"provider_id": "iberinform"})
+    ib_total = await db.iberinform_companies.count_documents({"source": {"$ne": "iberinform_synthetic"}})
     ib_excluded = await db.provider_exclusions.count_documents({"provider": "iberinform", "action": "exclude"})
-    ib_pending = await db.provider_files.count_documents({"provider_id": "iberinform", "processed": False})
+    ib_last = await db.iberinform_companies.find_one(
+        {"source": {"$ne": "iberinform_synthetic"}}, {"_id": 0, "imported_at": 1, "updated_at": 1},
+        sort=[("updated_at", -1)])
+    ib_last_sync = ((ib_last or {}).get("updated_at") or (ib_last or {}).get("imported_at")
+                    or (ib.get("last_upload_at") if ib else None))
     providers.append({
         "provider": "iberinform", "name": "Iberinform",
-        "status": "healthy" if ib_total > 0 and ib_pending == 0 else "warning" if ib_pending > 0 else "inactive",
+        "status": "healthy" if ib_total > 0 else "inactive",
         "api_reachable": True,
-        "last_success_at": ib.get("last_upload_at") if ib else None,
+        "last_success_at": ib_last_sync,
         "last_error_at": None, "last_error_message": None,
         "records_total": ib_total,
         "records_visible_in_valuo": ib_total - ib_excluded,
         "records_excluded": ib_excluded,
-        "pending_review": ib_pending,
+        "pending_review": 0,
         "sync_status": "idle",
     })
 
@@ -136,7 +151,7 @@ async def list_provider_records(
         elif provider == "ine":
             query["$or"] = [{"series_name": {"$regex": search, "$options": "i"}}, {"cnae_code": {"$regex": search, "$options": "i"}}]
         elif provider == "iberinform":
-            query["filename"] = {"$regex": search, "$options": "i"}
+            query["$or"] = [{"legal_name": {"$regex": search, "$options": "i"}}, {"cif": {"$regex": search, "$options": "i"}}]
 
     total = await coll.count_documents(query)
     records = await coll.find(query, {"_id": 0}).sort([("_id", -1)]).skip(offset).limit(limit).to_list(limit)

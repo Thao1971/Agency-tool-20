@@ -269,6 +269,12 @@ async def iberinform_stats(user=Depends(get_current_user)):
 
     total_companies = await db.iberinform_companies.count_documents({})
     total_financials = await db.iberinform_financials.count_documents({})
+    # Explicit real/synthetic split (same "source" marker purge_synthetic_dataset() uses),
+    # so the frontend never has to infer this by subtracting unrelated counts (that inference
+    # broke once real Iberinform data became the majority of companies_master — see
+    # DataQualityPage.js history).
+    synthetic_companies = await db.iberinform_companies.count_documents({"source": "iberinform_synthetic"})
+    real_companies = total_companies - synthetic_companies
 
     # CNAE coverage
     cnae_pipeline = [
@@ -313,6 +319,8 @@ async def iberinform_stats(user=Depends(get_current_user)):
         "response_time_ms": round((time.time() - t0) * 1000, 1),
         "iberinform": {
             "total_companies": total_companies,
+            "real_companies": real_companies,
+            "synthetic_companies": synthetic_companies,
             "total_fiscal_years": total_financials,
             "cnae_divisions_covered": len(by_cnae),
             "provinces_covered": len(by_province),

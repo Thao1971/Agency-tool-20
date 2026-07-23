@@ -1,0 +1,52 @@
+{
+  "summary": "UI verification of the three target screens after Iberinform data cleanup. Login via UI OK. All three screens render correctly with zero JS console errors and zero page errors. Data quality shows 24.992 real / 0 synthetic. Data providers shows Iberinform as Operativo with 24,992 records. Oportunidades screen loads both views (Por impacto / Más recientes) with filters and displays the GESTORA JR SANCHEZ succession opportunity.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "screens_verified": {
+    "calidad_de_datos": {
+      "url": "/data-quality",
+      "renders": true,
+      "empresas_reales_shown": "24.992",
+      "empresas_sinteticas_shown": "0",
+      "iberinform_tagged_real": true,
+      "iberinform_registros_shown": "24.992"
+    },
+    "proveedores_de_datos": {
+      "url": "/data-providers",
+      "renders": true,
+      "borme_status": "Operativo (4,811)",
+      "ine_status": "Inactivo (0)",
+      "iberinform_status": "Operativo (24,992 registros, última sync 22/07/2026)"
+    },
+    "oportunidades": {
+      "url": "/opportunities",
+      "sidebar_nav_testid_works": "nav-oportunidades under M&A E INVERSIÓN",
+      "renders": true,
+      "views": ["Por impacto", "Más recientes"],
+      "filters_present": ["Impacto", "Cualquier tendencia", "Todos los tipos", "Provincia (ej. MADRID)"],
+      "opportunity_visible": "GESTORA JR SANCHEZ (opportunity.succession_signal, impacto 80%)",
+      "tab_switch_ok": true
+    }
+  },
+  "backend_endpoint_checks": {
+    "GET /api/v1/admin/iberinform/stats": "200 — total=24992, real=24992, synthetic=0",
+    "GET /api/v1/data-providers/health": "200 — iberinform healthy, api_reachable=true, records_total=24992",
+    "GET /api/v1/signal-intelligence/opportunities/view": "200 — count=2 (GESTORA JR SANCHEZ succession)",
+    "GET /api/v1/signal-intelligence/opportunities/feed/view?days=7": "200 — count=2"
+  },
+  "console_errors": 0,
+  "page_errors": 0,
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "On Calidad de Datos the 'Cobertura CNAE', 'Cobertura Provincias', 'Ejercicios Financieros' bars still label as '0 real (0%) / N sintético (~100%)'. This appears to be a stale UI label since the underlying companies are now 100% real. It does not affect this task's acceptance criteria (empresas_reales=24992 / sintéticas=0 are shown correctly) but should be revisited so the coverage rows don't confusingly say 'sintético' for what is now real coverage."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "test_credentials": "daniel@wearebudadvisors.com / Thao1971@ (from /app/memory/test_credentials.md)",
+  "seed_data_creation": "None.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "All three target screens (Calidad de Datos, Proveedores de datos, Oportunidades) render correctly against the real 24992-company Iberinform dataset with no JS errors. Sidebar section 'M&A E INVERSIÓN' contains Oportunidades and its data-testid is 'nav-oportunidades'.",
+  "rca of the issue": "N/A — no bugs. Task success."
+}

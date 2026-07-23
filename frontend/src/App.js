@@ -46,6 +46,7 @@ import WebSourcePage from "@/pages/engine/WebSourcePage";
 import PlaceholderPage from "@/pages/PlaceholderPage";
 import DataSourcePage from "@/pages/DataSourcePage";
 import WatchlistPage from "@/pages/WatchlistPage";
+import OpportunitiesPage from "@/pages/OpportunitiesPage";
 import FragmentationPage from "@/pages/FragmentationPage";
 import RollupThesisPage from "@/pages/RollupThesisPage";
 import ControlGraphPage from "@/pages/ControlGraphPage";
@@ -103,6 +104,7 @@ function AppRoutes() {
         <Route path="bme" element={<BMEPage />} />
         <Route path="valuations" element={<ValuationsPage />} />
         <Route path="watchlist" element={<WatchlistPage />} />
+        <Route path="opportunities" element={<OpportunitiesPage />} />
         <Route path="investment/fragmentation" element={<FragmentationPage />} />
         <Route path="investment/rollup-thesis" element={<RollupThesisPage />} />
         <Route path="ownership/control-graph" element={<ControlGraphPage />} />

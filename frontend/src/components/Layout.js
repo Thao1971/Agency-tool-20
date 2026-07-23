@@ -54,6 +54,7 @@ const navSections = [
   {
     label: 'M&A E INVERSIÓN',
     items: [
+      { path: '/opportunities', label: 'Oportunidades', icon: Sparkles },
       { path: '/transactions', label: 'Transacciones', icon: ArrowRightLeft },
       { path: '/ma-radar', label: 'M&A Radar', icon: Activity },
       { path: '/borme', label: 'BORME', icon: FileStack },
