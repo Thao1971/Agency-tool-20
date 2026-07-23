@@ -24,6 +24,7 @@ from services.intelligence_scheduler import start_intelligence_scheduler, stop_i
 from services.watchlist_scheduler import start_watchlist_scheduler, stop_watchlist_scheduler
 from services.datacomex_scheduler import start_datacomex_scheduler, stop_datacomex_scheduler
 from services.cnmv_bme_scheduler import start_cnmv_bme_scheduler, stop_cnmv_bme_scheduler
+from services.placsp_scheduler import start_placsp_scheduler, stop_placsp_scheduler
 from editorial.routes import router as editorial_router
 from editorial.worker import start_editorial_worker, stop_editorial_worker
 from transactions.routes import router as transactions_router
@@ -1075,6 +1076,7 @@ async def startup():
     await start_datacomex_scheduler()
     await start_watchlist_scheduler()
     await start_cnmv_bme_scheduler()
+    await start_placsp_scheduler()
 
     # Public-data sources scheduler (BDNS / INE / SEPE)
     from services.intelligence_engine.scheduler import start_public_sources_scheduler
@@ -1495,4 +1497,5 @@ async def shutdown():
     await stop_datacomex_scheduler()
     await stop_watchlist_scheduler()
     await stop_cnmv_bme_scheduler()
+    await stop_placsp_scheduler()
     client.close()

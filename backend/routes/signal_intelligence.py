@@ -55,6 +55,18 @@ class OpportunitiesRequest(BaseModel):
     limit: int = 20
 
 
+class SignalsListRequest(BaseModel):
+    category: Optional[str] = None
+    severity: Optional[str] = None
+    status: Optional[str] = "active"
+    signal_types: Optional[List[str]] = None
+    provincia: Optional[str] = None
+    cnae_section: Optional[str] = None
+    master_id: Optional[str] = None
+    sort_by: str = "last_seen_at"  # "last_seen_at" | "first_detected_at" | impact/confidence/urgency/persistence
+    limit: int = 50
+
+
 class HistoryRequest(BaseModel):
     identifier: str
     signal_type: Optional[str] = None
@@ -90,7 +102,12 @@ async def _aggregate(query: dict, limit: int):
             counts[cat] = counts.get(cat, 0) + c
         for s in prof["signals"]:
             type_counts[s["signal_type"]] = type_counts.get(s["signal_type"], 0) + 1
-            if s["category"] == "opportunity":
+            # severity=="opportunity" is the actual "this is a good M&A opportunity" tag
+            # (growth.revenue_surge/growth.sustained/ownership.consolidator all carry it
+            # under category "growth"/"ownership", not "opportunity" — see taxonomy.py).
+            # category=="opportunity" only covers succession signals; using it here silently
+            # dropped the other 3 opportunity types (2026-07-23 fix).
+            if s.get("severity") == "opportunity":
                 top.append({"master_id": prof["master_id"], "name": prof["identity"]["name"],
                             "signal_type": s["signal_type"], "dimensions": s["dimensions"]})
     top.sort(key=lambda x: x["dimensions"]["impact"], reverse=True)
@@ -126,13 +143,67 @@ async def by_territory(req: TerritoryRequest, _key=Depends(require_service_key))
             "engine_version": sig_engine.ENGINE_VERSION}
 
 
+async def _signal_stats(status: Optional[str] = "active") -> Dict:
+    """True counts, decoupled from any pagination limit — the '/opportunities' and
+    '/signals' list endpoints cap their `count` field at the query's `limit`
+    (20-100), which is NOT a real total. Added 2026-07-23 because that distinction
+    matters the moment someone asks "how many opportunities/signals are there" —
+    the list endpoints alone can't answer that honestly at real data scale."""
+    base_q = {"status": status} if status else {}
+
+    total_signals = await db.signals.count_documents(base_q)
+    total_opportunities = await db.signals.count_documents({**base_q, "severity": "opportunity"})
+
+    by_severity = {}
+    for sev in ("opportunity", "positive", "info", "warning", "risk", "critical"):
+        c = await db.signals.count_documents({**base_q, "severity": sev})
+        if c:
+            by_severity[sev] = c
+
+    by_category = {}
+    for cat in taxonomy.CATEGORIES:
+        c = await db.signals.count_documents({**base_q, "category": cat})
+        if c:
+            by_category[cat] = c
+
+    by_opportunity_type = {}
+    async for s in db.signals.find({**base_q, "severity": "opportunity"}, {"_id": 0, "signal_type": 1}):
+        by_opportunity_type[s["signal_type"]] = by_opportunity_type.get(s["signal_type"], 0) + 1
+
+    return {
+        "status_filter": status or "all",
+        "total_signals": total_signals,
+        "total_opportunities": total_opportunities,
+        "by_severity": by_severity,
+        "by_category": by_category,
+        "opportunities_by_type": by_opportunity_type,
+        "engine_version": sig_engine.ENGINE_VERSION,
+    }
+
+
+@router.post("/stats")
+async def signal_stats(status: Optional[str] = "active", _key=Depends(require_service_key)):
+    """Real, non-paginated counts of signals/opportunities — see _signal_stats()."""
+    return await _signal_stats(status)
+
+
+@router.get("/stats/view")
+async def signal_stats_view(status: Optional[str] = "active", user=Depends(get_current_user)):
+    """Same as POST /stats, JWT-gated for the app's own frontend."""
+    return await _signal_stats(status)
+
+
 async def _list_opportunities(cnae_section: Optional[str], provincia: Optional[str],
                                signal_types: Optional[List[str]], sort_by_dimension: str,
                                new_since_days: Optional[int], trend: Optional[str], limit: int) -> Dict:
     """Shared query logic behind POST /opportunities (X-API-Key) and GET /opportunities/view
     (JWT, for the app's own frontend) — same convention as
     routes/investment_intelligence.py's fragmentation/rollup-thesis /view endpoints."""
-    q = {"category": "opportunity", "status": "active"}
+    # severity=="opportunity" (NOT category=="opportunity") is the real "this is an M&A
+    # opportunity" tag — covers growth.revenue_surge, growth.sustained, ownership.consolidator
+    # and opportunity.succession_signal. category=="opportunity" alone only matches the
+    # succession signal, which is why this used to silently return just one result.
+    q = {"severity": "opportunity", "status": "active"}
     if signal_types:
         q["signal_type"] = {"$in": signal_types}
     if trend:
@@ -153,7 +224,8 @@ async def _list_opportunities(cnae_section: Optional[str], provincia: Optional[s
             continue
         if provincia and (m.get("location") or {}).get("provincia") != provincia:
             continue
-        rows.append({"master_id": s["master_id"], "name": (m.get("identity") or {}).get("legal_name"),
+        rows.append({"signal_id": s.get("signal_id"), "master_id": s["master_id"],
+                     "name": (m.get("identity") or {}).get("legal_name"),
                      "signal_type": s["signal_type"], "dimensions": s["dimensions"],
                      "recommended_actions": s.get("recommended_actions"),
                      "explanation": s.get("explanation"), "is_composite": s.get("is_composite", False),
@@ -171,7 +243,8 @@ async def _opportunities_feed(days: int, limit: int, cnae_section: Optional[str]
     GET /opportunities/feed/view (JWT)."""
     from datetime import datetime, timedelta, timezone
     cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
-    q = {"category": "opportunity", "status": "active", "first_detected_at": {"$gte": cutoff}}
+    # severity=="opportunity" — same taxonomy fix as _list_opportunities() above.
+    q = {"severity": "opportunity", "status": "active", "first_detected_at": {"$gte": cutoff}}
     rows = []
     async for s in db.signals.find(q, {"_id": 0}).sort("first_detected_at", -1).limit(limit * 3):
         m = await db.master_companies.find_one({"master_id": s["master_id"]},
@@ -183,7 +256,8 @@ async def _opportunities_feed(days: int, limit: int, cnae_section: Optional[str]
             continue
         if provincia and (m.get("location") or {}).get("provincia") != provincia:
             continue
-        rows.append({"master_id": s["master_id"], "name": (m.get("identity") or {}).get("legal_name"),
+        rows.append({"signal_id": s.get("signal_id"), "master_id": s["master_id"],
+                     "name": (m.get("identity") or {}).get("legal_name"),
                      "signal_type": s["signal_type"], "dimensions": s["dimensions"],
                      "explanation": s.get("explanation"), "is_composite": s.get("is_composite", False),
                      "first_detected_at": s.get("first_detected_at"), "trend": s.get("trend")})
@@ -191,6 +265,79 @@ async def _opportunities_feed(days: int, limit: int, cnae_section: Optional[str]
             break
     return {"window_days": days, "since": cutoff, "count": len(rows), "opportunities": rows,
             "engine_version": sig_engine.ENGINE_VERSION}
+
+
+async def _list_signals(category: Optional[str], severity: Optional[str], status: Optional[str],
+                         signal_types: Optional[List[str]], provincia: Optional[str],
+                         cnae_section: Optional[str], master_id: Optional[str],
+                         sort_by: str, limit: int) -> Dict:
+    """General-purpose signal listing across ALL categories/severities/status — powers the
+    Señales screen (distinct from the curated Oportunidades screen, which only shows
+    severity=='opportunity'). Same master_companies-join/filter pattern as
+    _list_opportunities() above, without the opportunity-only restriction."""
+    q: dict = {}
+    if master_id:
+        q["master_id"] = master_id
+    if status:
+        q["status"] = status
+    if category:
+        q["category"] = category
+    if severity:
+        q["severity"] = severity
+    if signal_types:
+        q["signal_type"] = {"$in": signal_types}
+    if sort_by in ("impact", "confidence", "urgency", "persistence"):
+        sort_field = f"dimensions.{sort_by}"
+    elif sort_by == "first_detected_at":
+        sort_field = "first_detected_at"
+    else:
+        sort_field = "last_seen_at"
+    rows = []
+    async for s in db.signals.find(q, {"_id": 0}).sort(sort_field, -1).limit(limit * 3):
+        m = await db.master_companies.find_one({"master_id": s["master_id"]},
+                                               {"_id": 0, "identity.legal_name": 1,
+                                                "classification.cnae_section": 1, "location.provincia": 1})
+        if not m:
+            continue
+        if cnae_section and (m.get("classification") or {}).get("cnae_section") != cnae_section:
+            continue
+        if provincia and (m.get("location") or {}).get("provincia") != provincia:
+            continue
+        rows.append({"signal_id": s["signal_id"], "master_id": s["master_id"],
+                     "name": (m.get("identity") or {}).get("legal_name"),
+                     "signal_type": s["signal_type"], "category": s.get("category"),
+                     "severity": s.get("severity"), "polarity": s.get("polarity"),
+                     "status": s.get("status"), "dimensions": s.get("dimensions"),
+                     "recommended_actions": s.get("recommended_actions"),
+                     "explanation": s.get("explanation"), "is_composite": s.get("is_composite", False),
+                     "first_detected_at": s.get("first_detected_at"), "last_seen_at": s.get("last_seen_at"),
+                     "trend": s.get("trend"), "occurrences": s.get("occurrences")})
+        if len(rows) >= limit:
+            break
+    return {"sorted_by": sort_field, "count": len(rows), "signals": rows,
+            "engine_version": sig_engine.ENGINE_VERSION}
+
+
+@router.post("/signals")
+async def signals_list(req: SignalsListRequest, _key=Depends(require_service_key)):
+    """General-purpose signal listing — ALL categories/severities, not just opportunities.
+    Powers the Señales screen. Complements /opportunities (curated severity=='opportunity'
+    subset only)."""
+    return await _list_signals(req.category, req.severity, req.status, req.signal_types,
+                               req.provincia, req.cnae_section, req.master_id, req.sort_by, req.limit)
+
+
+@router.get("/signals/view")
+async def signals_list_view(category: Optional[str] = None, severity: Optional[str] = None,
+                             status: Optional[str] = "active", signal_types: Optional[str] = None,
+                             provincia: Optional[str] = None, cnae_section: Optional[str] = None,
+                             master_id: Optional[str] = None, sort_by: str = "last_seen_at",
+                             limit: int = 50, user=Depends(get_current_user)):
+    """Same as POST /signals, JWT-gated for the app's own frontend (Señales screen).
+    signal_types is a comma-separated string here (query params can't carry a list cleanly)."""
+    types = [t.strip() for t in signal_types.split(",") if t.strip()] if signal_types else None
+    return await _list_signals(category, severity, status, types, provincia, cnae_section,
+                               master_id, sort_by, limit)
 
 
 @router.post("/opportunities", responses=_ok(S.SignalOpportunitiesResponse))
@@ -244,6 +391,15 @@ async def catalog_view(user=Depends(get_current_user)):
     return await catalog()
 
 
+@router.post("/migrate-dedupe")
+async def migrate_dedupe(_key=Depends(require_service_key)):
+    """One-time ops action (2026-07-23 signal-identity fix): merges duplicate signal
+    documents left by deliveries that ran before source_version was removed from the
+    signal key, then builds the new unique index. Safe to run once before the next
+    delivery; a no-op if there's nothing left to merge. See P.migrate_dedupe_and_reindex()."""
+    return await P.migrate_dedupe_and_reindex()
+
+
 @router.get("/catalog", responses=_ok(S.SignalCatalogResponse))
 async def catalog(_key=Depends(require_service_key)):
     return {"taxonomy_version": taxonomy.TAXONOMY_VERSION,
@@ -265,6 +421,16 @@ async def get_signal(signal_id: str, _key=Depends(require_service_key)):
     return s
 
 
+@router.get("/signal/{signal_id}/view", responses=_ok(S.SignalRecord))
+async def get_signal_view(signal_id: str, user=Depends(get_current_user)):
+    """Same as GET /signal/{signal_id}, JWT-gated — lets Oportunidades/Watchlist/Señales
+    link directly to a signal's own detail view."""
+    s = await P.get_signal(signal_id)
+    if not s:
+        raise HTTPException(404, "signal not found")
+    return s
+
+
 @router.post("/history", responses=_ok(S.SignalHistoryResponse))
 async def history(req: HistoryRequest, _key=Depends(require_service_key)):
     master = await db.master_companies.find_one(
@@ -274,6 +440,20 @@ async def history(req: HistoryRequest, _key=Depends(require_service_key)):
         raise HTTPException(404, "company not found in Master Layer")
     return {"master_id": master["master_id"],
             "signals": await P.get_history(master["master_id"], req.signal_type)}
+
+
+@router.get("/history/view", responses=_ok(S.SignalHistoryResponse))
+async def history_view(identifier: str, signal_type: Optional[str] = None,
+                        user=Depends(get_current_user)):
+    """Same as POST /history, JWT-gated — the signal detail view's timeline (used from
+    Señales, and from Oportunidades/Watchlist once a signal reference is clicked through)."""
+    master = await db.master_companies.find_one(
+        {"$or": [{"master_id": identifier}, {"cif_normalized": identifier}]},
+        {"_id": 0, "master_id": 1})
+    if not master:
+        raise HTTPException(404, "company not found in Master Layer")
+    return {"master_id": master["master_id"],
+            "signals": await P.get_history(master["master_id"], signal_type)}
 
 
 @router.post("/borme-link-backfill")

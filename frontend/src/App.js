@@ -31,6 +31,7 @@ import CrossIntelligencePage from "@/pages/CrossIntelligencePage";
 import DataComexPage from "@/pages/DataComexPage";
 import TaxonomyIntelligencePage from "@/pages/TaxonomyIntelligencePage";
 import EconomicIntelligencePage from "@/pages/EconomicIntelligencePage";
+import BusinessDemographyPage from "@/pages/BusinessDemographyPage";
 import CNMVPage from "@/pages/CNMVPage";
 import BMEPage from "@/pages/BMEPage";
 import ValuationsPage from "@/pages/ValuationsPage";
@@ -47,6 +48,7 @@ import PlaceholderPage from "@/pages/PlaceholderPage";
 import DataSourcePage from "@/pages/DataSourcePage";
 import WatchlistPage from "@/pages/WatchlistPage";
 import OpportunitiesPage from "@/pages/OpportunitiesPage";
+import SignalsPage from "@/pages/SignalsPage";
 import FragmentationPage from "@/pages/FragmentationPage";
 import RollupThesisPage from "@/pages/RollupThesisPage";
 import ControlGraphPage from "@/pages/ControlGraphPage";
@@ -100,11 +102,13 @@ function AppRoutes() {
         <Route path="datacomex" element={<DataComexPage />} />
         <Route path="taxonomy-intelligence" element={<TaxonomyIntelligencePage />} />
         <Route path="economic-intelligence" element={<EconomicIntelligencePage />} />
+        <Route path="business-demography" element={<BusinessDemographyPage />} />
         <Route path="cnmv" element={<CNMVPage />} />
         <Route path="bme" element={<BMEPage />} />
         <Route path="valuations" element={<ValuationsPage />} />
         <Route path="watchlist" element={<WatchlistPage />} />
         <Route path="opportunities" element={<OpportunitiesPage />} />
+        <Route path="signals" element={<SignalsPage />} />
         <Route path="investment/fragmentation" element={<FragmentationPage />} />
         <Route path="investment/rollup-thesis" element={<RollupThesisPage />} />
         <Route path="ownership/control-graph" element={<ControlGraphPage />} />

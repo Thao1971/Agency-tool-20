@@ -2,9 +2,11 @@ import { useState, useEffect } from 'react';
 import api from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Progress } from '@/components/ui/progress';
-import { Loader2, FileText, Building2, Users, DollarSign, CheckCircle2, AlertTriangle, BarChart3, Layers, Clock } from 'lucide-react';
+import { Loader2, FileText, Building2, Users, DollarSign, CheckCircle2, AlertTriangle, BarChart3, Layers, Clock, RefreshCw } from 'lucide-react';
+import { toast } from 'sonner';
 
 function fmtEur(v) {
   if (!v && v !== 0) return '—';
@@ -33,10 +35,28 @@ const INTEGRATION_TARGETS = [
 export default function ProcurementPage() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [syncing, setSyncing] = useState(false);
 
-  useEffect(() => {
-    api.get('/public-procurement/overview').then(r => setData(r.data)).catch(() => {}).finally(() => setLoading(false));
-  }, []);
+  const load = () => api.get('/public-procurement/overview').then(r => setData(r.data)).catch(() => {}).finally(() => setLoading(false));
+
+  useEffect(() => { load(); }, []);
+
+  const handleSync = async () => {
+    setSyncing(true);
+    try {
+      const { data: result } = await api.post('/public-procurement/sync-placsp');
+      if (result.status === 'error') {
+        toast.error('Error sincronizando PLACSP: ' + (result.message || (result.errors || []).join(', ')));
+      } else {
+        toast.success(`PLACSP sincronizado: ${result.total_imported ?? 0} contratos importados`);
+      }
+      await load();
+    } catch (e) {
+      toast.error('Error sincronizando PLACSP');
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   if (loading) {
     return <div className="flex items-center justify-center py-20"><Loader2 className="w-5 h-5 animate-spin text-zinc-500" /></div>;
@@ -48,18 +68,25 @@ export default function ProcurementPage() {
   return (
     <div className="space-y-5" data-testid="procurement-page">
       {/* Header */}
-      <div>
-        <h1 className="text-lg font-bold text-zinc-100">Contratacion Publica (PLACSP)</h1>
-        <p className="text-xs text-zinc-500 mt-0.5">
-          Plataforma de Contratacion del Sector Publico — Contratos menores, formato CODICE 2.07
-        </p>
-        {d.last_sync && (
-          <div className="flex items-center gap-2 mt-1.5">
-            <Clock className="w-3 h-3 text-zinc-600" />
-            <span className="text-[10px] text-zinc-500">Ultima sincronizacion: {fmtDate(d.last_sync?.synced_at)}</span>
-            <span className="text-[10px] text-zinc-600">Fuente: {d.last_sync?.source || 'PLACSP'}</span>
-          </div>
-        )}
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h1 className="text-lg font-bold text-zinc-100">Contratacion Publica (PLACSP)</h1>
+          <p className="text-xs text-zinc-500 mt-0.5">
+            Plataforma de Contratacion del Sector Publico — Contratos menores, formato CODICE 2.07
+          </p>
+          {d.last_sync && (
+            <div className="flex items-center gap-2 mt-1.5">
+              <Clock className="w-3 h-3 text-zinc-600" />
+              <span className="text-[10px] text-zinc-500">Ultima sincronizacion: {fmtDate(d.last_sync?.synced_at)}</span>
+              <span className="text-[10px] text-zinc-600">Fuente: {d.last_sync?.source || 'PLACSP'}</span>
+            </div>
+          )}
+        </div>
+        <Button size="sm" variant="outline" className="border-zinc-700 text-zinc-300 h-7 text-[10px] shrink-0"
+          onClick={handleSync} disabled={syncing}>
+          {syncing ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <RefreshCw className="w-3 h-3 mr-1" />}
+          Sincronizar PLACSP
+        </Button>
       </div>
 
       {/* KPIs */}

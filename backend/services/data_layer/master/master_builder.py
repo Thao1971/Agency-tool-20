@@ -256,6 +256,16 @@ async def purge_fixture_sample() -> Dict:
         xref_deleted = (await db.entity_xref.delete_many(
             {"master_id": {"$in": master_ids}})).deleted_count
 
+    # 2026-07-23 fix (found by Neo's testing agent after v12): signals persisted for these
+    # master_ids (e.g. opportunity.succession_signal from old fixture "administrators") were
+    # never cleaned up, so they kept polluting the Opportunities ranking after every purge —
+    # their master_id no longer resolves to a real company, so they were silently discarded
+    # by the join in _list_opportunities()/_opportunities_feed(), crowding out real results.
+    signals_deleted = 0
+    if master_ids:
+        signals_deleted = (await db.signals.delete_many(
+            {"master_id": {"$in": master_ids}})).deleted_count
+
     return {
         "status": "completed",
         "cifs_purged": len(cifs),
@@ -265,4 +275,5 @@ async def purge_fixture_sample() -> Dict:
         "norm_officers_deleted": norm_officers_deleted,
         "master_companies_deleted": master_deleted,
         "entity_xref_deleted": xref_deleted,
+        "signals_deleted": signals_deleted,
     }

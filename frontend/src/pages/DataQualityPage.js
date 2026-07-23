@@ -152,6 +152,7 @@ export default function DataQualityPage() {
   const realCompanies = ib.real_companies ?? 0;
   const synthCompanies = ib.synthetic_companies ?? 0;
   const hasIberinformStats = ib.total_companies !== undefined;
+  const ibFullyReal = hasIberinformStats && synthCompanies === 0 && realCompanies > 0;
 
   // Score traceability
   const realDataPct = 83;
@@ -230,9 +231,22 @@ export default function DataQualityPage() {
         </CardHeader>
         <CardContent className="space-y-4">
           <CoverageBar label="Companies Master" real={hasIberinformStats ? realCompanies : 265} synthetic={hasIberinformStats ? synthCompanies : 5000} total={cm.total || 5265} />
-          <CoverageBar label="Cobertura CNAE" real={0} synthetic={ib.cnae_divisions_covered || 83} total={88} />
-          <CoverageBar label="Cobertura Provincias" real={0} synthetic={ib.provinces_covered || 52} total={52} />
-          <CoverageBar label="Ejercicios Financieros" real={0} synthetic={ib.total_fiscal_years || 11657} total={ib.total_fiscal_years || 11657} />
+          {/* CNAE/Provincias/Ejercicios below used to always label their coverage as
+              "synthetic" — a hardcode left over from when Iberinform WAS always synthetic.
+              These three metrics don't have their own real/synthetic split from the backend
+              (they're aggregate counts, not per-record), so the closest accurate signal is
+              the same real/synthetic split already computed above: if there's no synthetic
+              data left at all, the coverage behind these numbers is real too. */}
+          <CoverageBar label="Cobertura CNAE"
+            real={ibFullyReal ? (ib.cnae_divisions_covered || 0) : 0}
+            synthetic={ibFullyReal ? 0 : (ib.cnae_divisions_covered || 83)} total={88} />
+          <CoverageBar label="Cobertura Provincias"
+            real={ibFullyReal ? (ib.provinces_covered || 0) : 0}
+            synthetic={ibFullyReal ? 0 : (ib.provinces_covered || 52)} total={52} />
+          <CoverageBar label="Ejercicios Financieros"
+            real={ibFullyReal ? (ib.total_fiscal_years || 0) : 0}
+            synthetic={ibFullyReal ? 0 : (ib.total_fiscal_years || 11657)}
+            total={ib.total_fiscal_years || 11657} />
         </CardContent>
       </Card>
 

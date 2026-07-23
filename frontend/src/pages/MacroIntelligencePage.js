@@ -120,6 +120,15 @@ export default function MacroIntelligencePage() {
   const secondary = (data?.indicators || []).filter(i => !i.homepage);
   const ctx = signals?.macro_context;
 
+  // `generated_at` is when the API RESPONSE was built (always "now"), NOT when the
+  // underlying Banco de Espana data was last refreshed — showing it next to a clock
+  // icon was misleading (looked like a freshness indicator but always said "today").
+  // Banco de Espana has no scheduler (manual "Actualizar" only), so real staleness
+  // is exactly what's worth surfacing here: the most recent last_updated_at across
+  // all indicators actually returned.
+  const lastDataUpdate = (data?.indicators || [])
+    .map(i => i.last_updated_at).filter(Boolean).sort().slice(-1)[0];
+
   return (
     <div className="space-y-6" data-testid="macro-intelligence-page">
       {/* Header */}
@@ -130,7 +139,9 @@ export default function MacroIntelligencePage() {
         </div>
         <div className="flex items-center gap-3">
           {data?.response_time_ms && <span className="text-[9px] text-zinc-600">{data.response_time_ms}ms</span>}
-          <span className="text-[10px] text-zinc-500 flex items-center gap-1"><Clock className="w-3 h-3" />{fmtDate(data?.generated_at)}</span>
+          <span className="text-[10px] text-zinc-500 flex items-center gap-1" title="Fecha del dato mas reciente del Banco de Espana (no hay sincronizacion automatica, solo el boton Actualizar)">
+            <Clock className="w-3 h-3" />Datos al {fmtDate(lastDataUpdate)}
+          </span>
           <Button size="sm" variant="outline" className="border-zinc-700 text-zinc-300 h-7 text-[10px]" onClick={handleRefresh} disabled={refreshing}>
             {refreshing ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3 mr-1" />}Actualizar
           </Button>

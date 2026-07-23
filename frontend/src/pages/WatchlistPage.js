@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import api from '@/lib/api';
+import { signalLink } from '@/pages/SignalsPage';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -15,6 +17,7 @@ function fmtDate(iso) {
 }
 
 export default function WatchlistPage() {
+  const navigate = useNavigate();
   const [watches, setWatches] = useState([]);
   const [alerts, setAlerts] = useState([]);
   const [unreadOnly, setUnreadOnly] = useState(true);
@@ -174,7 +177,11 @@ export default function WatchlistPage() {
                     <div className="min-w-0">
                       <div className="flex items-center gap-1.5">
                         <span className="text-xs text-zinc-200 truncate">{a.company_name || a.master_id}</span>
-                        <Badge variant="outline" className="text-[9px] border-blue-500/30 text-blue-400 bg-blue-500/5 shrink-0">
+                        <Badge
+                          variant="outline"
+                          className={`text-[9px] border-blue-500/30 text-blue-400 bg-blue-500/5 shrink-0 ${a.signal_id ? 'cursor-pointer hover:bg-blue-500/15' : ''}`}
+                          onClick={() => a.signal_id && navigate(signalLink(a.signal_id, a.master_id))}
+                        >
                           {a.signal_type}
                         </Badge>
                       </div>

@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import api from '@/lib/api';
+import { signalLink } from '@/pages/SignalsPage';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -38,10 +40,15 @@ function DimBar({ label, value }) {
 }
 
 function OpportunityCard({ o, typeLabel }) {
+  const navigate = useNavigate();
   const trend = TREND_CFG[o.trend];
   const TrendIcon = trend?.icon;
   return (
-    <Card className="bg-zinc-900/50 border-zinc-800" data-testid="opportunity-card">
+    <Card
+      className={`bg-zinc-900/50 border-zinc-800 ${o.signal_id ? 'cursor-pointer hover:border-zinc-700' : ''}`}
+      data-testid="opportunity-card"
+      onClick={() => o.signal_id && navigate(signalLink(o.signal_id, o.master_id))}
+    >
       <CardContent className="p-4">
         <div className="flex items-start justify-between gap-3 mb-2">
           <div className="min-w-0">
@@ -102,12 +109,19 @@ export default function OpportunitiesPage() {
   const [catalog, setCatalog] = useState(null);
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState(null);
 
   useEffect(() => {
     api.get('/signal-intelligence/catalog/view').then(r => setCatalog(r.data)).catch(() => setCatalog(null));
+    // Real total, NOT capped by the list endpoints' `limit` (this page only ever
+    // fetches up to 30 rows to render) — see routes/signal_intelligence.py _signal_stats().
+    api.get('/signal-intelligence/stats/view').then(r => setStats(r.data)).catch(() => setStats(null));
   }, []);
 
-  const opportunityTypes = (catalog?.signal_types || []).filter(t => t.category === 'opportunity');
+  // severity=='opportunity' (NOT category=='opportunity') is the real "M&A opportunity"
+  // tag — category=='opportunity' alone only matches opportunity.succession_signal, which
+  // made this filter dropdown hide growth.revenue_surge/growth.sustained/ownership.consolidator.
+  const opportunityTypes = (catalog?.signal_types || []).filter(t => t.severity === 'opportunity');
   const typeLabel = (st) => opportunityTypes.find(t => t.signal_type === st)?.description || st;
 
   const load = useCallback(async () => {
@@ -148,6 +162,7 @@ export default function OpportunitiesPage() {
           </h1>
           <p className="text-xs text-zinc-500 mt-0.5">
             Señales de crecimiento, consolidación y sucesión detectadas automáticamente sobre las empresas reales (Q4)
+            {stats && <span className="text-zinc-400 font-medium"> — {stats.total_opportunities} oportunidades activas en total</span>}
           </p>
         </div>
         <Button variant="outline" size="sm" onClick={load} className="border-zinc-700 text-zinc-300 h-7 text-xs">

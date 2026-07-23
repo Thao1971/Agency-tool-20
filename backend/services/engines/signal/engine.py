@@ -28,7 +28,15 @@ def _clamp01(x: float) -> float:
 
 
 def _signal_id(master_id: str, signal_type: str, source_version: str) -> str:
-    raw = f"{master_id}|{signal_type}|{source_version}|{ENGINE_VERSION}|{TH.THRESHOLDS_VERSION}"
+    """Stable identity across deliveries (2026-07-23 fix): `source_version` is deliberately
+    NOT part of the hash anymore. It used to be, which meant every new monthly Iberinform
+    delivery produced a brand-new signal_id for what was really the same ongoing situation
+    at a company (e.g. "growth.sustained" three months running) — the old signal was never
+    closed out, both stayed "active" forever, duplicating the opportunities feed and causing
+    watchlist alerts (deduped on signal_id) to re-fire every month for nothing new. Kept as a
+    parameter (unused in the hash) to avoid touching call sites; source_version is still
+    persisted on the signal document itself, just no longer part of its identity."""
+    raw = f"{master_id}|{signal_type}|{ENGINE_VERSION}|{TH.THRESHOLDS_VERSION}"
     return "sig_" + hashlib.sha256(raw.encode()).hexdigest()[:12]
 
 

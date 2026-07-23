@@ -45,6 +45,7 @@ const navSections = [
       { path: '/geo-intelligence', label: 'Geográfica', dot: 'bg-violet-500' },
       { path: '/cross-intelligence', label: 'Sector × Geografía', dot: 'bg-cyan-500' },
       { path: '/economic-intelligence', label: 'Económica', dot: 'bg-amber-500' },
+      { path: '/business-demography', label: 'DIRCE (demografía empresarial)', icon: Building2 },
       { path: '/datacomex', label: 'Comercio exterior', icon: Globe },
       { path: '/procurement', label: 'Contratación pública', icon: Landmark },
       { path: '/cnmv', label: 'CNMV', icon: TrendingUp },
@@ -55,6 +56,7 @@ const navSections = [
     label: 'M&A E INVERSIÓN',
     items: [
       { path: '/opportunities', label: 'Oportunidades', icon: Sparkles },
+      { path: '/signals', label: 'Señales', icon: Zap },
       { path: '/transactions', label: 'Transacciones', icon: ArrowRightLeft },
       { path: '/ma-radar', label: 'M&A Radar', icon: Activity },
       { path: '/borme', label: 'BORME', icon: FileStack },

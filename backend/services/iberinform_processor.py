@@ -427,32 +427,71 @@ async def process_real_iberinform_tab_directory(directory: str, source_version: 
             }
             companies.append(company)
 
-            for year, accounts in company_years.items():
-                metrics = derive_metrics(accounts)
-                fiscal_years.append({
-                    "fiscal_year_id": new_id(),
-                    "company_id": company["company_id"],
-                    "cif": cif,
-                    "year": year,
-                    "revenue": metrics.get("revenue"),
-                    "ebitda": metrics.get("ebitda"),
-                    "ebitda_margin": metrics.get("ebitda_margin"),
-                    "employees": employees,
-                    "total_assets": metrics.get("total_assets"),
-                    "equity": metrics.get("equity"),
-                    "net_income": metrics.get("net_income"),
-                    "source": "iberinform",
-                    "imported_at": now,
-                })
-
     if not companies:
         return {"status": "error", "message": "No se encontraron empresas validas en Datos_GENERALES.tab"}
+
+    # ── Stability fix (2026-07-23): company_id used to be regenerated with new_id()
+    # on EVERY delivery for EVERY company, then blindly overwritten via a plain $set
+    # upsert below — so company_id was never actually stable across monthly
+    # deliveries, unlike companies_master.master_company_id (already correctly
+    # protected via $setOnInsert, see _update_companies_master above). Nothing in
+    # this codebase currently joins on iberinform_companies.company_id as a foreign
+    # key (confirmed by search), so this was a silent landmine rather than an active
+    # bug — but any future code naturally assuming a field literally called
+    # "company_id" is a stable identifier would get quietly wrong results after the
+    # second delivery. Fixed by resolving already-existing company_id values first
+    # (one bulk query, only for the CIFs in this delivery) and reusing them, so a
+    # pre-existing company keeps the SAME company_id forever; only genuinely new
+    # CIFs get the freshly generated one. fiscal_years (built below, AFTER this
+    # resolution) then always references the true, stable company_id too.
+    cif_normalized_list = [c["cif_normalized"] for c in companies]
+    existing_ids: Dict[str, str] = {}
+    for i in range(0, len(cif_normalized_list), 2000):
+        batch = cif_normalized_list[i:i + 2000]
+        async for doc in db.iberinform_companies.find(
+                {"cif_normalized": {"$in": batch}}, {"_id": 0, "cif_normalized": 1, "company_id": 1}):
+            if doc.get("company_id"):
+                existing_ids[doc["cif_normalized"]] = doc["company_id"]
+    for c in companies:
+        if c["cif_normalized"] in existing_ids:
+            c["company_id"] = existing_ids[c["cif_normalized"]]
+
+    # ── Fiscal years, built AFTER company_id resolution so they always reference
+    # the true stable id (not a since-discarded freshly-generated one). ──
+    for c in companies:
+        for year, accounts in fin_by_cif.get(c["cif"], {}).items():
+            metrics = derive_metrics(accounts)
+            fiscal_years.append({
+                "fiscal_year_id": new_id(),
+                "company_id": c["company_id"],
+                "cif": c["cif"],
+                "year": year,
+                "revenue": metrics.get("revenue"),
+                "ebitda": metrics.get("ebitda"),
+                "ebitda_margin": metrics.get("ebitda_margin"),
+                "employees": c["employees_latest"],
+                "total_assets": metrics.get("total_assets"),
+                "equity": metrics.get("equity"),
+                "net_income": metrics.get("net_income"),
+                "source": "iberinform",
+                "imported_at": now,
+            })
 
     # Persist via chunked bulk_write (25k+ individual round trips would be slow
     # against a real remote Mongo) — upsert by cif_normalized/cif+year+source, never
     # delete_many first, so a re-run with an updated delivery only ever adds/refreshes.
+    # company_id also goes into $setOnInsert (belt-and-suspenders on top of the
+    # pre-resolution above) so a genuinely new company's id, once assigned, is never
+    # touched by a future $set either.
     CHUNK = 2000
-    company_ops = [UpdateOne({"cif_normalized": c["cif_normalized"]}, {"$set": c}, upsert=True) for c in companies]
+    company_ops = []
+    for c in companies:
+        cset = {k: v for k, v in c.items() if k != "company_id"}
+        company_ops.append(UpdateOne(
+            {"cif_normalized": c["cif_normalized"]},
+            {"$set": cset, "$setOnInsert": {"company_id": c["company_id"]}},
+            upsert=True,
+        ))
     for i in range(0, len(company_ops), CHUNK):
         await db.iberinform_companies.bulk_write(company_ops[i:i + CHUNK], ordered=False)
 

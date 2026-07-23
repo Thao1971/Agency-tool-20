@@ -58,29 +58,56 @@ async def _scheduler_loop():
 
 
 async def _run_full_sync():
-    """Execute full intelligence recalculation pipeline."""
+    """Execute full intelligence recalculation pipeline.
+
+    Each layer (sector/geo/cross/economic) is computed independently from base
+    data (BORME/Iberinform/DIRCE) — none of them reads another's output, so
+    there is no real dependency forcing sequential all-or-nothing execution.
+    Fixed 2026-07-23: previously all 4 steps shared ONE try/except. If step 2
+    (Geo) raised, the whole function jumped to the outer `except` and logged a
+    single pseudo-module "intelligence_pipeline: failed" — steps 3/4 (Cross,
+    Economic) never ran today AND never got a log entry for today either,
+    leaving their `intelligence_sync_log` doc frozen at whatever it said the
+    last time they succeeded (possibly days old). `GET /public/intelligence/
+    sync-status` (routes/intelligence_status.py) reads that doc directly, so
+    the UI would show Cross/Economic as green/"completed" with a stale
+    timestamp while masking that today's run silently never reached them.
+    Now each step has its own try/except and ALWAYS logs today's real outcome
+    (completed or failed) regardless of what happened to the others."""
     from database import db
 
+    # Step 1: Sector Intelligence
     try:
-        # Step 1: Sector Intelligence
         from services.sector_intelligence_v2 import compute_sector_intelligence_v2
         si = await compute_sector_intelligence_v2()
         await _log_sync("sector_intelligence", "completed", si.get("total", 0))
         logger.info(f"  Sector Intelligence: {si['total']} entries")
+    except Exception as e:
+        logger.error(f"  Sector Intelligence failed: {e}")
+        await _log_sync("sector_intelligence", "failed", 0, str(e))
 
-        # Step 2: Geo Intelligence
+    # Step 2: Geo Intelligence
+    try:
         from services.geo_intelligence import compute_geo_intelligence
         gi = await compute_geo_intelligence()
         await _log_sync("geo_intelligence", "completed", gi.get("total", 0))
         logger.info(f"  Geo Intelligence: {gi['total']} entries")
+    except Exception as e:
+        logger.error(f"  Geo Intelligence failed: {e}")
+        await _log_sync("geo_intelligence", "failed", 0, str(e))
 
-        # Step 3: Cross Intelligence
+    # Step 3: Cross Intelligence
+    try:
         from services.sector_geo_cross import compute_sector_geo_cross
         cx = await compute_sector_geo_cross()
         await _log_sync("cross_intelligence", "completed", cx.get("combinations", 0))
         logger.info(f"  Cross Intelligence: {cx['combinations']} combinations")
+    except Exception as e:
+        logger.error(f"  Cross Intelligence failed: {e}")
+        await _log_sync("cross_intelligence", "failed", 0, str(e))
 
-        # Step 4: Economic Intelligence Layer
+    # Step 4: Economic Intelligence Layer
+    try:
         from services.economic_intelligence import rebuild_economic_metrics, rebuild_economic_signals
         econ = await rebuild_economic_metrics()
         await _log_sync("economic_intelligence", "completed", econ.get("total_metrics", 0))
@@ -88,18 +115,21 @@ async def _run_full_sync():
 
         esig = await rebuild_economic_signals()
         logger.info(f"  Economic Signals: {esig['signals_generated']} signals")
-
-        # Step 5: BME Enrichment (daily, only stale/new companies)
-        try:
-            from services.bme_enrichment import run_full_enrichment
-            bme = await run_full_enrichment(max_companies=50)
-            logger.info(f"  BME Enrichment: {bme.get('enriched', 0)} companies enriched")
-        except Exception as bme_err:
-            logger.warning(f"  BME Enrichment skipped: {bme_err}")
-
     except Exception as e:
-        logger.error(f"Intelligence sync failed: {e}")
-        await _log_sync("intelligence_pipeline", "failed", 0, str(e))
+        logger.error(f"  Economic Intelligence failed: {e}")
+        await _log_sync("economic_intelligence", "failed", 0, str(e))
+
+    # Step 5: BME Enrichment (daily, only stale/new companies) — kept isolated,
+    # same as before: it already has its own health tracking via
+    # bme_connector.get_bme_stats() (fixed in Actualización v5), separate from
+    # intelligence_sync_log, so a BME hiccup was never masking these 4 modules
+    # and vice versa.
+    try:
+        from services.bme_enrichment import run_full_enrichment
+        bme = await run_full_enrichment(max_companies=50)
+        logger.info(f"  BME Enrichment: {bme.get('enriched', 0)} companies enriched")
+    except Exception as bme_err:
+        logger.warning(f"  BME Enrichment skipped: {bme_err}")
 
 
 async def _log_sync(module: str, status: str, entries: int, error: str = None):
