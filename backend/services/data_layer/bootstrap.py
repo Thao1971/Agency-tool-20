@@ -41,8 +41,17 @@ def source_dir() -> str:
     return os.environ.get("DATA_LAYER_SOURCE_DIR") or DEFAULT_SOURCE_DIR
 
 
-async def _set(run_id: str, patch: Dict) -> None:
-    await db.bootstrap_runs.update_one({"run_id": run_id}, {"$set": patch}, upsert=True)
+async def _set(run_id: str, patch: Dict, unset: Optional[List[str]] = None) -> None:
+    update: Dict = {"$set": patch}
+    if unset:
+        update["$unset"] = {k: "" for k in unset}
+    await db.bootstrap_runs.update_one({"run_id": run_id}, update, upsert=True)
+
+
+# Terminal-state fields from a previous run that must never leak into a fresh run sharing
+# the same run_id — otherwise a successful re-run can still show a stale "error" from an
+# earlier failed attempt (found by Neo's testing agent after the entity-resolver fix).
+_STALE_TERMINAL_FIELDS = ["error", "finished_at", "verification", "canonical_set", "duration_s"]
 
 
 async def _step(run_id: str, steps: List[Dict], name: str, coro):
@@ -199,7 +208,8 @@ async def run_bootstrap(source: Optional[str] = None, rebuild_intelligence: bool
     steps: List[Dict] = []
     t0 = time.time()
     await _set(run_id, {"run_id": run_id, "status": "running", "source": src,
-                        "bootstrap_version": BOOTSTRAP_VERSION, "started_at": now_iso(), "steps": []})
+                        "bootstrap_version": BOOTSTRAP_VERSION, "started_at": now_iso(), "steps": []},
+               unset=_STALE_TERMINAL_FIELDS)
     logger.info(f"[bootstrap {run_id}] start · source={src}")
     try:
         await _step(run_id, steps, "ingestion", ingest_directory(src))
@@ -246,7 +256,8 @@ async def run_bootstrap_tab(directory: str, rebuild_intelligence: bool = True,
     t0 = time.time()
     await _set(run_id, {"run_id": run_id, "status": "running", "source": directory,
                         "bootstrap_version": BOOTSTRAP_VERSION, "pipeline": "tab",
-                        "started_at": now_iso(), "steps": []})
+                        "started_at": now_iso(), "steps": []},
+               unset=_STALE_TERMINAL_FIELDS)
     logger.info(f"[bootstrap-tab {run_id}] start · source={directory}")
     try:
         await _step(run_id, steps, "ingestion", ingest_tab_directory(directory, source_version=source_version))

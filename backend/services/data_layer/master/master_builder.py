@@ -193,3 +193,76 @@ async def rebuild_master(scope: str = "full", cif_list: Optional[List[str]] = No
         await _process_batch(batch, source, force, stats)
     stats["total_master"] = await db.master_companies.count_documents({})
     return stats
+
+
+FIXTURE_SOURCE_VERSION = "iberinform"
+
+
+async def purge_fixture_sample() -> Dict:
+    """Remove the bundled test-fixture Iberinform sample (tests/fixtures/iberinform_sample,
+    ~1,000 real companies in the old Valu8 CSV format that ended up loaded into production
+    via bootstrap.py's DEFAULT_SOURCE_DIR) from the MODERN schema.
+
+    Mirrors services/iberinform_processor.py's purge_synthetic_dataset() for the legacy
+    schema: intentionally conservative, identifies affected records by a stable data-driven
+    marker rather than a hardcoded id list, and never deletes anything a real delivery has
+    since touched.
+
+    Identification: iberinform_ingest.py's ingest_directory() (used only by the original
+    fixture-seeded /bootstrap run) defaults source_version to the literal string "iberinform"
+    when none is supplied. iberinform_tab_ingest.py's ingest_tab_directory() (used by every
+    real delivery via /bootstrap-tab and /upload-delivery) instead defaults to a random
+    "iberinform_tab_<hex>" tag, and both ingestors upsert norm_company/norm_financials/
+    norm_ownership/norm_officers by cif_normalized with a plain $set — so any fixture CIF
+    that a real delivery has since re-ingested already has its source_version overwritten
+    and is excluded here automatically. Only CIFs that STILL carry the literal "iberinform"
+    default (i.e. no real delivery has ever included that CIF) are purged.
+    """
+    marker = {"source": "iberinform", "source_version": FIXTURE_SOURCE_VERSION}
+    cifs = await db.norm_company.distinct("cif_normalized", marker)
+
+    if not cifs:
+        return {
+            "status": "completed", "cifs_purged": 0,
+            "norm_company_deleted": 0, "norm_financials_deleted": 0,
+            "norm_ownership_deleted": 0, "norm_officers_deleted": 0,
+            "master_companies_deleted": 0, "entity_xref_deleted": 0,
+        }
+
+    # Capture master_ids BEFORE deleting anything, scoped to these exact CIFs, so the
+    # entity_xref cleanup below can never touch a master_id created for a different (real) CIF.
+    master_ids = await db.master_companies.distinct(
+        "master_id", {"cif_normalized": {"$in": cifs}})
+
+    norm_company_deleted = (await db.norm_company.delete_many(
+        {"cif_normalized": {"$in": cifs}, **marker})).deleted_count
+    norm_financials_deleted = (await db.norm_financials.delete_many(
+        {"cif_normalized": {"$in": cifs}, **marker})).deleted_count
+    norm_ownership_deleted = (await db.norm_ownership.delete_many(
+        {"src_cif": {"$in": cifs}, **marker})).deleted_count
+    norm_officers_deleted = (await db.norm_officers.delete_many(
+        {"cif_normalized": {"$in": cifs}, **marker})).deleted_count
+
+    master_deleted = 0
+    if master_ids:
+        result = await db.master_companies.delete_many({
+            "master_id": {"$in": master_ids},
+            "cif_normalized": {"$in": cifs},
+        })
+        master_deleted = result.deleted_count
+
+    xref_deleted = 0
+    if master_ids:
+        xref_deleted = (await db.entity_xref.delete_many(
+            {"master_id": {"$in": master_ids}})).deleted_count
+
+    return {
+        "status": "completed",
+        "cifs_purged": len(cifs),
+        "norm_company_deleted": norm_company_deleted,
+        "norm_financials_deleted": norm_financials_deleted,
+        "norm_ownership_deleted": norm_ownership_deleted,
+        "norm_officers_deleted": norm_officers_deleted,
+        "master_companies_deleted": master_deleted,
+        "entity_xref_deleted": xref_deleted,
+    }

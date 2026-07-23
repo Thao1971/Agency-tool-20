@@ -67,6 +67,22 @@ async def start_bootstrap_tab(req: BootstrapTabRequest, user=Depends(get_current
             "poll": f"/api/v1/data-layer/bootstrap/{run_id}"}
 
 
+@router.post("/purge-fixture")
+async def purge_fixture(user=Depends(get_current_user)):
+    """Remove the bundled test-fixture Iberinform sample (~1,000 real companies from
+    tests/fixtures/iberinform_sample, loaded into master_companies by the original
+    /bootstrap default source) from the MODERN schema, once a real delivery has been
+    loaded and verified via /bootstrap-tab.
+
+    Only deletes records whose source_version is still the literal default "iberinform"
+    (never overwritten by a real delivery, which always tags a distinct "iberinform_tab_..."
+    version) — never touches anything a real /bootstrap-tab run has since re-ingested.
+    This is the MODERN-schema equivalent of POST /admin/iberinform/purge-synthetic
+    (routes/iberinform_admin.py), which only covers the LEGACY schema."""
+    from services.data_layer.master.master_builder import purge_fixture_sample
+    return await purge_fixture_sample()
+
+
 @router.post("/bootstrap")
 async def start_bootstrap(req: BootstrapRequest, user=Depends(get_current_user)):
     """Reproducibly rebuild the ENTIRE canonical Data Layer from the official sources.

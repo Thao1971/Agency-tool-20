@@ -1,0 +1,41 @@
+{
+  "summary": "Independent data-integrity verification after Iberinform purge operations. All 10 pytest checks passed: three collections at exactly 24992 docs, CIF sets fully equal to real delivery, no duplicates, no synthetic remnants, backend /api/v1/health returns 200.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_data_integrity_final.py",
+    "/app/test_reports/pytest/data_integrity_final.xml"
+  ],
+  "verification_results": {
+    "companies_master_count": 24992,
+    "master_companies_count": 24992,
+    "iberinform_companies_count": 24992,
+    "companies_master_cif_set_equals_iberinform": true,
+    "master_companies_cif_set_equals_iberinform": true,
+    "legacy_extra_cifs": 0,
+    "legacy_missing_real_cifs": 0,
+    "modern_extra_cifs": 0,
+    "modern_missing_real_cifs": 0,
+    "master_companies_duplicate_master_id": 0,
+    "master_companies_duplicate_cif_normalized": 0,
+    "iberinform_companies_synthetic_source": 0,
+    "iberinform_companies_synthetic_data_source": 0,
+    "iberinform_financials_synthetic_source": 0,
+    "iberinform_financials_synthetic_data_source": 0,
+    "health_endpoint_status": 200
+  },
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Note: uvicorn --reload is watching /app/backend, so any test file edited under /app/backend/tests triggers a full backend reload. Cold startup takes ~30-45s (BORME/CNMV schedulers, embeddings, taxonomy). Consider moving tests outside /app/backend or excluding /app/backend/tests from watchfiles reload paths to avoid disrupting live service during test authoring."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_data_integrity_final.py"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "N/A"},
+  "test_credentials": "Not used in this iteration (verification done via direct MongoDB queries and public health endpoint).",
+  "seed_data_creation": "None. Purely read-only DB verification.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Data integrity confirmed final. companies_master, master_companies, iberinform_companies all at 24992 with identical cif_normalized sets. Any future purge/import must preserve this invariant. Test file /app/backend/tests/test_data_integrity_final.py can be re-run as a regression check after any data-layer change.",
+  "rca of the issue": "N/A - no bugs found. Purge endpoints (purge-synthetic + purge-fixture + main-agent's cif-not-in-real cleanup) achieved the target end state exactly."
+}
