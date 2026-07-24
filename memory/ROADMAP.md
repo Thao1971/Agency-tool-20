@@ -62,10 +62,10 @@ Jobs reanudables · Data Layer (Raw→Normalized) · Master Layer (`master_compa
 - **Entregado**: `transaction-intelligence-v1` + `transaction-os-v1` (DTX1-DTX13) — orquesta todos los motores anteriores como **Transaction Copilot**. Detalle: `TRANSACTION_INTELLIGENCE_ENGINE_CONTRACT.md`, `TRANSACTION_OS_COMPLETION.md`.
 - **Nota (2026-07-23)**: esta sección quedó desactualizada tras el Sprint 7 (seguía marcada 🔴 SIGUIENTE pese a estar completada desde 2026-06-26, ver `PRD.md`). Corregido aquí. El Transaction Copilot es una porción ya construida de la visión más amplia de "Arroba Copilot" (experto de mercado/M&A con acceso a TODA la inteligencia, no solo a transacciones) — ver `ARROBA_COPILOT_DEFINITION_v1.md` para el alcance completo, qué ya está cubierto y el gap real de "predecir".
 
-## 7. Capa de Inteligencia Estratégica (Q1–Q7 · E1/E2/E6/E7 · T3 · Control&Synergy) ✅ (IMPLEMENTADA — documentada 2026-07-23)
+## 7. Capa de Inteligencia Estratégica (Q1–Q7 · E1/E2/E6/E7 · T3 · Control&Synergy) ✅ (IMPLEMENTADA Y DESPLEGADA EN PREVIEW — 2026-07-23, v16)
 **Responsabilidad**: capacidades por-encima de los 6 motores base derivadas del roadmap de Quick Wins/Evoluciones/Transformacionales del Capability Map v1 (intent signals BORME, grafo de control navegable, baselines contextuales, feed de oportunidades, drill-down sectorial, múltiplos reales acotados, watchlist, mandatos de comprador, succession intelligence, fragmentación sectorial, tesis de roll-up, Control & Synergy Score) — más una auditoría completa de fuentes de datos y el fix de fondo del ciclo de vida de señales.
-- **Estado**: verificado (mongomock + `py_compile` + esbuild), con partes verificadas end-to-end en Emergent Preview. **Pendiente de empaquetar/desplegar** por instrucción explícita de Daniel (acumular y desplegar en un único paso).
-- **Contrato/referencia oficial**: `STRATEGIC_INTELLIGENCE_LAYER_REPORT.md` (informe de cierre completo, 19 secciones).
+- **Estado**: verificado (mongomock + `py_compile` + esbuild) y desplegado en Emergent Preview (testing agent 19/20 backend + 100% frontend). Universo real 24.992 empresas; 160 oportunidades y 66.050 señales confirmadas vía `/stats/view`.
+- **Contrato/referencia oficial**: `STRATEGIC_INTELLIGENCE_LAYER_REPORT.md` (informe de cierre completo, 19 secciones, §18 con el detalle de despliegue).
 
 ---
 

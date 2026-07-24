@@ -1,7 +1,10 @@
-"""Document Composer — Assembles documents from data sources and AI.
+"""Document Composer — Assembles documents from the MODERN intelligence layer + AI.
 
-Connects to Economic Intelligence, Sector Intelligence, companies_master, etc.
-Populates template sections with real data blocks.
+Fase 2 (DOCUMENT_STUDIO_UNIFICATION_PLAN): company documents are composed from
+`docstudio/data_access.py` (real Financial + Signal engines over `master_companies`),
+NOT the legacy `companies_master`/`iberinform_financials`. Sector context still comes
+from Economic/Sector Intelligence. Narrative = Claude. Valuation = the real engine's
+honest `valuation()` (market_observed vs inferred_reference), never a heuristic.
 """
 
 import logging
@@ -13,8 +16,89 @@ from docstudio import (
     table_block, chart_block, insight_block, divider_block,
 )
 from docstudio.model_provider import generate_summary
+from docstudio import data_access as DA
 
 logger = logging.getLogger(__name__)
+
+
+# ══════════════════════════════════════════
+# BLOCK HELPERS from the modern intelligence bundle (Fase 2)
+# Build blocks from data_access.company_intelligence() — real Financial + Signal
+# engines over master_companies. No legacy companies_master / financial_engine.py.
+# ══════════════════════════════════════════
+
+_FIN = "financial-intelligence-v1"
+
+
+def _company_kpi_blocks(bundle: Dict) -> list:
+    """KPI blocks from the real Financial Engine bundle (kpis are ratios 0-1)."""
+    kpis = bundle.get("kpis", {}) or {}
+    out = []
+    rev = kpis.get("revenue")
+    if rev:
+        b = kpi_block("Facturación", f"{rev:,.0f}", "EUR")
+        b["data_lineage"] = {"source": _FIN, "calculation": "revenue", "date": now_iso()}
+        out.append(b)
+    m = kpis.get("ebitda_margin")
+    if m is not None:
+        b = kpi_block("Margen EBITDA", f"{m*100:.1f}%", "")
+        b["data_lineage"] = {"source": _FIN, "calculation": "ebitda_margin", "date": now_iso()}
+        out.append(b)
+    emp = (bundle.get("statements") or {}).get("employees")
+    if emp:
+        out.append(kpi_block("Plantilla", str(emp), "empleados"))
+    g = kpis.get("revenue_growth_yoy")
+    if g is not None:
+        b = kpi_block("Crecimiento YoY", f"{g*100:+.1f}%", "")
+        b["data_lineage"] = {"source": _FIN, "calculation": "revenue_growth_yoy", "date": now_iso()}
+        out.append(b)
+    cagr = kpis.get("revenue_cagr")
+    if cagr is not None:
+        b = kpi_block("CAGR ingresos", f"{cagr*100:+.1f}%", "")
+        b["data_lineage"] = {"source": _FIN, "calculation": "revenue_cagr", "date": now_iso()}
+        out.append(b)
+    rpe = kpis.get("revenue_per_employee")
+    if rpe:
+        b = kpi_block("Ingresos/empleado", f"{rpe:,.0f}", "EUR")
+        b["data_lineage"] = {"source": _FIN, "calculation": "revenue_per_employee", "date": now_iso()}
+        out.append(b)
+    return out
+
+
+def _signal_insight_blocks(bundle: Dict, limit: int = 6) -> list:
+    """Insight blocks from the company's real active signals (Signal Engine)."""
+    out = []
+    for sig in (bundle.get("signals") or [])[:limit]:
+        sev = sig.get("severity", "")
+        importance = "high" if sev in ("opportunity", "risk") else "medium"
+        b = insight_block(
+            title=sig.get("signal_type", ""),
+            summary=sig.get("explanation", ""),
+            importance=importance,
+        )
+        b["data_lineage"] = {"source": "signal-intelligence-v1",
+                             "signal_id": sig.get("signal_id"), "date": now_iso()}
+        out.append(b)
+    return out
+
+
+def _valuation_block(bundle: Dict):
+    """A KPI block with the REAL, honest valuation (market_observed vs inferred_reference).
+    Returns None when the engine reports insufficient data — never fabricates a number."""
+    val = bundle.get("valuation", {}) or {}
+    method = val.get("method")
+    if not method or method == "insufficient_data":
+        return None
+    ev = val.get("enterprise_value") or val.get("equity_value") or val.get("ev")
+    if not ev:
+        return None
+    basis = val.get("multiple_basis", "")
+    basis_label = "múltiplo de mercado real" if basis == "market_observed" else "múltiplo de referencia inferido"
+    b = kpi_block("Valoración orientativa (EV)", f"{ev:,.0f}", "EUR",
+                  commentary=f"Método: {method} · {basis_label}")
+    b["data_lineage"] = {"source": _FIN, "calculation": "valuation",
+                         "multiple_basis": basis, "confidence": val.get("confidence"), "date": now_iso()}
+    return b
 
 
 async def compose_sector_report(cnae_code: str, brand_id: str = "brand_bud",
@@ -146,23 +230,23 @@ async def compose_sector_report(cnae_code: str, brand_id: str = "brand_bud",
 
 async def compose_company_profile(company_id: str = None, cif: str = None,
                                   brand_id: str = "brand_bud", user: str = None) -> Dict:
-    """Compose a full company profile document."""
-    query = {"master_company_id": company_id} if company_id else {"cif": cif}
-    company = await db.companies_master.find_one(query, {"_id": 0})
-    if not company:
+    """Compose a full company profile document. Fase 2: modern schema + real engines."""
+    from services.cnae_catalog import CNAE_DIVISIONS
+
+    bundle = await DA.company_intelligence(company_id or cif)
+    if not bundle.get("found"):
         return {"error": "Company not found"}
 
-    name = company.get("legal_name", "Empresa")
-    cnae = company.get("cnae_primary", "")
-    await _get_brand(brand_id)  # warm cache
+    ident = bundle["identity"]
+    name = ident.get("name", "Empresa")
+    cnae = ident.get("cnae_code", "")
+    cif_norm = bundle.get("cif_normalized", "—")
 
-    # Get economic profile for the CNAE
-    econ = {}
-    if cnae:
-        econ = await _get_economic_profile(cnae)
+    # Sector economic context (already modern via economic_intelligence)
+    econ = await _get_economic_profile(cnae) if cnae else {}
 
     doc = new_document(
-        title=f"Ficha de Compania — {name}",
+        title=f"Ficha de Compañía — {name}",
         template_id="tpl_company_profile",
         brand_id=brand_id,
         created_by=user,
@@ -171,52 +255,58 @@ async def compose_company_profile(company_id: str = None, cif: str = None,
 
     # Cover
     s1 = new_section("Portada", 1, [
-        cover_block(title=name, subtitle=f"CIF: {company.get('cif', '—')} — CNAE {cnae}"),
+        cover_block(title=name, subtitle=f"CIF: {cif_norm} — CNAE {cnae}"),
     ])
 
-    # Company data KPIs
-    company_kpis = []
-    if company.get("revenue_latest"):
-        company_kpis.append(kpi_block("Facturacion", f"{company['revenue_latest']:,.0f}", "EUR"))
-    if company.get("employees_latest"):
-        company_kpis.append(kpi_block("Empleados", f"{company['employees_latest']}", "personas"))
+    # Company KPIs from the real Financial Engine
+    company_kpis = _company_kpi_blocks(bundle)
     if cnae:
-        from services.cnae_catalog import CNAE_DIVISIONS
         company_kpis.append(kpi_block("Sector", CNAE_DIVISIONS.get(cnae, {}).get("label", cnae), f"CNAE {cnae}"))
-    if company.get("province_name"):
-        company_kpis.append(kpi_block("Provincia", company["province_name"], ""))
+    if ident.get("provincia"):
+        company_kpis.append(kpi_block("Provincia", ident["provincia"], ""))
     s3 = new_section("Datos Generales", 3, company_kpis)
 
     # General info table
-    info_rows = []
-    for field, label in [("cif", "CIF"), ("legal_name", "Razon social"), ("legal_form", "Forma juridica"),
-                         ("province_name", "Provincia"), ("status", "Estado")]:
-        if company.get(field):
-            info_rows.append([label, str(company[field])])
-    s3_table = table_block("Informacion general", ["Campo", "Valor"], info_rows)
-    s3["blocks"].append(s3_table)
+    info_rows = [["CIF", cif_norm], ["Razón social", name]]
+    if cnae:
+        info_rows.append(["Sector CNAE", f"{cnae} — {CNAE_DIVISIONS.get(cnae, {}).get('label', '')}"])
+    if ident.get("provincia"):
+        info_rows.append(["Provincia", ident["provincia"]])
+    s3["blocks"].append(table_block("Información general", ["Campo", "Valor"], info_rows))
 
-    # AI summary
+    # Active signals (Signal Engine) — real, not sector-generic
+    signal_blocks = _signal_insight_blocks(bundle)
+    s4 = new_section("Señales Activas", 4, signal_blocks) if signal_blocks else None
+
+    # AI summary (Claude)
+    kpis = bundle.get("kpis", {})
     ai_context = {
-        "company_name": name, "cif": company.get("cif"), "cnae": cnae,
-        "revenue": company.get("revenue_latest"), "employees": company.get("employees_latest"),
-        "sector_trend": econ.get("trend"), "sector_signals": [s.get("signal_type") for s in econ.get("signals", [])],
+        "company_name": name, "cif": cif_norm, "cnae": cnae,
+        "revenue": kpis.get("revenue"), "employees": (bundle.get("statements") or {}).get("employees"),
+        "ebitda_margin": kpis.get("ebitda_margin"), "growth": kpis.get("revenue_growth_yoy"),
+        "assessment": bundle.get("assessment"),
+        "sector_trend": econ.get("trend"),
+        "active_signals": [s.get("signal_type") for s in bundle.get("signals", [])],
     }
     ai_result = await generate_summary(ai_context, doc_type="company_profile", document_id=doc["document_id"])
 
     s2_blocks = []
     if ai_result.get("executive_summary"):
-        s2_blocks.append(text_block(ai_result["executive_summary"], style="executive_summary"))
-        s2_blocks[-1]["data_lineage"] = {"source": "ai", "model": "gpt-5.2", "task": "company_summary", "date": now_iso()}
+        b = text_block(ai_result["executive_summary"], style="executive_summary")
+        b["data_lineage"] = {"source": "ai", "model": "claude", "task": "company_summary", "date": now_iso()}
+        s2_blocks.append(b)
     s2 = new_section("Resumen", 2, s2_blocks)
 
     s7_blocks = []
     if ai_result.get("conclusion"):
         s7_blocks.append(text_block(ai_result["conclusion"], style="conclusion"))
-    s7 = new_section("Conclusion", 7, s7_blocks)
+    s7 = new_section("Conclusión", 7, s7_blocks)
 
-    doc["sections"] = [s1, s2, s3, s7]
-    doc["metadata"] = {"company_id": company.get("master_company_id"), "cif": company.get("cif"), "cnae": cnae}
+    doc["sections"] = [s for s in [s1, s2, s3, s4, s7] if s]
+    doc["metadata"] = {
+        "master_id": bundle["master_id"], "cif": cif_norm, "cnae": cnae,
+        "type": "company_profile", "financial_engine_used": True, "fact_locked": True, "schema": "modern",
+    }
     doc["status"] = "generated"
     doc["updated_at"] = now_iso()
 
@@ -328,26 +418,19 @@ async def compose_benchmark_report(cnae_code: str, brand_id: str = "brand_bud",
 
 async def compose_investment_memo(company_id: str = None, cif: str = None,
                                   brand_id: str = "brand_bud", user: str = None) -> Dict:
-    """Compose an Investment Memo for a company."""
-    from docstudio.financial_engine import analyze_company_financials, analyze_sector_benchmark
+    """Compose an Investment Memo. Fase 2: modern schema + real engines + real valuation."""
+    from docstudio.financial_engine import analyze_sector_benchmark
+    from services.cnae_catalog import CNAE_DIVISIONS
 
-    query = {"master_company_id": company_id} if company_id else {"cif": cif}
-    company = await db.companies_master.find_one(query, {"_id": 0})
-    if not company:
+    bundle = await DA.company_intelligence(company_id or cif)
+    if not bundle.get("found"):
         return {"error": "Company not found"}
 
-    name = company.get("legal_name", "Empresa")
-    cnae = company.get("cnae_primary", "")
-    from services.cnae_catalog import CNAE_DIVISIONS
+    ident = bundle["identity"]
+    name = ident.get("name", "Empresa")
+    cnae = ident.get("cnae_code", "")
     cnae_label = CNAE_DIVISIONS.get(cnae, {}).get("label", "")
-
-    # Financial analysis (deterministic)
-    financials = await db.iberinform_financials.find(
-        {"company_id": company.get("master_company_id")}, {"_id": 0}
-    ).sort("year", 1).to_list(10)
-    fin_analysis = analyze_company_financials(financials) if financials else {}
-
-    # Sector benchmark
+    kpis = bundle.get("kpis", {})
     benchmark = await analyze_sector_benchmark(cnae) if cnae else {}
 
     doc = new_document(
@@ -359,59 +442,56 @@ async def compose_investment_memo(company_id: str = None, cif: str = None,
         cover_block(title=name, subtitle=f"Investment Memo — CNAE {cnae}: {cnae_label}"),
     ])
 
-    # Company KPIs
-    company_kpis = []
-    if company.get("revenue_latest"):
-        company_kpis.append(kpi_block("Facturacion", f"{company['revenue_latest']:,.0f}", "EUR"))
-    if fin_analysis.get("ebitda_margin") is not None:
-        company_kpis.append(kpi_block("Margen EBITDA", f"{fin_analysis['ebitda_margin']:.1f}%", ""))
-    if company.get("employees_latest"):
-        company_kpis.append(kpi_block("Empleados", str(company["employees_latest"]), ""))
-    if fin_analysis.get("revenue_yoy") is not None:
-        company_kpis.append(kpi_block("Crecimiento YoY", f"{fin_analysis['revenue_yoy']:+.1f}%", ""))
-    if fin_analysis.get("revenue_per_employee"):
-        b = kpi_block("Revenue/empleado", f"{fin_analysis['revenue_per_employee']:,.0f}", "EUR")
-        b["data_lineage"] = {"source": "financial_engine", "calculation": "revenue_per_employee", "date": now_iso()}
-        company_kpis.append(b)
-    if fin_analysis.get("revenue_cagr") is not None:
-        b = kpi_block("CAGR Revenue", f"{fin_analysis['revenue_cagr']:+.1f}%", "")
-        b["data_lineage"] = {"source": "financial_engine", "calculation": "cagr", "date": now_iso()}
-        company_kpis.append(b)
-    s3 = new_section("Metricas Financieras", 3, company_kpis)
+    # Company KPIs from the real Financial Engine
+    s3_blocks = _company_kpi_blocks(bundle)
+    vb = _valuation_block(bundle)
+    if vb:
+        s3_blocks.append(vb)
+    s3 = new_section("Métricas Financieras", 3, s3_blocks)
 
-    # Sector positioning table
+    # Sector positioning table (modern benchmark)
     pos_rows = []
     for metric, label in [("revenue", "Revenue"), ("ebitda", "EBITDA"), ("ebitda_margin", "Margen EBITDA")]:
         q = benchmark.get(metric, {})
         if q and q.get("median"):
-            pos_rows.append([label, f"Mediana sector: {q['median']:,.0f}" if metric != "ebitda_margin" else f"Mediana sector: {q['median']*100:.1f}%", f"Peers: {benchmark.get('peers', 0)}"])
+            med = f"{q['median']*100:.1f}%" if metric == "ebitda_margin" else f"{q['median']:,.0f}"
+            pos_rows.append([label, f"Mediana sector: {med}", f"Peers: {benchmark.get('peers', 0)}"])
     s4 = new_section("Posicionamiento Sectorial", 4, [
-        table_block("Comparacion vs sector", ["Metrica", "Benchmark", "Peers"], pos_rows),
+        table_block("Comparación vs sector", ["Métrica", "Benchmark", "Peers"], pos_rows),
     ]) if pos_rows else None
 
-    # AI-generated investment thesis
+    # Active signals (real)
+    sig_blocks = _signal_insight_blocks(bundle)
+    s6 = new_section("Señales Activas", 6, sig_blocks) if sig_blocks else None
+
+    # AI-generated investment thesis (Claude)
     ai_context = {
         "company_name": name, "cnae": cnae, "cnae_label": cnae_label,
-        "revenue": company.get("revenue_latest"), "employees": company.get("employees_latest"),
-        "ebitda_margin": fin_analysis.get("ebitda_margin"), "revenue_yoy": fin_analysis.get("revenue_yoy"),
-        "cagr": fin_analysis.get("revenue_cagr"), "sector_peers": benchmark.get("peers", 0),
+        "revenue": kpis.get("revenue"), "ebitda_margin": kpis.get("ebitda_margin"),
+        "revenue_yoy": kpis.get("revenue_growth_yoy"), "cagr": kpis.get("revenue_cagr"),
+        "valuation": bundle.get("valuation"), "assessment": bundle.get("assessment"),
+        "sector_peers": benchmark.get("peers", 0),
+        "active_signals": [s.get("signal_type") for s in bundle.get("signals", [])],
     }
     ai_result = await generate_summary(ai_context, doc_type="company_profile", document_id=doc["document_id"])
 
-    s2 = new_section("Tesis de Inversion", 2, [])
+    s2 = new_section("Tesis de Inversión", 2, [])
     if ai_result.get("executive_summary"):
         b = text_block(ai_result["executive_summary"], style="executive_summary")
-        b["data_lineage"] = {"source": "ai", "model": "gpt-5.2", "task": "investment_thesis", "date": now_iso()}
+        b["data_lineage"] = {"source": "ai", "model": "claude", "task": "investment_thesis", "date": now_iso()}
         s2["blocks"].append(b)
     for f in ai_result.get("key_findings", [])[:3]:
         s2["blocks"].append(insight_block("Punto clave", f, importance="high"))
 
-    s5 = new_section("Conclusion y Recomendacion", 5, [])
+    s5 = new_section("Conclusión y Recomendación", 5, [])
     if ai_result.get("conclusion"):
         s5["blocks"].append(text_block(ai_result["conclusion"], style="conclusion"))
 
-    doc["sections"] = [s for s in [s1, s2, s3, s4, s5] if s]
-    doc["metadata"] = {"company_id": company.get("master_company_id"), "type": "investment_memo"}
+    doc["sections"] = [s for s in [s1, s2, s3, s4, s6, s5] if s]
+    doc["metadata"] = {
+        "master_id": bundle["master_id"], "type": "investment_memo",
+        "financial_engine_used": True, "fact_locked": True, "schema": "modern",
+    }
     doc["status"] = "generated"
     doc["updated_at"] = now_iso()
     await db.docstudio_documents.insert_one(doc)
@@ -420,23 +500,17 @@ async def compose_investment_memo(company_id: str = None, cif: str = None,
 
 async def compose_teaser(company_id: str = None, cif: str = None,
                          brand_id: str = "brand_bud", user: str = None) -> Dict:
-    """Compose a Teaser (blind profile) for a company."""
-    from docstudio.financial_engine import analyze_company_financials
+    """Compose a Teaser (blind profile) for a company. Fase 2: modern schema + real engines."""
+    from services.cnae_catalog import CNAE_DIVISIONS
 
-    query = {"master_company_id": company_id} if company_id else {"cif": cif}
-    company = await db.companies_master.find_one(query, {"_id": 0})
-    if not company:
+    bundle = await DA.company_intelligence(company_id or cif)
+    if not bundle.get("found"):
         return {"error": "Company not found"}
 
-    name = company.get("legal_name", "Empresa")
-    cnae = company.get("cnae_primary", "")
-    from services.cnae_catalog import CNAE_DIVISIONS
+    ident = bundle["identity"]
+    name = ident.get("name", "Empresa")
+    cnae = ident.get("cnae_code", "")
     cnae_label = CNAE_DIVISIONS.get(cnae, {}).get("label", "")
-
-    financials = await db.iberinform_financials.find(
-        {"company_id": company.get("master_company_id")}, {"_id": 0}
-    ).sort("year", 1).to_list(10)
-    fin_analysis = analyze_company_financials(financials) if financials else {}
 
     doc = new_document(
         title=f"Teaser — {name}",
@@ -444,37 +518,33 @@ async def compose_teaser(company_id: str = None, cif: str = None,
     )
 
     s1 = new_section("Portada", 1, [
-        cover_block(title="Oportunidad de Inversion", subtitle=f"Sector: {cnae_label} — Proyecto confidencial"),
+        cover_block(title="Oportunidad de Inversión", subtitle=f"Sector: {cnae_label} — Proyecto confidencial"),
     ])
 
-    # Key metrics (anonymized — teaser style)
-    teaser_kpis = []
-    if company.get("revenue_latest"):
-        teaser_kpis.append(kpi_block("Facturacion", f"{company['revenue_latest']:,.0f}", "EUR"))
-    if fin_analysis.get("ebitda_margin") is not None:
-        teaser_kpis.append(kpi_block("Margen EBITDA", f"{fin_analysis['ebitda_margin']:.1f}%", ""))
-    if company.get("employees_latest"):
-        teaser_kpis.append(kpi_block("Plantilla", str(company["employees_latest"]), "empleados"))
-    if fin_analysis.get("revenue_yoy") is not None:
-        teaser_kpis.append(kpi_block("Crecimiento", f"{fin_analysis['revenue_yoy']:+.1f}%", "YoY"))
-    s2 = new_section("Metricas Clave", 2, teaser_kpis)
+    # Key metrics from the real Financial Engine
+    s2 = new_section("Métricas Clave", 2, _company_kpi_blocks(bundle))
 
-    # AI teaser narrative
+    # AI teaser narrative (Claude, fact-locked)
+    kpis = bundle.get("kpis", {})
     ai_context = {
-        "sector": cnae_label, "revenue": company.get("revenue_latest"),
-        "ebitda_margin": fin_analysis.get("ebitda_margin"),
-        "growth": fin_analysis.get("revenue_yoy"), "employees": company.get("employees_latest"),
+        "sector": cnae_label, "revenue": kpis.get("revenue"),
+        "ebitda_margin": kpis.get("ebitda_margin"),
+        "growth": kpis.get("revenue_growth_yoy"),
+        "signals": [s.get("signal_type") for s in bundle.get("signals", [])],
     }
     ai_result = await generate_summary(ai_context, doc_type="company_profile", document_id=doc["document_id"])
 
-    s3 = new_section("Descripcion de la Oportunidad", 3, [])
+    s3 = new_section("Descripción de la Oportunidad", 3, [])
     if ai_result.get("executive_summary"):
         b = text_block(ai_result["executive_summary"], style="executive_summary")
-        b["data_lineage"] = {"source": "ai", "model": "gpt-5.2", "task": "teaser_narrative", "date": now_iso()}
+        b["data_lineage"] = {"source": "ai", "model": "claude", "task": "teaser_narrative", "date": now_iso()}
         s3["blocks"].append(b)
 
     doc["sections"] = [s1, s2, s3]
-    doc["metadata"] = {"company_id": company.get("master_company_id"), "type": "teaser"}
+    doc["metadata"] = {
+        "master_id": bundle["master_id"], "cif": bundle["cif_normalized"], "type": "teaser",
+        "financial_engine_used": True, "fact_locked": True, "schema": "modern",
+    }
     doc["status"] = "generated"
     doc["updated_at"] = now_iso()
     await db.docstudio_documents.insert_one(doc)
@@ -483,30 +553,34 @@ async def compose_teaser(company_id: str = None, cif: str = None,
 
 async def compose_information_memorandum(company_id: str = None, cif: str = None,
                                          brand_id: str = "brand_bud", user: str = None) -> Dict:
-    """Compose a full Information Memorandum — the most comprehensive document type."""
-    from docstudio.financial_engine import analyze_company_financials, analyze_sector_benchmark
+    """Full Information Memorandum. Fase 2: modern schema + real engines + REAL valuation.
+
+    The old 'valoración preliminar' was a heuristic (sector_revenue_median * 1.5). It is
+    replaced by the real Financial Intelligence Engine `valuation()` (honest: market_observed
+    vs inferred_reference, or nothing when insufficient). Risks/opportunities now come from
+    the engine's real assessment + active signals, not a blind AI call.
+    """
+    from docstudio.financial_engine import analyze_sector_benchmark
     from services.cnae_catalog import CNAE_DIVISIONS
 
-    query = {"master_company_id": company_id} if company_id else {"cif": cif}
-    company = await db.companies_master.find_one(query, {"_id": 0})
-    if not company:
+    bundle = await DA.company_intelligence(company_id or cif)
+    if not bundle.get("found"):
         return {"error": "Company not found"}
 
-    name = company.get("legal_name", "Empresa")
-    cnae = company.get("cnae_primary", "")
+    ident = bundle["identity"]
+    name = ident.get("name", "Empresa")
+    cnae = ident.get("cnae_code", "")
     cnae_label = CNAE_DIVISIONS.get(cnae, {}).get("label", "")
-
-    financials = await db.iberinform_financials.find(
-        {"company_id": company.get("master_company_id")}, {"_id": 0}
-    ).sort("year", 1).to_list(10)
-    fin_analysis = analyze_company_financials(financials) if financials else {}
+    cif_norm = bundle.get("cif_normalized", "—")
+    kpis = bundle.get("kpis", {})
+    assessment = bundle.get("assessment", {}) or {}
     benchmark = await analyze_sector_benchmark(cnae) if cnae else {}
     econ = await _get_economic_profile(cnae) if cnae else {}
 
     doc = new_document(
         title=f"Information Memorandum — {name}",
         template_id="tpl_im", brand_id=brand_id, created_by=user,
-        description=f"Memorandum informativo completo de {name}",
+        description=f"Memorándum informativo completo de {name}",
     )
 
     # 1. Cover
@@ -514,73 +588,45 @@ async def compose_information_memorandum(company_id: str = None, cif: str = None
         cover_block(title=name, subtitle="Information Memorandum — Confidencial"),
     ])
 
-    # 2. Executive Summary (AI)
+    # 2. Executive Summary (Claude, fact-locked over real data)
     ai_context = {
         "company_name": name, "cnae": cnae, "cnae_label": cnae_label,
-        "revenue": company.get("revenue_latest"), "employees": company.get("employees_latest"),
-        "ebitda_margin": fin_analysis.get("ebitda_margin"), "revenue_yoy": fin_analysis.get("revenue_yoy"),
-        "cagr": fin_analysis.get("revenue_cagr"),
+        "revenue": kpis.get("revenue"), "ebitda_margin": kpis.get("ebitda_margin"),
+        "revenue_yoy": kpis.get("revenue_growth_yoy"), "cagr": kpis.get("revenue_cagr"),
+        "valuation": bundle.get("valuation"), "assessment": assessment,
         "sector_peers": benchmark.get("peers", 0),
         "sector_revenue_median": benchmark.get("revenue", {}).get("median"),
-        "sector_ebitda_margin_median": benchmark.get("ebitda_margin", {}).get("median"),
-        "exports": econ.get("exports_eur"),
-        "procurement": econ.get("procurement_contracts"),
+        "active_signals": [s.get("signal_type") for s in bundle.get("signals", [])],
     }
     ai_result = await generate_summary(ai_context, doc_type="company_profile", document_id=doc["document_id"])
 
     s2 = new_section("Resumen Ejecutivo", 2, [])
     if ai_result.get("executive_summary"):
         b = text_block(ai_result["executive_summary"], style="executive_summary")
-        b["data_lineage"] = {"source": "ai", "model": "gpt-5.2", "task": "im_executive_summary", "date": now_iso()}
+        b["data_lineage"] = {"source": "ai", "model": "claude", "task": "im_executive_summary", "date": now_iso()}
         s2["blocks"].append(b)
 
     # 3. Company Overview
-    info_rows = []
-    for field, label in [("legal_name", "Razon social"), ("cif", "CIF"), ("legal_form", "Forma juridica"),
-                         ("province_name", "Provincia"), ("status", "Estado")]:
-        if company.get(field):
-            info_rows.append([label, str(company[field])])
+    info_rows = [["Razón social", name], ["CIF", cif_norm]]
+    if ident.get("provincia"):
+        info_rows.append(["Provincia", ident["provincia"]])
     if cnae_label:
         info_rows.append(["Sector CNAE", f"{cnae} — {cnae_label}"])
-
-    s3 = new_section("Descripcion de la Compania", 3, [
-        table_block("Informacion general", ["Campo", "Valor"], info_rows),
+    s3 = new_section("Descripción de la Compañía", 3, [
+        table_block("Información general", ["Campo", "Valor"], info_rows),
     ])
 
-    # 4. Financial Highlights (Financial Engine — deterministic)
-    fin_kpis = []
-    if company.get("revenue_latest"):
-        fin_kpis.append(kpi_block("Facturacion", f"{company['revenue_latest']:,.0f}", "EUR"))
-    if fin_analysis.get("ebitda_margin") is not None:
-        b = kpi_block("Margen EBITDA", f"{fin_analysis['ebitda_margin']:.1f}%", "")
-        b["data_lineage"] = {"source": "financial_engine", "calculation": "ebitda_margin", "date": now_iso()}
-        fin_kpis.append(b)
-    if company.get("employees_latest"):
-        fin_kpis.append(kpi_block("Plantilla", str(company["employees_latest"]), "empleados"))
-    if fin_analysis.get("revenue_yoy") is not None:
-        b = kpi_block("Crecimiento YoY", f"{fin_analysis['revenue_yoy']:+.1f}%", "")
-        b["data_lineage"] = {"source": "financial_engine", "calculation": "yoy_growth", "date": now_iso()}
-        fin_kpis.append(b)
-    if fin_analysis.get("revenue_cagr") is not None:
-        b = kpi_block("CAGR Revenue", f"{fin_analysis['revenue_cagr']:+.1f}%", "")
-        b["data_lineage"] = {"source": "financial_engine", "calculation": "cagr", "date": now_iso()}
-        fin_kpis.append(b)
-    if fin_analysis.get("revenue_per_employee"):
-        b = kpi_block("Revenue/empleado", f"{fin_analysis['revenue_per_employee']:,.0f}", "EUR")
-        b["data_lineage"] = {"source": "financial_engine", "calculation": "revenue_per_employee", "date": now_iso()}
-        fin_kpis.append(b)
-
-    # Revenue history table
+    # 4. Financial Highlights (real Financial Engine) + revenue history from evolution
+    s4_blocks = _company_kpi_blocks(bundle)
     rev_rows = []
-    for entry in fin_analysis.get("revenue_series", []):
-        rev_rows.append([entry["period"], f"{entry['value']:,.0f}", f"{entry.get('yoy_pct', '—')}%"])
-
-    s4_blocks = fin_kpis
+    for p in (bundle.get("evolution", {}) or {}).get("points", []):
+        rev_rows.append([str(p.get("year", "")), f"{(p.get('revenue') or 0):,.0f}",
+                         f"{(p.get('ebitda') or 0):,.0f}"])
     if rev_rows:
-        s4_blocks.append(table_block("Evolucion historica", ["Ano", "Revenue (EUR)", "YoY %"], rev_rows))
-    s4 = new_section("Analisis Financiero", 4, s4_blocks)
+        s4_blocks.append(table_block("Evolución histórica", ["Año", "Ingresos (EUR)", "EBITDA (EUR)"], rev_rows))
+    s4 = new_section("Análisis Financiero", 4, s4_blocks)
 
-    # 5. Sector & Benchmark
+    # 5. Sector & Benchmark (modern benchmark)
     bm_rows = []
     for metric, label in [("revenue", "Revenue"), ("ebitda", "EBITDA"),
                           ("ebitda_margin", "Margen EBITDA"), ("employees", "Empleados")]:
@@ -590,14 +636,10 @@ async def compose_information_memorandum(company_id: str = None, cif: str = None
                 return f"{v*100:.1f}%" if m == "ebitda_margin" else f"{v:,.0f}"
             bm_rows.append([label, fmt_val(q.get("q1", 0)), fmt_val(q["median"]),
                            fmt_val(q.get("q3", 0)), str(benchmark.get("peers", 0))])
-    s5_blocks = []
-    if bm_rows:
-        s5_blocks.append(table_block("Benchmark sectorial", ["Metrica", "Q1", "Mediana", "Q3", "Peers"], bm_rows))
-    if econ.get("exports_eur"):
-        s5_blocks.append(kpi_block("Exportaciones sector", f"{econ['exports_eur']['value']:,.0f}", "EUR"))
-    s5 = new_section("Posicionamiento Sectorial", 5, s5_blocks) if s5_blocks else None
+    s5 = new_section("Posicionamiento Sectorial", 5,
+                     [table_block("Benchmark sectorial", ["Métrica", "Q1", "Mediana", "Q3", "Peers"], bm_rows)]) if bm_rows else None
 
-    # 6. Market Context (V2) — from Economic Intelligence
+    # 6. Market Context — Economic Intelligence
     s6_market = new_section("Contexto de Mercado", 6, [])
     if econ.get("active_companies_national"):
         s6_market["blocks"].append(kpi_block("Empresas activas en sector",
@@ -606,90 +648,60 @@ async def compose_information_memorandum(company_id: str = None, cif: str = None
         b = kpi_block("Exportaciones sector", f"{econ['exports_eur']['value']:,.0f}", "EUR")
         b["data_lineage"] = {"source": "economic_intelligence", "date": now_iso()}
         s6_market["blocks"].append(b)
-    if econ.get("imports_eur"):
-        s6_market["blocks"].append(kpi_block("Importaciones sector", f"{econ['imports_eur']['value']:,.0f}", "EUR"))
     if econ.get("procurement_contracts"):
-        s6_market["blocks"].append(kpi_block("Contratos publicos", f"{econ['procurement_contracts']['value']}", "contratos"))
-    if econ.get("borme_events"):
-        s6_market["blocks"].append(kpi_block("Actividad corporativa", f"{econ['borme_events']['value']}", "eventos BORME"))
+        s6_market["blocks"].append(kpi_block("Contratos públicos", f"{econ['procurement_contracts']['value']}", "contratos"))
 
-    # 7. Risks & Opportunities (AI, fact-locked)
-    from docstudio.model_provider import generate_analysis
-    risk_context = {
-        "company_name": name, "cnae": cnae, "cnae_label": cnae_label,
-        "revenue": company.get("revenue_latest"), "ebitda_margin": fin_analysis.get("ebitda_margin"),
-        "growth": fin_analysis.get("revenue_yoy"), "sector_peers": benchmark.get("peers", 0),
-        "sector_trend": econ.get("trend"),
-        "signals": [s.get("signal_type") for s in econ.get("signals", [])],
-    }
-    risk_result = await generate_analysis(risk_context,
-        "Identify risks and opportunities for this company based ONLY on the data provided. Return JSON with 'risks' (array of strings) and 'opportunities' (array of strings). Max 4 each. Spanish. Fact-locked: only use data present.",
-        document_id=doc["document_id"])
-
+    # 7. Risks & Opportunities — REAL assessment + active signals (no blind AI)
     s7_risks = new_section("Riesgos y Oportunidades", 7, [])
-    for risk in risk_result.get("risks", [])[:4]:
+    for risk in (assessment.get("risks", []) + assessment.get("weaknesses", []))[:4]:
         b = insight_block("Riesgo", risk, importance="high")
-        b["data_lineage"] = {"source": "ai", "model": "gpt-5.2", "task": "im_risk_analysis", "date": now_iso()}
+        b["data_lineage"] = {"source": _FIN, "task": "assessment_risk", "date": now_iso()}
         s7_risks["blocks"].append(b)
-    for opp in risk_result.get("opportunities", [])[:4]:
-        b = insight_block("Oportunidad", opp, importance="medium")
-        b["data_lineage"] = {"source": "ai", "model": "gpt-5.2", "task": "im_opportunity_analysis", "date": now_iso()}
-        s7_risks["blocks"].append(b)
+    for sig in bundle.get("signals", []):
+        if sig.get("severity") == "opportunity":
+            b = insight_block("Oportunidad", sig.get("explanation", sig.get("signal_type", "")), importance="medium")
+            b["data_lineage"] = {"source": "signal-intelligence-v1", "signal_id": sig.get("signal_id"), "date": now_iso()}
+            s7_risks["blocks"].append(b)
+    for strength in assessment.get("strengths", [])[:3]:
+        s7_risks["blocks"].append(insight_block("Fortaleza", strength, importance="medium"))
 
-    # 8. Preliminary Valuation (Financial Engine only — deterministic)
-    from docstudio.financial_engine import ev_revenue, ev_ebitda, implied_ev_from_multiple
-    s8_val = new_section("Valoracion Preliminar", 8, [])
-    rev = company.get("revenue_latest", 0)
-    ebitda_val = financials[-1].get("ebitda", 0) if financials else 0
-    sector_rev_median = benchmark.get("revenue", {}).get("median")
-    sector_ebitda_median = benchmark.get("ebitda", {}).get("median")
+    # 8. Valuation — REAL Financial Engine valuation (honest), not a heuristic
+    s8_val = new_section("Valoración", 8, [])
+    vb = _valuation_block(bundle)
+    if vb:
+        s8_val["blocks"].append(vb)
+        val = bundle.get("valuation", {})
+        rng = val.get("range") or {}
+        if rng.get("low") and rng.get("high"):
+            s8_val["blocks"].append(text_block(
+                f"Rango orientativo: {rng['low']:,.0f} € – {rng['high']:,.0f} € "
+                f"(confianza {val.get('confidence', '—')}). "
+                + " ".join(val.get("hypotheses", [])), style="body"))
+    else:
+        s8_val["blocks"].append(text_block(
+            "Datos insuficientes para una valoración fiable. Se requiere información financiera adicional.", style="body"))
 
-    # Implied multiples from sector (deterministic)
-    if sector_rev_median and sector_ebitda_median and sector_rev_median > 0 and sector_ebitda_median > 0:
-        sector_ev_rev = round(sector_rev_median * 1.5, 2)  # Conservative EV proxy
-        implied_multiple_rev = round(sector_ev_rev / sector_rev_median, 2) if sector_rev_median else None
-        implied_multiple_ebitda = round(sector_ev_rev / sector_ebitda_median, 2) if sector_ebitda_median else None
-
-        if implied_multiple_rev and rev:
-            val = implied_ev_from_multiple(rev, implied_multiple_rev)
-            if val:
-                b = kpi_block("Valoracion por Revenue", f"{val:,.0f}", "EUR",
-                              commentary=f"EV/Revenue: {implied_multiple_rev:.1f}x (mediana sector)")
-                b["data_lineage"] = {"source": "financial_engine", "calculation": "implied_ev_revenue", "date": now_iso()}
-                s8_val["blocks"].append(b)
-
-        if implied_multiple_ebitda and ebitda_val:
-            val2 = implied_ev_from_multiple(ebitda_val, implied_multiple_ebitda)
-            if val2:
-                b = kpi_block("Valoracion por EBITDA", f"{val2:,.0f}", "EUR",
-                              commentary=f"EV/EBITDA: {implied_multiple_ebitda:.1f}x (mediana sector)")
-                b["data_lineage"] = {"source": "financial_engine", "calculation": "implied_ev_ebitda", "date": now_iso()}
-                s8_val["blocks"].append(b)
-
-    if not s8_val["blocks"]:
-        s8_val["blocks"].append(text_block("Datos insuficientes para valoracion preliminar. Se requiere informacion adicional.", style="body"))
-
-    # 9. Key Findings (AI)
+    # 9. Key Findings (Claude)
     s9 = new_section("Hallazgos Clave", 9, [])
     for f in ai_result.get("key_findings", []):
         b = insight_block("Hallazgo", f, importance="high")
-        b["data_lineage"] = {"source": "ai", "model": "gpt-5.2", "task": "im_findings", "date": now_iso()}
+        b["data_lineage"] = {"source": "ai", "model": "claude", "task": "im_findings", "date": now_iso()}
         s9["blocks"].append(b)
 
-    # 10. Conclusion & Recommendations
-    s10 = new_section("Conclusion y Recomendaciones", 10, [])
+    # 10. Conclusion & Recommendations (Claude)
+    s10 = new_section("Conclusión y Recomendaciones", 10, [])
     if ai_result.get("conclusion"):
         b = text_block(ai_result["conclusion"], style="conclusion")
-        b["data_lineage"] = {"source": "ai", "model": "gpt-5.2", "task": "im_conclusion", "date": now_iso()}
+        b["data_lineage"] = {"source": "ai", "model": "claude", "task": "im_conclusion", "date": now_iso()}
         s10["blocks"].append(b)
     for rec in ai_result.get("recommendations", []):
-        s10["blocks"].append(insight_block("Recomendacion", rec, importance="medium"))
+        s10["blocks"].append(insight_block("Recomendación", rec, importance="medium"))
 
     doc["sections"] = [s for s in [s1, s2, s3, s4, s5, s6_market, s7_risks, s8_val, s9, s10] if s]
     doc["metadata"] = {
-        "company_id": company.get("master_company_id"), "cif": company.get("cif"),
+        "master_id": bundle["master_id"], "cif": cif_norm,
         "cnae_code": cnae, "type": "information_memorandum",
-        "financial_engine_used": True, "fact_locked": True,
+        "financial_engine_used": True, "fact_locked": True, "schema": "modern",
     }
     doc["status"] = "generated"
     doc["updated_at"] = now_iso()
@@ -699,39 +711,29 @@ async def compose_information_memorandum(company_id: str = None, cif: str = None
 
 async def compose_company_snapshot(company_id: str = None, cif: str = None,
                                     brand_id: str = "brand_bud", user: str = None) -> Dict:
-    """Company Snapshot — minimal intelligence unit. <30 seconds."""
-    from docstudio.financial_engine import (
-        analyze_company_financials, analyze_sector_benchmark,
-        find_comparables, compute_sector_positioning,
-    )
+    """Company Snapshot — minimal intelligence unit. Fase 2: modern schema + real engines."""
+    from docstudio.financial_engine import analyze_sector_benchmark, compute_sector_positioning
     from services.cnae_catalog import CNAE_DIVISIONS
 
-    query = {"master_company_id": company_id} if company_id else {"cif": cif}
-    company = await db.companies_master.find_one(query, {"_id": 0})
-    if not company:
+    bundle = await DA.company_intelligence(company_id or cif)
+    if not bundle.get("found"):
         return {"error": "Company not found"}
 
-    name = company.get("legal_name", "Empresa")
-    cid = company.get("master_company_id", "")
-    cnae = company.get("cnae_primary", "")
+    ident = bundle["identity"]
+    name = ident.get("name", "Empresa")
+    cnae = ident.get("cnae_code", "")
     cnae_label = CNAE_DIVISIONS.get(cnae, {}).get("label", "")
-
-    # Financial analysis (deterministic)
-    financials = await db.iberinform_financials.find(
-        {"company_id": cid}, {"_id": 0}
-    ).sort("year", 1).to_list(10)
-    fin = analyze_company_financials(financials) if financials else {}
+    kpis = bundle.get("kpis", {})
     benchmark = await analyze_sector_benchmark(cnae) if cnae else {}
 
-    # Comparables (deterministic similarity scoring)
-    comparables = await find_comparables(cid, cnae, limit=5) if cnae else []
+    # Comparables come REAL from the Financial Engine bundle (sector+size+geo)
+    comparables = (bundle.get("comparables", {}) or {}).get("peers", [])
 
-    # Sector positioning (deterministic percentiles)
+    # Sector positioning (deterministic percentiles) over real KPIs
     company_metrics = {
-        "revenue": company.get("revenue_latest"),
-        "ebitda": financials[-1].get("ebitda") if financials else None,
-        "employees": company.get("employees_latest"),
-        "ebitda_margin": fin.get("ebitda_margin"),
+        "revenue": kpis.get("revenue"), "ebitda": kpis.get("ebitda"),
+        "employees": (bundle.get("statements") or {}).get("employees"),
+        "ebitda_margin": kpis.get("ebitda_margin"),
     }
     positioning = compute_sector_positioning(company_metrics, benchmark) if benchmark.get("peers") else {}
 
@@ -740,90 +742,67 @@ async def compose_company_snapshot(company_id: str = None, cif: str = None,
         template_id="tpl_snapshot", brand_id=brand_id, created_by=user,
     )
 
-    # 1. Cover
     s1 = new_section("Portada", 1, [
         cover_block(title=name, subtitle=f"Company Snapshot — CNAE {cnae}: {cnae_label}"),
     ])
 
-    # 2. KPIs (Financial Engine)
-    snap_kpis = []
-    if company.get("revenue_latest"):
-        b = kpi_block("Facturacion", f"{company['revenue_latest']:,.0f}", "EUR")
-        b["data_lineage"] = {"source": "companies_master", "date": now_iso()}
-        snap_kpis.append(b)
-    if fin.get("ebitda_margin") is not None:
-        b = kpi_block("Margen EBITDA", f"{fin['ebitda_margin']:.1f}%", "")
-        b["data_lineage"] = {"source": "financial_engine", "calculation": "ebitda_margin", "date": now_iso()}
-        snap_kpis.append(b)
-    if company.get("employees_latest"):
-        snap_kpis.append(kpi_block("Empleados", str(company["employees_latest"]), ""))
-    if fin.get("revenue_per_employee"):
-        b = kpi_block("Rev/empleado", f"{fin['revenue_per_employee']:,.0f}", "EUR")
-        b["data_lineage"] = {"source": "financial_engine", "calculation": "revenue_per_employee", "date": now_iso()}
-        snap_kpis.append(b)
-    if fin.get("revenue_cagr") is not None:
-        b = kpi_block("CAGR", f"{fin['revenue_cagr']:+.1f}%", "")
-        b["data_lineage"] = {"source": "financial_engine", "calculation": "cagr", "date": now_iso()}
-        snap_kpis.append(b)
-    if fin.get("revenue_yoy") is not None:
-        b = kpi_block("Crecimiento YoY", f"{fin['revenue_yoy']:+.1f}%", "")
-        b["data_lineage"] = {"source": "financial_engine", "calculation": "yoy_growth", "date": now_iso()}
-        snap_kpis.append(b)
-    s2 = new_section("KPIs", 2, snap_kpis)
+    # 2. KPIs (real Financial Engine)
+    s2 = new_section("KPIs", 2, _company_kpi_blocks(bundle))
 
     # 3. Positioning (deterministic percentiles)
     pos_blocks = []
     if positioning:
         pos_rows = []
         for metric, data in positioning.items():
-            pos_rows.append([data["label"], f"{data['value']:,.0f}" if isinstance(data['value'], (int, float)) and data['value'] > 1 else f"{data['value']*100:.1f}%" if data['value'] and data['value'] < 1 else str(data['value']),
-                           f"P{data['percentile']:.0f}", data["position"].replace("_", " ").title()])
-        b = table_block("Posicionamiento sectorial", ["Metrica", "Valor", "Percentil", "Posicion"], pos_rows)
-        b["data_lineage"] = {"source": "financial_engine", "calculation": "sector_positioning", "date": now_iso()}
+            v = data["value"]
+            v_str = f"{v*100:.1f}%" if (v and abs(v) < 1) else f"{v:,.0f}"
+            pos_rows.append([data["label"], v_str, f"P{data['percentile']:.0f}",
+                             data["position"].replace("_", " ").title()])
+        b = table_block("Posicionamiento sectorial", ["Métrica", "Valor", "Percentil", "Posición"], pos_rows)
+        b["data_lineage"] = {"source": _FIN, "calculation": "sector_positioning", "date": now_iso()}
         pos_blocks.append(b)
     s3 = new_section("Posicionamiento", 3, pos_blocks) if pos_blocks else None
 
-    # 4. Comparables (deterministic similarity)
+    # 4. Comparables (real, from Financial Engine)
     comp_blocks = []
     if comparables:
         comp_rows = []
-        for c in comparables:
+        for c in comparables[:5]:
+            m = c.get("ebitda_margin")
             comp_rows.append([
-                c["legal_name"][:35],
+                (c.get("name") or "")[:35],
                 f"{c['revenue']:,.0f}" if c.get("revenue") else "—",
-                f"{c.get('ebitda_margin', 0)*100:.1f}%" if c.get("ebitda_margin") else "—",
-                str(c.get("employees", "—")),
-                f"{c['similarity']:.0f}%",
+                f"{m*100:.1f}%" if m is not None else "—",
+                c.get("provincia", "—"),
             ])
-        b = table_block("Top 5 comparables", ["Empresa", "Revenue (EUR)", "Margen", "Empl.", "Similitud"], comp_rows)
-        b["data_lineage"] = {"source": "financial_engine", "calculation": "similarity_score", "date": now_iso()}
+        b = table_block("Comparables (sector+tamaño+geografía)", ["Empresa", "Revenue (EUR)", "Margen", "Provincia"], comp_rows)
+        b["data_lineage"] = {"source": _FIN, "calculation": "financial_comparables", "date": now_iso()}
         comp_blocks.append(b)
     s4 = new_section("Comparables", 4, comp_blocks) if comp_blocks else None
 
-    # 5. AI Conclusion (fact-locked, max 5 lines)
+    # 5. AI Conclusion (Claude, fact-locked, short)
     ai_context = {
         "company_name": name, "cnae": cnae, "cnae_label": cnae_label,
-        "revenue": company.get("revenue_latest"), "ebitda_margin": fin.get("ebitda_margin"),
-        "employees": company.get("employees_latest"), "cagr": fin.get("revenue_cagr"),
-        "yoy": fin.get("revenue_yoy"), "positioning": positioning,
-        "comparables_count": len(comparables), "sector_peers": benchmark.get("peers", 0),
+        "revenue": kpis.get("revenue"), "ebitda_margin": kpis.get("ebitda_margin"),
+        "cagr": kpis.get("revenue_cagr"), "yoy": kpis.get("revenue_growth_yoy"),
+        "positioning": positioning, "comparables_count": len(comparables),
+        "active_signals": [s.get("signal_type") for s in bundle.get("signals", [])],
     }
     ai_result = await generate_summary(ai_context, doc_type="company_profile", document_id=doc["document_id"])
 
-    s5 = new_section("Conclusion", 5, [])
+    s5 = new_section("Conclusión", 5, [])
     conclusion_text = ai_result.get("conclusion", ai_result.get("executive_summary", ""))
     if conclusion_text:
-        # Limit to ~5 lines
         sentences = conclusion_text.split(". ")
-        short = ". ".join(sentences[:5]) + ("." if not sentences[-1].endswith(".") else "")
+        short = ". ".join(sentences[:5]) + ("." if sentences and not sentences[-1].endswith(".") else "")
         b = text_block(short, style="conclusion")
-        b["data_lineage"] = {"source": "ai", "model": "gpt-5.2", "task": "snapshot_conclusion", "date": now_iso()}
+        b["data_lineage"] = {"source": "ai", "model": "claude", "task": "snapshot_conclusion", "date": now_iso()}
         s5["blocks"].append(b)
 
     doc["sections"] = [s for s in [s1, s2, s3, s4, s5] if s]
     doc["metadata"] = {
-        "company_id": cid, "cnae_code": cnae, "type": "company_snapshot",
-        "financial_engine_used": True, "fact_locked": True,
+        "master_id": bundle["master_id"], "cnae_code": cnae, "type": "company_snapshot",
+        "financial_engine_used": True, "fact_locked": True, "schema": "modern",
         "comparables_found": len(comparables), "sector_peers": benchmark.get("peers", 0),
     }
     doc["status"] = "generated"
@@ -835,35 +814,30 @@ async def compose_company_snapshot(company_id: str = None, cif: str = None,
 async def compose_benchmark_advanced(cnae_code: str, company_id: str = None,
                                       brand_id: str = "brand_bud", user: str = None) -> Dict:
     """Advanced Benchmark Report with comparables, positioning, and SWOT. <60 seconds."""
-    from docstudio.financial_engine import (
-        analyze_sector_benchmark, find_comparables, compute_sector_positioning,
-        analyze_company_financials,
-    )
+    from docstudio.financial_engine import analyze_sector_benchmark, compute_sector_positioning
     from services.cnae_catalog import CNAE_DIVISIONS
 
     cnae_label = CNAE_DIVISIONS.get(cnae_code, {}).get("label", cnae_code)
     await _get_economic_profile(cnae_code)  # available for AI context
     benchmark = await analyze_sector_benchmark(cnae_code)
 
-    # If company_id provided, compute positioning
-    company = None
-    fin = {}
+    # If company provided, compute positioning + comparables from the real engine
+    bundle = None
+    company_name = None
     positioning = {}
     comparables = []
     if company_id:
-        company = await db.companies_master.find_one({"master_company_id": company_id}, {"_id": 0})
-        financials = await db.iberinform_financials.find(
-            {"company_id": company_id}, {"_id": 0}
-        ).sort("year", 1).to_list(10)
-        fin = analyze_company_financials(financials) if financials else {}
-        company_metrics = {
-            "revenue": company.get("revenue_latest") if company else None,
-            "ebitda": financials[-1].get("ebitda") if financials else None,
-            "employees": company.get("employees_latest") if company else None,
-            "ebitda_margin": fin.get("ebitda_margin"),
-        }
-        positioning = compute_sector_positioning(company_metrics, benchmark)
-        comparables = await find_comparables(company_id, cnae_code, limit=5)
+        bundle = await DA.company_intelligence(company_id)
+        if bundle.get("found"):
+            company_name = bundle["identity"].get("name")
+            kpis = bundle.get("kpis", {})
+            company_metrics = {
+                "revenue": kpis.get("revenue"), "ebitda": kpis.get("ebitda"),
+                "employees": (bundle.get("statements") or {}).get("employees"),
+                "ebitda_margin": kpis.get("ebitda_margin"),
+            }
+            positioning = compute_sector_positioning(company_metrics, benchmark)
+            comparables = (bundle.get("comparables", {}) or {}).get("peers", [])
 
     doc = new_document(
         title=f"Benchmark Report — CNAE {cnae_code}: {cnae_label}",
@@ -871,7 +845,7 @@ async def compose_benchmark_advanced(cnae_code: str, company_id: str = None,
     )
 
     # 1. Cover
-    title_suffix = f" vs {company.get('legal_name', '')}" if company else ""
+    title_suffix = f" vs {company_name}" if company_name else ""
     s1 = new_section("Portada", 1, [
         cover_block(title=f"Benchmark Sectorial{title_suffix}", subtitle=f"CNAE {cnae_code}: {cnae_label}"),
     ])
@@ -923,19 +897,19 @@ async def compose_benchmark_advanced(cnae_code: str, company_id: str = None,
         b["data_lineage"] = {"source": "financial_engine", "calculation": "sector_positioning", "date": now_iso()}
         s5 = new_section("Posicionamiento Competitivo", 5, [b])
 
-    # 5. Comparables
+    # 5. Comparables (real, from Financial Engine bundle)
     s6 = None
     if comparables:
         comp_rows = []
-        for c in comparables:
-            comp_rows.append([c["legal_name"][:30], f"{c.get('revenue',0):,.0f}",
-                            f"{c.get('ebitda_margin',0)*100:.1f}%" if c.get('ebitda_margin') else "—",
-                            str(c.get("employees", "—")), c.get("province", "—"), f"{c['similarity']:.0f}%"])
-        b = table_block("Top comparables", ["Empresa", "Revenue", "Margen", "Empl.", "Prov.", "Similitud"], comp_rows)
-        b["data_lineage"] = {"source": "financial_engine", "calculation": "similarity_score", "date": now_iso()}
+        for c in comparables[:8]:
+            m = c.get("ebitda_margin")
+            comp_rows.append([(c.get("name") or "")[:30], f"{c.get('revenue', 0):,.0f}",
+                              f"{m*100:.1f}%" if m is not None else "—", c.get("provincia", "—")])
+        b = table_block("Comparables (sector+tamaño+geografía)", ["Empresa", "Revenue", "Margen", "Provincia"], comp_rows)
+        b["data_lineage"] = {"source": _FIN, "calculation": "financial_comparables", "date": now_iso()}
         s6 = new_section("Comparables", 6, [b])
 
-    # 6. AI SWOT (fact-locked)
+    # 6. AI SWOT (Claude, fact-locked)
     ai_context = {
         "cnae_code": cnae_code, "cnae_label": cnae_label,
         "benchmark_peers": benchmark.get("peers", 0),
@@ -944,17 +918,17 @@ async def compose_benchmark_advanced(cnae_code: str, company_id: str = None,
         "positioning": positioning if positioning else None,
         "comparables_count": len(comparables),
     }
-    if company:
-        ai_context["company_name"] = company.get("legal_name")
-        ai_context["company_revenue"] = company.get("revenue_latest")
-        ai_context["company_margin"] = fin.get("ebitda_margin")
+    if bundle and bundle.get("found"):
+        ai_context["company_name"] = company_name
+        ai_context["company_revenue"] = bundle.get("kpis", {}).get("revenue")
+        ai_context["company_margin"] = bundle.get("kpis", {}).get("ebitda_margin")
 
     ai_result = await generate_summary(ai_context, doc_type="sector_report", document_id=doc["document_id"])
 
     s2 = new_section("Resumen Ejecutivo", 2, [])
     if ai_result.get("executive_summary"):
         b = text_block(ai_result["executive_summary"], style="executive_summary")
-        b["data_lineage"] = {"source": "ai", "model": "gpt-5.2", "task": "benchmark_summary", "date": now_iso()}
+        b["data_lineage"] = {"source": "ai", "model": "claude", "task": "benchmark_summary", "date": now_iso()}
         s2["blocks"].append(b)
 
     s7_blocks = []
@@ -962,14 +936,15 @@ async def compose_benchmark_advanced(cnae_code: str, company_id: str = None,
         s7_blocks.append(insight_block("Hallazgo", f, importance="high"))
     if ai_result.get("conclusion"):
         b = text_block(ai_result["conclusion"], style="conclusion")
-        b["data_lineage"] = {"source": "ai", "model": "gpt-5.2", "task": "benchmark_conclusion", "date": now_iso()}
+        b["data_lineage"] = {"source": "ai", "model": "claude", "task": "benchmark_conclusion", "date": now_iso()}
         s7_blocks.append(b)
     s7 = new_section("Conclusiones", 7, s7_blocks) if s7_blocks else None
 
     doc["sections"] = [s for s in [s1, s2, s3, s4, s5, s6, s7] if s]
     doc["metadata"] = {
         "cnae_code": cnae_code, "type": "benchmark_advanced",
-        "company_id": company_id, "financial_engine_used": True, "fact_locked": True,
+        "master_id": bundle["master_id"] if (bundle and bundle.get("found")) else None,
+        "financial_engine_used": True, "fact_locked": True, "schema": "modern",
         "comparables_found": len(comparables), "sector_peers": benchmark.get("peers", 0),
     }
     doc["status"] = "generated"
@@ -990,7 +965,8 @@ def compute_quality_score(doc: Dict) -> Dict:
 
     # 2. Financial coverage (KPI blocks with Financial Engine lineage)
     kpi_blocks = [b for b in all_blocks if b.get("block_type") == "kpi"]
-    fin_engine_blocks = [b for b in all_blocks if b.get("data_lineage", {}).get("source") == "financial_engine"]
+    _fin_sources = {"financial_engine", "financial-intelligence-v1"}
+    fin_engine_blocks = [b for b in all_blocks if b.get("data_lineage", {}).get("source") in _fin_sources]
     scores["financial_coverage"] = round(len(fin_engine_blocks) / max(len(kpi_blocks), 1) * 100)
 
     # 3. Missing sections
@@ -1034,37 +1010,30 @@ async def compose_from_template(template_id: str, company_id: str = None, cif: s
     
     Reads the template's section definitions, resolves data sources, and populates blocks.
     """
-    from docstudio.financial_engine import (
-        analyze_company_financials, analyze_sector_benchmark,
-        find_comparables, compute_sector_positioning,
-    )
+    from docstudio.financial_engine import analyze_sector_benchmark
     from services.cnae_catalog import CNAE_DIVISIONS
 
     template = await db.docstudio_templates.find_one({"template_id": template_id}, {"_id": 0})
     if not template:
         return {"error": f"Template {template_id} not found"}
 
-    # Resolve company if provided
-    company = None
-    financials = []
-    fin = {}
+    # Resolve company (modern schema + real engines) if provided
+    bundle = None
+    company_name = None
+    kpis = {}
     if company_id or cif:
-        query = {"master_company_id": company_id} if company_id else {"cif": cif}
-        company = await db.companies_master.find_one(query, {"_id": 0})
-        if company:
-            cid = company.get("master_company_id", "")
-            cnae_code = cnae_code or company.get("cnae_primary", "")
-            financials = await db.iberinform_financials.find(
-                {"company_id": cid}, {"_id": 0}
-            ).sort("year", 1).to_list(10)
-            fin = analyze_company_financials(financials) if financials else {}
+        bundle = await DA.company_intelligence(company_id or cif)
+        if bundle.get("found"):
+            company_name = bundle["identity"].get("name")
+            cnae_code = cnae_code or bundle["identity"].get("cnae_code")
+            kpis = bundle.get("kpis", {})
 
     cnae_label = CNAE_DIVISIONS.get(cnae_code, {}).get("label", "") if cnae_code else ""
     benchmark = await analyze_sector_benchmark(cnae_code) if cnae_code else {}
     econ = await _get_economic_profile(cnae_code) if cnae_code else {}
 
     # Build document
-    title_entity = company.get("legal_name", cnae_label) if company else cnae_label
+    title_entity = company_name or cnae_label
     doc = new_document(
         title=f"{template.get('name', 'Documento')} — {title_entity}",
         template_id=template_id,
@@ -1090,29 +1059,8 @@ async def compose_from_template(template_id: str, company_id: str = None, cif: s
 
         # KPI blocks from data sources
         if "kpi" in block_types:
-            if data_source in ("financial_engine", "") and (company or fin):
-                if company and company.get("revenue_latest"):
-                    b = kpi_block("Facturacion", f"{company['revenue_latest']:,.0f}", "EUR")
-                    b["data_lineage"] = {"source": "companies_master", "date": now}
-                    blocks.append(b)
-                if fin.get("ebitda_margin") is not None:
-                    b = kpi_block("Margen EBITDA", f"{fin['ebitda_margin']:.1f}%", "")
-                    b["data_lineage"] = {"source": "financial_engine", "calculation": "ebitda_margin", "date": now}
-                    blocks.append(b)
-                if company and company.get("employees_latest"):
-                    blocks.append(kpi_block("Empleados", str(company["employees_latest"]), ""))
-                if fin.get("revenue_yoy") is not None:
-                    b = kpi_block("Crecimiento YoY", f"{fin['revenue_yoy']:+.1f}%", "")
-                    b["data_lineage"] = {"source": "financial_engine", "calculation": "yoy", "date": now}
-                    blocks.append(b)
-                if fin.get("revenue_cagr") is not None:
-                    b = kpi_block("CAGR", f"{fin['revenue_cagr']:+.1f}%", "")
-                    b["data_lineage"] = {"source": "financial_engine", "calculation": "cagr", "date": now}
-                    blocks.append(b)
-                if fin.get("revenue_per_employee"):
-                    b = kpi_block("Rev/empleado", f"{fin['revenue_per_employee']:,.0f}", "EUR")
-                    b["data_lineage"] = {"source": "financial_engine", "calculation": "rev_per_emp", "date": now}
-                    blocks.append(b)
+            if data_source in ("financial_engine", "") and bundle and bundle.get("found"):
+                blocks.extend(_company_kpi_blocks(bundle))
             elif data_source == "economic_intelligence" and econ:
                 if econ.get("active_companies_national"):
                     blocks.append(kpi_block("Empresas activas", f"{econ['active_companies_national']['value']:,.0f}", ""))
@@ -1121,16 +1069,14 @@ async def compose_from_template(template_id: str, company_id: str = None, cif: s
 
         # Table blocks
         if "table" in block_types:
-            if company:
-                info_rows = []
-                for field, label in [("legal_name", "Razon social"), ("cif", "CIF"),
-                                     ("legal_form", "Forma juridica"), ("province_name", "Provincia")]:
-                    if company.get(field):
-                        info_rows.append([label, str(company[field])])
+            if bundle and bundle.get("found"):
+                ident = bundle["identity"]
+                info_rows = [["Razón social", company_name or ""], ["CIF", bundle.get("cif_normalized", "—")]]
+                if ident.get("provincia"):
+                    info_rows.append(["Provincia", ident["provincia"]])
                 if cnae_label:
                     info_rows.append(["Sector", f"CNAE {cnae_code}: {cnae_label}"])
-                if info_rows:
-                    blocks.append(table_block("Informacion", ["Campo", "Valor"], info_rows))
+                blocks.append(table_block("Información", ["Campo", "Valor"], info_rows))
 
             if benchmark.get("peers"):
                 bm_rows = []
@@ -1141,32 +1087,35 @@ async def compose_from_template(template_id: str, company_id: str = None, cif: s
                             return f"{v*100:.1f}%" if metric == "ebitda_margin" else f"{v:,.0f}"
                         bm_rows.append([label, fmt(q.get("q1", 0)), fmt(q["median"]), fmt(q.get("q3", 0))])
                 if bm_rows:
-                    b = table_block("Benchmark", ["Metrica", "Q1", "Mediana", "Q3"], bm_rows)
-                    b["data_lineage"] = {"source": "financial_engine", "calculation": "quartiles", "date": now}
+                    b = table_block("Benchmark", ["Métrica", "Q1", "Mediana", "Q3"], bm_rows)
+                    b["data_lineage"] = {"source": _FIN, "calculation": "quartiles", "date": now}
                     blocks.append(b)
 
-        # AI text/insight blocks — runs when data_source is 'ai' OR when text/insight blocks exist without other source
-        needs_ai = data_source == "ai" or (("text" in block_types or "insight" in block_types) and data_source not in ("financial_engine", "companies_master", "economic_intelligence"))
+        # Signal insight blocks (real) when the section wants insights and we have a company
+        if "insight" in block_types and data_source in ("signal", "signals") and bundle and bundle.get("found"):
+            blocks.extend(_signal_insight_blocks(bundle))
+
+        # AI text/insight blocks — data_source 'ai' OR text/insight without another source
+        needs_ai = data_source == "ai" or (("text" in block_types or "insight" in block_types)
+                    and data_source not in ("financial_engine", "economic_intelligence", "signal", "signals"))
         if needs_ai:
             ai_context = {
-                "section_title": title,
-                "company_name": company.get("legal_name") if company else None,
+                "section_title": title, "company_name": company_name,
                 "cnae": cnae_code, "cnae_label": cnae_label,
-                "revenue": company.get("revenue_latest") if company else None,
-                "ebitda_margin": fin.get("ebitda_margin"),
-                "growth": fin.get("revenue_yoy"),
-                "sector_peers": benchmark.get("peers", 0),
+                "revenue": kpis.get("revenue"), "ebitda_margin": kpis.get("ebitda_margin"),
+                "growth": kpis.get("revenue_growth_yoy"), "sector_peers": benchmark.get("peers", 0),
+                "active_signals": [s.get("signal_type") for s in (bundle.get("signals", []) if bundle else [])],
             }
             ai_result = await generate_summary(ai_context, document_id=doc["document_id"])
 
             if "text" in block_types and ai_result.get("executive_summary"):
                 b = text_block(ai_result["executive_summary"], style="executive_summary")
-                b["data_lineage"] = {"source": "ai", "model": "gpt-5.2", "task": f"generic_{title[:20]}", "date": now}
+                b["data_lineage"] = {"source": "ai", "model": "claude", "task": f"generic_{title[:20]}", "date": now}
                 blocks.append(b)
             if "insight" in block_types:
                 for finding in ai_result.get("key_findings", [])[:3]:
                     b = insight_block("Hallazgo", finding, importance="high")
-                    b["data_lineage"] = {"source": "ai", "model": "gpt-5.2", "task": "findings", "date": now}
+                    b["data_lineage"] = {"source": "ai", "model": "claude", "task": "findings", "date": now}
                     blocks.append(b)
 
         sections.append(new_section(title, tpl_section.get("order", len(sections) + 1), blocks))
@@ -1174,9 +1123,9 @@ async def compose_from_template(template_id: str, company_id: str = None, cif: s
     doc["sections"] = sections
     doc["metadata"] = {
         "template_id": template_id, "template_name": template.get("name"),
-        "company_id": company.get("master_company_id") if company else None,
+        "master_id": bundle["master_id"] if (bundle and bundle.get("found")) else None,
         "cnae_code": cnae_code, "type": "custom_template",
-        "financial_engine_used": True, "fact_locked": True,
+        "financial_engine_used": True, "fact_locked": True, "schema": "modern",
     }
     doc["status"] = "generated"
     doc["updated_at"] = now_iso()

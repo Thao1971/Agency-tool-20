@@ -16,6 +16,7 @@ from models import new_id, now_iso
 BLOCK_TYPES = [
     "cover", "text", "kpi", "table", "chart",
     "insight", "image", "divider", "appendix",
+    "page_break",  # layout control — forces a page break in PDF/print output
 ]
 
 CHART_TYPES = [
@@ -115,3 +116,12 @@ def insight_block(title: str, summary: str, importance: str = "medium",
 
 def divider_block() -> Dict:
     return new_block("divider")
+
+
+def page_break_block() -> Dict:
+    """Layout-control block — forces a page break in the rendered PDF/print output.
+
+    Part of the layout-control requirement (add/remove modules, page breaks, colors).
+    Renderers translate this into `page-break-before: always` (or equivalent).
+    """
+    return new_block("page_break")

@@ -258,6 +258,185 @@ async def regenerate_section(document_id: str, section_id: str, user=Depends(get
 
 
 # ══════════════════════════════════════════
+# LAYOUT CONTROL (maquetación: módulos, saltos de página, marca por documento)
+# ══════════════════════════════════════════
+
+from docstudio import layout as _layout, new_block as _new_block, new_section as _new_section
+
+
+class AddBlockReq(BaseModel):
+    section_id: str
+    block_type: str
+    data: dict = {}
+    index: Optional[int] = None
+
+
+class MoveBlockReq(BaseModel):
+    to_section_id: str
+    to_index: Optional[int] = None
+
+
+class ReorderReq(BaseModel):
+    ordered_ids: List[str]
+
+
+class AddSectionReq(BaseModel):
+    title: str
+    index: Optional[int] = None
+
+
+class PageBreakReq(BaseModel):
+    section_id: str
+    index: Optional[int] = None
+
+
+class BrandOverlayReq(BaseModel):
+    overlay: Optional[dict] = None
+
+
+class ColorOverrideReq(BaseModel):
+    colors: Optional[dict] = None
+
+
+async def _load_doc_or_404(document_id: str) -> dict:
+    doc = await db.docstudio_documents.find_one({"document_id": document_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(404, "Document not found")
+    return doc
+
+
+async def _save_layout(document_id: str, doc: dict, user) -> int:
+    """Persist the document's layout (sections/blocks + per-doc brand) and bump version."""
+    new_version = doc.get("version", 1) + 1
+    await db.docstudio_documents.update_one(
+        {"document_id": document_id},
+        {"$set": {
+            "sections": doc.get("sections", []),
+            "brand_overlay": doc.get("brand_overlay"),
+            "color_override": doc.get("color_override"),
+            "version": new_version,
+            "updated_at": now_iso(),
+            "last_edited_by": user.get("email") if user else None,
+        }},
+    )
+    return new_version
+
+
+@router.post("/documents/{document_id}/blocks")
+async def layout_add_block(document_id: str, req: AddBlockReq, user=Depends(get_current_user)):
+    """Añadir un módulo (bloque) a una sección."""
+    doc = await _load_doc_or_404(document_id)
+    try:
+        block = _new_block(req.block_type, data=req.data)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    try:
+        _layout.add_block(doc, req.section_id, block, req.index)
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+    v = await _save_layout(document_id, doc, user)
+    return {"status": "added", "block_id": block["block_id"], "version": v}
+
+
+@router.delete("/documents/{document_id}/blocks/{block_id}")
+async def layout_remove_block(document_id: str, block_id: str, user=Depends(get_current_user)):
+    """Eliminar un módulo."""
+    doc = await _load_doc_or_404(document_id)
+    try:
+        _layout.remove_block(doc, block_id)
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+    v = await _save_layout(document_id, doc, user)
+    return {"status": "removed", "block_id": block_id, "version": v}
+
+
+@router.post("/documents/{document_id}/blocks/{block_id}/move")
+async def layout_move_block(document_id: str, block_id: str, req: MoveBlockReq, user=Depends(get_current_user)):
+    """Mover un módulo a otra sección / posición."""
+    doc = await _load_doc_or_404(document_id)
+    try:
+        _layout.move_block(doc, block_id, req.to_section_id, req.to_index)
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+    v = await _save_layout(document_id, doc, user)
+    return {"status": "moved", "block_id": block_id, "version": v}
+
+
+@router.put("/documents/{document_id}/sections/{section_id}/blocks/reorder")
+async def layout_reorder_blocks(document_id: str, section_id: str, req: ReorderReq, user=Depends(get_current_user)):
+    """Reordenar los módulos de una sección."""
+    doc = await _load_doc_or_404(document_id)
+    try:
+        _layout.reorder_blocks(doc, section_id, req.ordered_ids)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    v = await _save_layout(document_id, doc, user)
+    return {"status": "reordered", "version": v}
+
+
+@router.post("/documents/{document_id}/sections")
+async def layout_add_section(document_id: str, req: AddSectionReq, user=Depends(get_current_user)):
+    """Añadir una sección (módulo de nivel superior)."""
+    doc = await _load_doc_or_404(document_id)
+    section = _new_section(req.title, order=len(doc.get("sections", [])) + 1, blocks=[])
+    _layout.add_section(doc, section, req.index)
+    v = await _save_layout(document_id, doc, user)
+    return {"status": "added", "section_id": section["section_id"], "version": v}
+
+
+@router.delete("/documents/{document_id}/sections/{section_id}")
+async def layout_remove_section(document_id: str, section_id: str, user=Depends(get_current_user)):
+    doc = await _load_doc_or_404(document_id)
+    try:
+        _layout.remove_section(doc, section_id)
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+    v = await _save_layout(document_id, doc, user)
+    return {"status": "removed", "section_id": section_id, "version": v}
+
+
+@router.put("/documents/{document_id}/sections/reorder")
+async def layout_reorder_sections(document_id: str, req: ReorderReq, user=Depends(get_current_user)):
+    doc = await _load_doc_or_404(document_id)
+    try:
+        _layout.reorder_sections(doc, req.ordered_ids)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    v = await _save_layout(document_id, doc, user)
+    return {"status": "reordered", "version": v}
+
+
+@router.post("/documents/{document_id}/page-break")
+async def layout_insert_page_break(document_id: str, req: PageBreakReq, user=Depends(get_current_user)):
+    """Insertar un salto de página explícito en una sección."""
+    doc = await _load_doc_or_404(document_id)
+    try:
+        _layout.insert_page_break(doc, req.section_id, req.index)
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+    v = await _save_layout(document_id, doc, user)
+    return {"status": "page_break_inserted", "version": v}
+
+
+@router.put("/documents/{document_id}/brand-overlay")
+async def layout_set_brand_overlay(document_id: str, req: BrandOverlayReq, user=Depends(get_current_user)):
+    """Fijar (o limpiar, con overlay=null) el overlay de marca del cliente para este documento."""
+    doc = await _load_doc_or_404(document_id)
+    _layout.set_brand_overlay(doc, req.overlay)
+    v = await _save_layout(document_id, doc, user)
+    return {"status": "brand_overlay_set" if req.overlay else "brand_overlay_cleared", "version": v}
+
+
+@router.put("/documents/{document_id}/color-override")
+async def layout_set_color_override(document_id: str, req: ColorOverrideReq, user=Depends(get_current_user)):
+    """Fijar (o limpiar, con colors=null) los overrides de color por documento."""
+    doc = await _load_doc_or_404(document_id)
+    _layout.set_color_override(doc, req.colors)
+    v = await _save_layout(document_id, doc, user)
+    return {"status": "color_override_set" if req.colors else "color_override_cleared", "version": v}
+
+
+# ══════════════════════════════════════════
 # COMPOSE
 # ══════════════════════════════════════════
 

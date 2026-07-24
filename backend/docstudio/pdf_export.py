@@ -61,6 +61,12 @@ table tr:nth-child(even) td {{ background: #f9fafb; }}
 .divider {{ border-top: 1px solid #e5e7eb; margin: 24px 0; }}
 .footer {{ position: absolute; bottom: 24px; left: 48px; right: 48px; font-size: 7pt; color: #9ca3af; display: flex; justify-content: space-between; border-top: 1px solid #e5e7eb; padding-top: 8px; }}
 .lineage {{ font-size: 6pt; color: #d1d5db; margin-top: 4px; }}
+/* Page-break contract (ver docstudio/layout.py):
+   1) salto explícito -> .page-break fuerza nueva página;
+   2) módulo indivisible -> cada bloque no se parte a mitad entre páginas. */
+.page-break {{ break-before: page; page-break-before: always; }}
+.kpi-card, .insight-card, .text-block, table, tr, .kpi-grid {{ break-inside: avoid; page-break-inside: avoid; }}
+table thead {{ display: table-header-group; }}
 @page {{ size: A4; margin: 0; }}
 </style>
 </head>
@@ -116,6 +122,10 @@ def _render_section(section: Dict, brand: Dict) -> str:
 
         elif bt == "divider":
             blocks_html += '<div class="divider"></div>'
+
+        elif bt == "page_break":
+            # Salto de página explícito (regla 1 del contrato de maquetación).
+            blocks_html += '<div class="page-break"></div>'
 
         # Lineage annotation
         if lineage.get("source") and bt != "cover":

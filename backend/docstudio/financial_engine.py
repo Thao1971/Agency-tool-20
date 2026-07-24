@@ -1,13 +1,19 @@
-"""Financial Analysis Engine — Deterministic calculations, no AI.
+"""Financial math helpers — Deterministic calculations, no AI.
 
-Principle: Financial Engine calculates. Narrative Engine explains. Never reversed.
+Principle: Financial math calculates. Narrative Engine explains. Never reversed.
 
-V1 capabilities:
+NOTE (Fase 2, DOCUMENT_STUDIO_UNIFICATION_PLAN): the pure math here (growth, margins,
+percentiles, quartiles, positioning, similarity) is generic and kept. The two DATA
+functions (`analyze_sector_benchmark`, `find_comparables`) were reconnected to the
+MODERN master (`master_companies`) — they no longer read the legacy `iberinform_*`.
+For a company's full financial profile + honest valuation, composers use the real
+Financial Intelligence Engine via `docstudio/data_access.py`, not this module.
+
+Capabilities:
   Growth: YoY, CAGR
   Profitability: Gross margin, EBITDA margin, Net margin
   Productivity: Revenue/employee, EBITDA/employee
-  Benchmark: Percentiles, quartiles, sector ranking
-  Valuation: EV/Revenue, EV/EBITDA
+  Benchmark: Percentiles, quartiles, sector ranking (modern master)
   Comparison: Gap vs market, gap vs category
 """
 
@@ -266,30 +272,26 @@ def analyze_company_financials(financials: List[Dict]) -> Dict:
 
 
 async def analyze_sector_benchmark(cnae_code: str) -> Dict:
-    """Run sector-level benchmark analysis using Iberinform data."""
+    """Sector-level benchmark over the MODERN master (`master_companies`).
+
+    Fase 2: reads `master_companies` (classification.cnae_code + financials.latest +
+    size), NOT the legacy `iberinform_companies`. Same return shape as before so
+    consumers (composers + /financial/sector-benchmark route) are unaffected.
+    """
     from database import db
 
-    # Get all companies in this CNAE
-    pipeline = [
-        {"$match": {"cnae_division": cnae_code}},
-        {"$lookup": {
-            "from": "iberinform_financials",
-            "localField": "company_id",
-            "foreignField": "company_id",
-            "as": "financials",
-        }},
-        {"$unwind": "$financials"},
-        {"$match": {"financials.year": {"$gte": 2023}}},
-        {"$project": {
-            "_id": 0,
-            "company_id": 1,
-            "revenue": "$financials.revenue",
-            "ebitda": "$financials.ebitda",
-            "employees": "$financials.employees",
-            "ebitda_margin": "$financials.ebitda_margin",
-        }},
-    ]
-    companies = await db.iberinform_companies.aggregate(pipeline).to_list(1000)
+    companies = []
+    async for m in db.master_companies.find(
+        {"classification.cnae_code": cnae_code},
+        {"_id": 0, "financials.latest": 1, "size.employees_total": 1},
+    ):
+        fl = (m.get("financials") or {}).get("latest") or {}
+        companies.append({
+            "revenue": fl.get("revenue"),
+            "ebitda": fl.get("ebitda"),
+            "ebitda_margin": fl.get("ebitda_margin"),
+            "employees": (m.get("size") or {}).get("employees_total"),
+        })
 
     if not companies:
         return {"cnae_code": cnae_code, "peers": 0}
@@ -298,7 +300,6 @@ async def analyze_sector_benchmark(cnae_code: str) -> Dict:
     ebitdas = [c["ebitda"] for c in companies if c.get("ebitda") and c["ebitda"] > 0]
     margins = [c["ebitda_margin"] for c in companies if c.get("ebitda_margin") is not None]
     emps = [c["employees"] for c in companies if c.get("employees") and c["employees"] > 0]
-
     rev_per_emp = [c["revenue"] / c["employees"] for c in companies
                    if c.get("revenue") and c.get("employees") and c["employees"] > 0]
 
@@ -333,60 +334,50 @@ def similarity_score(target: Dict, candidate: Dict) -> float:
     return round(score / total_weight, 1) if total_weight > 0 else 0
 
 
-async def find_comparables(company_id: str, cnae_code: str, limit: int = 5) -> List[Dict]:
-    """Find the most similar companies in the same CNAE. Deterministic."""
+async def find_comparables(identifier: str, cnae_code: str, limit: int = 5) -> List[Dict]:
+    """Most similar companies in the same CNAE, over the MODERN master. Deterministic.
+
+    Fase 2: `identifier` is a master_id (or cif); peers come from `master_companies`
+    (classification.cnae_code + financials.latest), NOT legacy iberinform. Same output
+    shape (legal_name, province, revenue, ebitda, employees, ebitda_margin, similarity).
+    """
     from database import db
 
-    # Get target company metrics
-    target_fin = await db.iberinform_financials.find_one(
-        {"company_id": company_id}, {"_id": 0}, sort=[("year", -1)]
+    target_m = await db.master_companies.find_one(
+        {"$or": [{"master_id": identifier}, {"cif_normalized": identifier}]},
+        {"_id": 0, "master_id": 1, "financials.latest": 1, "size.employees_total": 1},
     )
-    if not target_fin:
+    if not target_m:
         return []
-
+    tfl = (target_m.get("financials") or {}).get("latest") or {}
     target = {
-        "revenue": target_fin.get("revenue", 0),
-        "ebitda": target_fin.get("ebitda", 0),
-        "employees": target_fin.get("employees", 0),
-        "ebitda_margin": target_fin.get("ebitda_margin", 0),
+        "revenue": tfl.get("revenue") or 0,
+        "ebitda": tfl.get("ebitda") or 0,
+        "employees": (target_m.get("size") or {}).get("employees_total") or 0,
+        "ebitda_margin": tfl.get("ebitda_margin") or 0,
     }
+    target_id = target_m["master_id"]
 
-    # Get all peers in same CNAE
-    pipeline = [
-        {"$match": {"cnae_division": cnae_code, "company_id": {"$ne": company_id}}},
-        {"$lookup": {
-            "from": "iberinform_financials",
-            "localField": "company_id",
-            "foreignField": "company_id",
-            "as": "fin",
-        }},
-        {"$unwind": "$fin"},
-        {"$sort": {"fin.year": -1}},
-        {"$group": {
-            "_id": "$company_id",
-            "legal_name": {"$first": "$legal_name"},
-            "province_name": {"$first": "$province_name"},
-            "revenue": {"$first": "$fin.revenue"},
-            "ebitda": {"$first": "$fin.ebitda"},
-            "employees": {"$first": "$fin.employees"},
-            "ebitda_margin": {"$first": "$fin.ebitda_margin"},
-        }},
-    ]
-    peers = await db.iberinform_companies.aggregate(pipeline).to_list(500)
-
-    # Score each peer
     scored = []
-    for peer in peers:
+    async for p in db.master_companies.find(
+        {"classification.cnae_code": cnae_code, "master_id": {"$ne": target_id}},
+        {"_id": 0, "master_id": 1, "identity.legal_name": 1, "location.provincia": 1,
+         "financials.latest": 1, "size.employees_total": 1},
+    ):
+        fl = (p.get("financials") or {}).get("latest") or {}
+        peer = {
+            "revenue": fl.get("revenue"), "ebitda": fl.get("ebitda"),
+            "ebitda_margin": fl.get("ebitda_margin"),
+            "employees": (p.get("size") or {}).get("employees_total"),
+        }
         sim = similarity_score(target, peer)
         if sim > 20:
             scored.append({
-                "company_id": peer["_id"],
-                "legal_name": peer.get("legal_name", ""),
-                "province": peer.get("province_name", ""),
-                "revenue": peer.get("revenue"),
-                "ebitda": peer.get("ebitda"),
-                "employees": peer.get("employees"),
-                "ebitda_margin": peer.get("ebitda_margin"),
+                "company_id": p["master_id"],
+                "legal_name": (p.get("identity") or {}).get("legal_name", ""),
+                "province": (p.get("location") or {}).get("provincia", ""),
+                "revenue": peer["revenue"], "ebitda": peer["ebitda"],
+                "employees": peer["employees"], "ebitda_margin": peer["ebitda_margin"],
                 "similarity": sim,
             })
 

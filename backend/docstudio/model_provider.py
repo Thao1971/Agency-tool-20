@@ -1,7 +1,10 @@
 """Model Provider Layer — Abstract AI interface for Document Intelligence Studio.
 
 Separates analysis/reasoning/narrative from the concrete model used.
-Providers: GPT-5.2 (analysis), Claude (narrative), future models.
+Default provider: Claude (decisión 4 del DOCUMENT_STUDIO_UNIFICATION_PLAN — la IA de
+los documentos es NARRATIVA y usa Claude). `provider` sigue siendo un parámetro por si
+se quiere otro modelo puntualmente. La IA nunca inventa cifras: las calcula el motor
+financiero/los engines; la IA solo redacta (fact-lock).
 Every call is audited: provider, model, prompt, response, tokens, cost.
 """
 
@@ -13,7 +16,7 @@ from models import new_id, now_iso
 logger = logging.getLogger(__name__)
 
 
-async def generate_analysis(data: Dict, instruction: str, provider: str = "openai",
+async def generate_analysis(data: Dict, instruction: str, provider: str = "claude",
                             document_id: str = None) -> Dict:
     """Generate structured analysis from data. Returns JSON, never HTML/PDF."""
     prompt = f"""Analyze the following data and return a JSON object with your findings.
@@ -30,7 +33,7 @@ Language: Spanish. Be concise and professional."""
     return result
 
 
-async def generate_narrative(structured_data: Dict, instruction: str, provider: str = "openai",
+async def generate_narrative(structured_data: Dict, instruction: str, provider: str = "claude",
                              document_id: str = None) -> Dict:
     """Generate professional narrative text from structured conclusions. Returns text, never HTML."""
     prompt = f"""Transform the following structured data into professional narrative text in Spanish.
@@ -48,7 +51,7 @@ Write in a professional, executive tone. Be concise. No marketing language."""
 
 
 async def generate_summary(context: Dict, doc_type: str = "sector_report",
-                           provider: str = "openai", document_id: str = None,
+                           provider: str = "claude", document_id: str = None,
                            fact_lock: bool = True) -> Dict:
     """Generate executive summary, key findings, and conclusion for a document.
     

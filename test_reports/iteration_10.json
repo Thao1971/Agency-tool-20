@@ -1,0 +1,56 @@
+{
+  "summary": "v17 Document Studio (Phase 1+2) verified. 21/21 pytest tests PASSED. All 29-ish layout endpoints work end-to-end (add/move/delete block, add/remove section, page-break, brand-overlay, color-override) and PDF export after page-break still returns a valid PDF. Composer builds real-data-backed documents (company-snapshot, sector-report) with LLM keys empty — no 500s, AI blocks fail gracefully as designed. All intelligence-engine regressions green. UI smoke on 6 screens: 0 console errors. Note: editor UI does not yet surface layout-control buttons — layout ops verified only via API.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "Document editor layout controls", "issue": "Editor screen (/doc-studio → open document) does not visibly expose UI buttons for the new v17 layout ops (add/move/delete block, add/remove section, page-break, brand-overlay, color-override). Backend endpoints all return 200 via API, but no clickable UI wired to them yet.", "affected_selectors": ["editor toolbar / block card action buttons"]}
+    ],
+    "design_issues": []
+  },
+  "verified_functionality": {
+    "docstudio_list": "GET /api/v1/docstudio/documents → 200 (7 documents).",
+    "docstudio_detail": "GET /api/v1/docstudio/documents/{id} → 200.",
+    "docstudio_templates": "GET /docstudio/templates → 200 (5 templates).",
+    "docstudio_brands": "GET /docstudio/brands → 200 (4 brands).",
+    "export_pdf": "GET /docstudio/export/{id}/pdf → 200 application/pdf, >500 bytes.",
+    "export_pptx": "GET /docstudio/export/{id}/pptx → 200, >500 bytes.",
+    "layout_add_block": "POST /docstudio/documents/{id}/blocks → 200, block visible in subsequent detail.",
+    "layout_move_block": "POST /docstudio/documents/{id}/blocks/{bid}/move → 200.",
+    "layout_delete_block": "DELETE /docstudio/documents/{id}/blocks/{bid} → 200, block removed on re-fetch.",
+    "layout_add_section": "POST /docstudio/documents/{id}/sections → 200.",
+    "layout_delete_section": "DELETE /docstudio/documents/{id}/sections/{sid} → 200.",
+    "layout_page_break": "POST /docstudio/documents/{id}/page-break → 200.",
+    "layout_brand_overlay": "PUT /docstudio/documents/{id}/brand-overlay set + clear → 200 with correct status strings.",
+    "layout_color_override": "PUT /docstudio/documents/{id}/color-override → 200.",
+    "export_after_page_break": "PDF export after page-break insertion still returns 200 (>500 bytes).",
+    "composer_company_snapshot": "POST /docstudio/compose/company-snapshot?company_id=<real master_id> → 200 with sections populated (real financial/signal data). AI blocks fail gracefully due to empty EMERGENT_LLM_KEY.",
+    "composer_sector_report": "POST /docstudio/compose/sector-report?cnae_code=4711 → 200.",
+    "engines_regression": "stats/view (66050 signals, 160 opportunities), opportunities/view, fragmentation, ratios/catalog, watchlist, admin/iberinform/stats (real=24992), data-providers/health — ALL 200.",
+    "auth_negatives": "Docstudio layout endpoints without JWT → 401/403. signal-intelligence/stats/view without JWT → 401/403. fragmentation without / with invalid X-API-Key → 401/403.",
+    "ui_login": "daniel@wearebudadvisors.com logs in successfully.",
+    "ui_dashboard": "Renders with real stats (24.992 empresas, 88 CNAE, 5029 métricas, 150 señales activas). 0 console errors.",
+    "ui_doc_studio": "/doc-studio renders: 7 docs, 5 templates, 4 brands, 9 exportaciones. Tabs Generar/Documentos/Plantillas/Marcas all clickable. Opening a document shows sections (Portada, Resumen, KPIs, Conclusiones) plus PDF/PPTX/Guardar buttons. 0 console errors.",
+    "ui_regression_screens": "/opportunities (160 oportunidades), /signals (66050 señales), /data-quality (24992 real, 0 sintéticas), /data-providers (Iberinform 24992, BORME 4811) all render, 0 console errors."
+  },
+  "test_report_links": [
+    "/app/tests/test_v17_docstudio.py",
+    "/app/test_reports/pytest/iteration_10.xml"
+  ],
+  "action_items": [
+    "OPTIONAL/UX: wire the v17 layout endpoints into the document editor UI (add/move/delete block, add/remove section, page-break, brand-overlay, color-override buttons on the block cards / section headers / doc toolbar). Endpoints all work; UI-level controls are not yet surfaced."
+  ],
+  "critical_code_review_comments": [
+    "docstudio/routes.py is 1127 lines — recommend splitting layout/compose/export/templates into sub-modules (>700 line guideline).",
+    "All layout endpoints correctly gated by get_current_user (JWT) and use `_load_doc_or_404` + `_save_layout` helpers (DRY).",
+    "MongoDB `_id: 0` projections applied consistently in docstudio; no ObjectId leak observed.",
+    "Composer path gracefully handles empty EMERGENT_LLM_KEY (AI narrative returns error block, document still builds) — confirmed via live test."
+  ],
+  "updated_files": ["/app/tests/test_v17_docstudio.py"],
+  "success_rate": {"backend": "100% (21/21)", "frontend": "100% (0 console errors across 6 screens including doc editor)"},
+  "test_credentials": "daniel@wearebudadvisors.com / Thao1971@ (from /app/memory/test_credentials.md). X-API-Key from /app/backend/.env ARROBA_SERVICE_API_KEY.",
+  "seed_data_creation": "None. Layout tests use an existing document (Informe Sectorial CNAE 62) and are self-cleaning (block added → deleted; section added → deleted).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Docstudio URL path in frontend is /doc-studio (NOT /docstudio). Export endpoints are GET /api/v1/docstudio/export/{id}/pdf and /pptx (NOT /documents/{id}/export). Company-snapshot composer accepts real master_id from master_companies collection (form: mc_xxxxxxxxxxxx). Use pymongo directly for master_ids because /api/v1/master returns a different companies collection with UUID master_company_id (not the mc_* ids that composer expects). Backend runs off supervisor with --reload watching /app/backend, keep integration tests under /app/tests."
+}
