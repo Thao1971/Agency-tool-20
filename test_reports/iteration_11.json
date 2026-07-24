@@ -1,0 +1,60 @@
+{
+  "summary": "v22 Document Studio unification + async compose + notifications: 20/20 backend pytest tests PASSED. Async compose (POST /docstudio/compose-async → poll /compose-jobs/{id} → done → GET document) works end-to-end with real data; Claude narrative AI blocks populated (EMERGENT_LLM_KEY set). Sync compose/company-snapshot for master_id mc_d06d23d431d7 returns 200 with AI narrative. All layout endpoints (add/delete block, page-break, brand-overlay set+clear, color-override) return 200. Export PDF & PPTX return 200 with correct content-types. Engine regressions all green (signals=66050, opportunities=160, iberinform real=24992, fragmentation, ratios, watchlist, providers/health). Auth negatives return 401/403. UI: single 'Document Intelligence Studio' page shows 5 sub-tabs (Generar/Documentos/Plantillas/Constructor/Marcas), notifications bell shows 4 'Documento listo: ...' entries with unread badge, legacy /documents /brands /template-builder redirect to /doc-studio, 13 launchable doc-type buttons present in Generar, launching 'Generar informe' shows toast with ETA ('generando en segundo plano (~1 s). Te avisaremos al terminar.'), and after completion a new notification appears in the bell. Opening a document reveals the editor with data-testid='document-editor', Maximize button (data-testid='maximize-toggle'), Personalizar (brand-toggle), Guardar/PDF/PPTX buttons, per-section 'Añadir módulo' (Texto/KPI/Idea/Tabla/Separador/Salto de página) and delete-section/delete-block controls. 0 console errors across doc-studio, editor, opportunities, signals, data-quality, data-providers.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/v1/docstudio/compose-jobs/{id}", "issue": "GET occasionally times out (>15s) while the compose worker is actively running an LLM call — event loop appears blocked during Claude generation. Job still completes and status becomes 'done'; polling with retry/longer timeout succeeds. Not a v22 blocker (compose worker itself works), but suggests some sync work (or blocking mongo call) inside the compose path."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "verified_functionality": {
+    "async_compose_enqueue": "POST /docstudio/compose-async {doc_type:'company_snapshot', params:{company_id:'mc_d06d23d431d7'}} → 200 {job_id, status:'queued', eta_ms}.",
+    "async_compose_poll": "GET /docstudio/compose-jobs/{job_id} eventually returns status='done' with document_id (needs ~30-60s incl. Claude call).",
+    "async_result_has_ai": "Resulting document contains AI narrative block with non-empty data.content (EMERGENT_LLM_KEY working).",
+    "eta_endpoint": "GET /docstudio/eta?doc_type=company_snapshot → 200 with eta_ms (from telemetry).",
+    "notifications": "GET /docstudio/notifications → 200 {notifications:[], unread:N}. UI bell renders unread count and 'Documento listo: ...' entries.",
+    "sync_company_snapshot": "POST /docstudio/compose/company-snapshot?company_id=mc_d06d23d431d7 → 200; fetched document has AI narrative.",
+    "layout_add_delete_block": "POST /documents/{id}/blocks {section_id, block_type:'text'} → 200; DELETE /blocks/{bid} → 200.",
+    "layout_page_break": "POST /documents/{id}/page-break {section_id} → 200 status='page_break_inserted'.",
+    "layout_brand_overlay": "PUT /documents/{id}/brand-overlay set + clear → 200.",
+    "layout_color_override": "PUT /documents/{id}/color-override → 200.",
+    "export_pdf": "GET /docstudio/export/{id}/pdf → 200 application/pdf, >500 bytes.",
+    "export_pptx": "GET /docstudio/export/{id}/pptx → 200 officedocument.presentationml, >500 bytes.",
+    "engine_regressions": "signal-intelligence/stats/view (66050/160), opportunities/view, investment-intelligence/fragmentation (cnae 4711), financial-intelligence/ratios/catalog, /watchlist, /admin/iberinform/stats (iberinform.real_companies=24992), /data-providers/health — ALL 200.",
+    "auth_negatives": "docstudio/documents (no JWT) → 401/403. signal-intelligence/stats/view (no JWT) → 401/403. investment-intelligence/fragmentation (no X-API-Key) → 401/403.",
+    "ui_docstudio_single_tab": "/doc-studio shows 5 sub-tabs: Generar / Documentos(15) / Plantillas / Constructor / Marcas — all visible.",
+    "ui_legacy_redirects": "/documents, /brands, /template-builder ALL redirect to /doc-studio.",
+    "ui_13_doc_types": "Generar tab exposes 13 launch buttons: Teaser, Info Memo, Inv. Memo (Investment Memo), Benchmark, Aprox. valor, Valoración avanzada, Análisis estratégico, Comparativo, Perfil sucesión, Ranking, Fragmentación, Roll-up, Sectorial (Generar informe). Oportunidades + 'Generar desde plantilla' also present.",
+    "ui_toast_with_eta": "Clicking 'Generar informe' shows a toast: 'Informe sectorial: generando en segundo plano (~1 s). Te avisaremos al terminar.' — ETA rendered from /eta.",
+    "ui_notifications_bell": "data-testid='notif-bell' visible with unread badge (4 after test), clicking opens list with 'Documento listo: …' entries + 'Marcar leídas'.",
+    "ui_editor_controls": "Opening a document renders data-testid='document-editor' with Maximize (data-testid='maximize-toggle'), Personalizar (data-testid='brand-toggle'), Guardar, PDF, PPTX buttons + per-section 'Añadir módulo' (Texto/KPI/Idea/Tabla/Separador/Salto de página), delete-section-* and delete-<block_id> controls, and 'Añadir sección'.",
+    "ui_regression_screens": "/opportunities, /signals, /data-quality, /data-providers all render, 0 console errors."
+  },
+  "test_report_links": [
+    "/app/tests/test_v22_docstudio_async.py",
+    "/app/test_reports/pytest/iteration_11.xml"
+  ],
+  "action_items": [
+    "OPTIONAL/PERF: investigate why GET /docstudio/compose-jobs/{id} occasionally blocks >15s while the compose worker is executing an LLM call. Likely something in the compose path (or a mongo call) is not fully async, blocking the FastAPI event loop for the duration of the Claude request (~20s). Not a functional blocker — the async flow completes correctly and the frontend polls with longer timeouts."
+  ],
+  "critical_code_review_comments": [
+    "docstudio/routes.py is now 1333 lines — recommend splitting into layout/compose/export/notifications sub-routers (>700 line guideline).",
+    "GET /docstudio/documents/{id} returns the doc under a top-level 'document' key (not the doc itself) — inconsistent with list endpoint; ensure clients (and any new integrations) handle both shapes. Frontend already does.",
+    "compose_worker.enqueue_compose + _run_compose_job correctly persist job status, notify user, and set document_id — clean design.",
+    "estimate_ms falls back to overall average and finally to None (never fabricated) — good.",
+    "All layout & notification endpoints correctly gated by get_current_user (JWT)."
+  ],
+  "updated_files": [
+    "/app/tests/test_v22_docstudio_async.py"
+  ],
+  "success_rate": {"backend": "100% (20/20)", "frontend": "100% (0 console errors, all v22 UI features present and clickable)"},
+  "test_credentials": "daniel@wearebudadvisors.com / Thao1971@ (from /app/memory/test_credentials.md). X-API-Key from /app/backend/.env ARROBA_SERVICE_API_KEY.",
+  "seed_data_creation": "None. Async & sync compose tests generate documents from the existing master_id mc_d06d23d431d7. Layout tests self-clean (add block → delete same block).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "v22 unification is verified. Backend at localhost:8001; frontend at REACT_APP_BACKEND_URL. Async compose endpoint is POST /api/v1/docstudio/compose-async (payload {doc_type, params, brand_id}). Poll GET /api/v1/docstudio/compose-jobs/{job_id}; job status is 'queued'→'running'→'done' (or 'error'). Notifications: GET /docstudio/notifications, POST /notifications/{id}/read, POST /notifications/read-all. GET /docstudio/documents/{id} returns {document: {sections:[...]}} (nested). Layout add-block requires body {section_id, block_type in [cover,text,kpi,table,chart,insight,image,divider,appendix,page_break], data, index?}. Brand overlay body: {overlay: {...}|null}. Color override body: {colors: {...}|null}. Existing test document_id: 301ebd25-8c55-4c1d-b387-3c7608b32c3e; real master_id: mc_d06d23d431d7. During Claude compose calls the API event loop can block for ~20s — polling logic must tolerate that. DO NOT call POST /api/v1/docstudio/admin/migrate-unified."
+}

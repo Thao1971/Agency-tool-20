@@ -952,6 +952,527 @@ async def compose_benchmark_advanced(cnae_code: str, company_id: str = None,
     await db.docstudio_documents.insert_one(doc)
     return doc
 
+async def compose_opportunities_document(cnae_section: str = None, provincia: str = None,
+                                         signal_types: list = None, mandate_id: str = None,
+                                         brand_id: str = "brand_bud", user: str = None,
+                                         limit: int = 40) -> Dict:
+    """Documento de Oportunidades (Fase 3, B3). SIEMPRE acotado (decisión 6): por filtros
+    (sector/provincia/tipo) o por un mandato de comprador — NUNCA un volcado del universo.
+    Consume Signal Intelligence (oportunidades reales) y, en modo mandato, el motor de
+    Buyer Mandate (E1). Datos 100% reales; nada inventado.
+    """
+    from services.cnae_catalog import CNAE_SECTIONS
+
+    # ── Modo mandato de comprador (E1) ──
+    if mandate_id:
+        from services.engines.recommendation.mandates import find_targets_for_mandate
+        res = await find_targets_for_mandate(mandate_id, limit=limit)
+        if not res:
+            return {"error": "Mandate not found"}
+        scope = f"Mandato: {res.get('mandate_name', mandate_id)}"
+        doc = new_document(title=f"Documento de Oportunidades — {res.get('mandate_name', 'Mandato')}",
+                           template_id="tpl_opportunities", brand_id=brand_id, created_by=user)
+        s1 = new_section("Portada", 1, [cover_block(title="Documento de Oportunidades",
+                         subtitle=f"{scope} — Confidencial")])
+        s2 = new_section("Resumen", 2, [
+            kpi_block("Targets identificados", str(res.get("count", 0)), "empresas"),
+            kpi_block("Universo analizado", str(res.get("candidates_scanned", 0)), "candidatos"),
+        ])
+        rows = []
+        for t in res.get("targets", []):
+            rows.append([(t.get("name") or t.get("legal_name") or t.get("master_id") or "")[:40],
+                         f"{round((t.get('score') or 0) * 100)}%",
+                         t.get("provincia") or t.get("location", {}).get("provincia", "—")])
+        s3 = new_section("Targets para el mandato", 3, [
+            table_block("Empresas que encajan con el mandato", ["Empresa", "Encaje", "Provincia"], rows),
+        ]) if rows else new_section("Targets para el mandato", 3, [
+            text_block("No se han encontrado empresas que encajen con los criterios del mandato.", style="body")])
+        doc["sections"] = [s1, s2, s3]
+        doc["metadata"] = {"type": "opportunities", "mode": "mandate", "mandate_id": mandate_id,
+                           "scope": scope, "count": res.get("count", 0), "schema": "modern"}
+        doc["status"] = "generated"
+        doc["updated_at"] = now_iso()
+        await db.docstudio_documents.insert_one(doc)
+        return doc
+
+    # ── Modo filtros (sector/provincia/tipo) ──
+    opps = await DA.scoped_opportunities(cnae_section=cnae_section, provincia=provincia,
+                                         signal_types=signal_types, limit=limit)
+    _sec_labels = {s["code"]: s["label"] for s in CNAE_SECTIONS}
+    sec_label = _sec_labels.get(cnae_section, cnae_section) if cnae_section else None
+    scope_parts = []
+    if sec_label:
+        scope_parts.append(f"Sector {cnae_section} — {sec_label}")
+    if provincia:
+        scope_parts.append(provincia)
+    if signal_types:
+        scope_parts.append(", ".join(signal_types))
+    scope = " · ".join(scope_parts) if scope_parts else "Todas las oportunidades activas"
+
+    doc = new_document(title=f"Documento de Oportunidades — {scope}",
+                       template_id="tpl_opportunities", brand_id=brand_id, created_by=user)
+
+    s1 = new_section("Portada", 1, [cover_block(title="Documento de Oportunidades",
+                     subtitle=f"{scope} — Confidencial")])
+
+    # Resumen: conteo + desglose por tipo
+    by_type = {}
+    for o in opps:
+        by_type[o["signal_type"]] = by_type.get(o["signal_type"], 0) + 1
+    s2_blocks = [kpi_block("Oportunidades", str(len(opps)), "activas")]
+    for st, n in sorted(by_type.items(), key=lambda x: -x[1])[:4]:
+        s2_blocks.append(kpi_block(st, str(n), ""))
+    s2 = new_section("Resumen", 2, s2_blocks)
+
+    # Tabla de oportunidades
+    rows = []
+    for o in opps:
+        impact = (o.get("dimensions") or {}).get("impact")
+        rows.append([(o.get("name") or "")[:40], o.get("signal_type", ""),
+                     f"{round(impact * 100)}%" if impact is not None else "—",
+                     (o.get("trend") or "—"), o.get("provincia") or "—"])
+    s3 = new_section("Oportunidades detectadas", 3, [
+        table_block("Empresas con señales de oportunidad activas",
+                    ["Empresa", "Tipo de señal", "Impacto", "Tendencia", "Provincia"], rows),
+    ]) if rows else new_section("Oportunidades detectadas", 3, [
+        text_block("No hay oportunidades activas para este alcance.", style="body")])
+
+    # Detalle de las más relevantes (top 5) como insights reales
+    s4_blocks = []
+    for o in opps[:5]:
+        b = insight_block(o.get("name") or o.get("signal_type", ""), o.get("explanation", ""), importance="high")
+        b["data_lineage"] = {"source": "signal-intelligence-v1", "signal_id": o.get("signal_id"), "date": now_iso()}
+        s4_blocks.append(b)
+    s4 = new_section("Oportunidades destacadas", 4, s4_blocks) if s4_blocks else None
+
+    # Narrativa (Claude, fact-locked sobre el conjunto acotado)
+    ai_context = {"scope": scope, "total": len(opps), "by_type": by_type,
+                  "top": [{"name": o.get("name"), "type": o.get("signal_type"),
+                           "explanation": o.get("explanation")} for o in opps[:8]]}
+    ai_result = await generate_summary(ai_context, doc_type="sector_report", document_id=doc["document_id"])
+    s5 = new_section("Lectura del analista", 5, [])
+    if ai_result.get("executive_summary"):
+        b = text_block(ai_result["executive_summary"], style="executive_summary")
+        b["data_lineage"] = {"source": "ai", "model": "claude", "task": "opportunities_narrative", "date": now_iso()}
+        s5["blocks"].append(b)
+
+    doc["sections"] = [s for s in [s1, s2, s3, s4, s5] if s]
+    doc["metadata"] = {"type": "opportunities", "mode": "filters", "scope": scope,
+                       "cnae_section": cnae_section, "provincia": provincia,
+                       "count": len(opps), "fact_locked": True, "schema": "modern"}
+    doc["status"] = "generated"
+    doc["updated_at"] = now_iso()
+    await db.docstudio_documents.insert_one(doc)
+    return doc
+
+
+async def compose_ranking_document(cnae_section: str = None, cnae_code: str = None,
+                                   provincia: str = None, sort_by: str = "revenue",
+                                   brand_id: str = "brand_bud", user: str = None, limit: int = 25) -> Dict:
+    """Ranking sectorial / de empresas (B4). Rankea empresas reales por facturación (o nº
+    de señales) sobre `master_companies`. Nunca estima; empresas sin el dato se descartan."""
+    from services.cnae_catalog import CNAE_SECTIONS, CNAE_DIVISIONS
+    rows = await DA.rank_companies(cnae_section=cnae_section, cnae_code=cnae_code,
+                                   provincia=provincia, sort_by=sort_by, limit=limit)
+    sec_labels = {s["code"]: s["label"] for s in CNAE_SECTIONS}
+    scope = None
+    if cnae_code:
+        scope = f"CNAE {cnae_code} — {CNAE_DIVISIONS.get(cnae_code, {}).get('label', '')}"
+    elif cnae_section:
+        scope = f"Sección {cnae_section} — {sec_labels.get(cnae_section, '')}"
+    if provincia:
+        scope = f"{scope} · {provincia}" if scope else provincia
+    scope = scope or "Universo completo"
+    metric_label = "nº de señales activas" if sort_by == "signals" else "facturación"
+
+    doc = new_document(title=f"Ranking — {scope}", template_id="tpl_ranking", brand_id=brand_id, created_by=user)
+    s1 = new_section("Portada", 1, [cover_block(title="Ranking de Empresas", subtitle=f"{scope} · por {metric_label}")])
+    s2 = new_section("Resumen", 2, [kpi_block("Empresas en el ranking", str(len(rows)), ""),
+                                    kpi_block("Ordenado por", metric_label, "")])
+    trows = []
+    for i, r in enumerate(rows, start=1):
+        m = r.get("ebitda_margin")
+        trows.append([str(i), (r.get("name") or "")[:38],
+                      f"{r['revenue']:,.0f}" if r.get("revenue") else "—",
+                      f"{m*100:.1f}%" if m is not None else "—",
+                      str(r.get("active_signals", 0)), r.get("provincia") or "—"])
+    s3 = new_section("Ranking", 3, [table_block("Empresas ordenadas",
+        ["#", "Empresa", "Facturación (EUR)", "Margen", "Señales", "Provincia"], trows)]) if trows else \
+        new_section("Ranking", 3, [text_block("No hay empresas con datos suficientes para este alcance.", style="body")])
+    doc["sections"] = [s1, s2, s3]
+    doc["metadata"] = {"type": "ranking", "scope": scope, "sort_by": sort_by, "count": len(rows), "schema": "modern"}
+    doc["status"] = "generated"; doc["updated_at"] = now_iso()
+    await db.docstudio_documents.insert_one(doc)
+    return doc
+
+
+async def compose_fragmentation_document(cnae_section: str = None, cnae_code: str = None,
+                                         brand_id: str = "brand_bud", user: str = None) -> Dict:
+    """Mapa de fragmentación sectorial (B6). Consume E7 `compute_fragmentation` (HHI real
+    sobre grupos de propiedad, targets standalone, dispersión de múltiplos honesta)."""
+    from services.engines.investment.fragmentation import compute_fragmentation
+    from services.cnae_catalog import CNAE_SECTIONS, CNAE_DIVISIONS
+    field = "cnae_code" if cnae_code else "cnae_section"
+    value = cnae_code or cnae_section
+    if not value:
+        return {"error": "Indica cnae_section o cnae_code"}
+    frag = await compute_fragmentation(field, value)
+    sec_labels = {s["code"]: s["label"] for s in CNAE_SECTIONS}
+    label = CNAE_DIVISIONS.get(cnae_code, {}).get("label", "") if cnae_code else sec_labels.get(cnae_section, "")
+    scope = f"{value} — {label}"
+
+    doc = new_document(title=f"Fragmentación sectorial — {scope}", template_id="tpl_fragmentation",
+                       brand_id=brand_id, created_by=user)
+    s1 = new_section("Portada", 1, [cover_block(title="Mapa de Fragmentación Sectorial", subtitle=scope)])
+    hhi = frag.get("hhi")
+    kpis = [kpi_block("Empresas en el universo", str(frag.get("total_companies_in_arroba_universe", 0)), ""),
+            kpi_block("Actores de mercado (grupos)", str(frag.get("market_actors_count", 0)), ""),
+            kpi_block("Targets standalone", str(frag.get("standalone_targets_count", 0)), "add-on viables")]
+    if hhi is not None:
+        kpis.insert(0, kpi_block("HHI", f"{hhi:,.0f}", frag.get("concentration_label", ""),
+                                 commentary="Índice Herfindahl-Hirschman (DOJ/FTC, 0-10000)"))
+    s2 = new_section("Concentración del sector", 2, kpis)
+    disp = frag.get("multiple_dispersion")
+    s3_blocks = [text_block(frag.get("hhi_methodology", ""), style="body")]
+    if disp is None and frag.get("multiple_dispersion_caveat"):
+        s3_blocks.append(insight_block("Dispersión de múltiplos", frag["multiple_dispersion_caveat"], importance="medium"))
+    s3 = new_section("Metodología y caveats", 3, s3_blocks)
+
+    ai_context = {"scope": scope, "hhi": hhi, "concentration": frag.get("concentration_label"),
+                  "standalone_targets": frag.get("standalone_targets_count"),
+                  "market_actors": frag.get("market_actors_count")}
+    ai_result = await generate_summary(ai_context, doc_type="sector_report", document_id=doc["document_id"])
+    s4 = new_section("Lectura del analista", 4, [])
+    if ai_result.get("executive_summary"):
+        b = text_block(ai_result["executive_summary"], style="executive_summary")
+        b["data_lineage"] = {"source": "ai", "model": "claude", "task": "fragmentation_narrative", "date": now_iso()}
+        s4["blocks"].append(b)
+
+    doc["sections"] = [s1, s2, s3, s4]
+    doc["metadata"] = {"type": "fragmentation", "scope": scope, "hhi": hhi,
+                       "engine": frag.get("engine_version"), "schema": "modern"}
+    doc["status"] = "generated"; doc["updated_at"] = now_iso()
+    await db.docstudio_documents.insert_one(doc)
+    return doc
+
+
+async def compose_rollup_document(cnae_section: str = None, cnae_code: str = None,
+                                  brand_id: str = "brand_bud", user: str = None) -> Dict:
+    """Tesis de roll-up / consolidación (B5). Consume E6 `compute_rollup_thesis`."""
+    from services.engines.investment.rollup_thesis import compute_rollup_thesis
+    from services.cnae_catalog import CNAE_SECTIONS, CNAE_DIVISIONS
+    field = "cnae_code" if cnae_code else "cnae_section"
+    value = cnae_code or cnae_section
+    if not value:
+        return {"error": "Indica cnae_section o cnae_code"}
+    thesis = await compute_rollup_thesis(field, value)
+    sec_labels = {s["code"]: s["label"] for s in CNAE_SECTIONS}
+    label = CNAE_DIVISIONS.get(cnae_code, {}).get("label", "") if cnae_code else sec_labels.get(cnae_section, "")
+    scope = f"{value} — {label}"
+    viable = thesis.get("rollup_viable")
+    plat = thesis.get("platform_candidate") or {}
+
+    doc = new_document(title=f"Tesis de Roll-up — {scope}", template_id="tpl_rollup", brand_id=brand_id, created_by=user)
+    s1 = new_section("Portada", 1, [cover_block(title="Tesis de Roll-up / Consolidación", subtitle=scope)])
+    viab_txt = "Viable" if viable is True else "No viable" if viable is False else "Datos insuficientes"
+    s2 = new_section("Viabilidad", 2, [
+        kpi_block("Viabilidad del roll-up", viab_txt, ""),
+        kpi_block("Targets add-on", str(thesis.get("addon_targets_count", 0)), "empresas"),
+    ] + [insight_block("Motivo", r, importance="medium") for r in thesis.get("viability_reasons", [])[:3]])
+    plat_blocks = []
+    if plat:
+        plat_blocks.append(kpi_block("Candidato a plataforma", (plat.get("name") or "—"),
+                                     f"cuota {round((plat.get('market_share') or 0)*100)}%"))
+        plat_blocks.append(insight_block("Tipo de plataforma",
+            "Existe un actor con escala suficiente" if plat.get("platform_type") == "existing"
+            else "Se necesitaría una plataforma externa (ningún actor tiene escala dominante)", importance="high"))
+    s3 = new_section("Candidato a plataforma", 3, plat_blocks) if plat_blocks else None
+    trows = []
+    for t in thesis.get("addon_targets_ranked", [])[:15]:
+        trows.append([(t.get("name") or "")[:38],
+                      f"{t['revenue']:,.0f}" if t.get("revenue") else "—",
+                      f"{round((t.get('addon_score') or 0)*100)}%"])
+    s4 = new_section("Ranking de add-ons", 4, [table_block("Targets add-on ordenados por encaje",
+        ["Empresa", "Facturación (EUR)", "Encaje"], trows)]) if trows else None
+
+    ai_context = {"scope": scope, "viable": viable, "platform": plat.get("name"),
+                  "addon_count": thesis.get("addon_targets_count")}
+    ai_result = await generate_summary(ai_context, doc_type="sector_report", document_id=doc["document_id"])
+    s5 = new_section("Lectura del analista", 5, [])
+    if ai_result.get("executive_summary"):
+        b = text_block(ai_result["executive_summary"], style="executive_summary")
+        b["data_lineage"] = {"source": "ai", "model": "claude", "task": "rollup_narrative", "date": now_iso()}
+        s5["blocks"].append(b)
+
+    doc["sections"] = [s for s in [s1, s2, s3, s4, s5] if s]
+    doc["metadata"] = {"type": "rollup", "scope": scope, "rollup_viable": viable,
+                       "engine": thesis.get("engine_version"), "schema": "modern"}
+    doc["status"] = "generated"; doc["updated_at"] = now_iso()
+    await db.docstudio_documents.insert_one(doc)
+    return doc
+
+
+async def compose_succession_document(company_id: str = None, cif: str = None,
+                                      brand_id: str = "brand_bud", user: str = None) -> Dict:
+    """Perfil de sucesión (A7). Consume E2 `build_profile` — proxy honesto por tenure del
+    administrador y apellidos compartidos (nunca confirma parentesco; caveat explícito)."""
+    from services.engines.signal.succession_intelligence import build_profile
+    from services.cnae_catalog import CNAE_DIVISIONS
+    master = await DA.resolve_company(company_id or cif)
+    if not master:
+        return {"error": "Company not found"}
+    profile = await build_profile(master)
+    name = (master.get("identity") or {}).get("legal_name", "Empresa")
+    cnae = (master.get("classification") or {}).get("cnae_code", "")
+
+    doc = new_document(title=f"Perfil de Sucesión — {name}", template_id="tpl_succession",
+                       brand_id=brand_id, created_by=user)
+    s1 = new_section("Portada", 1, [cover_block(title="Perfil de Sucesión", subtitle=f"{name} — CNAE {cnae}: {CNAE_DIVISIONS.get(cnae, {}).get('label', '')}")])
+
+    if not profile:
+        doc["sections"] = [s1, new_section("Sin perfil", 2, [text_block(
+            "No hay datos de administrador suficientes para construir un perfil de sucesión enriquecido.", style="body")])]
+        doc["metadata"] = {"type": "succession", "master_id": master.get("master_id"), "has_profile": False, "schema": "modern"}
+        doc["status"] = "generated"; doc["updated_at"] = now_iso()
+        await db.docstudio_documents.insert_one(doc)
+        return doc
+
+    admin = profile.get("administrator", {})
+    kpis = [kpi_block("Riesgo de sucesión", str(profile.get("succession_risk_score", "—")), "/100"),
+            kpi_block("Antigüedad del administrador", f"{admin.get('tenure_years', '—')}", "años"),
+            kpi_block("Nº de administradores", str(profile.get("admin_count", "—")), ""),
+            kpi_block("Empresa familiar (probable)", "Sí" if profile.get("family_business_probable") else "No", "")]
+    if profile.get("company_age_years") is not None:
+        kpis.append(kpi_block("Antigüedad de la empresa", f"{profile['company_age_years']}", "años"))
+    s2 = new_section("Indicadores", 2, kpis)
+
+    reason_blocks = [insight_block("Factor", r, importance="high") for r in profile.get("reasons", [])[:6]]
+    if profile.get("successor_candidate"):
+        reason_blocks.append(insight_block("Posible sucesor ya nombrado",
+            "Se ha detectado un cargo nombrado con posterioridad que podría actuar como sucesor.", importance="medium"))
+    s3 = new_section("Factores de la valoración", 3, reason_blocks) if reason_blocks else None
+
+    s4 = new_section("Advertencia de datos", 4, [text_block(profile.get("data_caveat", ""), style="body")])
+
+    doc["sections"] = [s for s in [s1, s2, s3, s4] if s]
+    doc["metadata"] = {"type": "succession", "master_id": master.get("master_id"), "has_profile": True,
+                       "succession_risk_score": profile.get("succession_risk_score"),
+                       "profile_version": profile.get("profile_version"), "schema": "modern"}
+    doc["status"] = "generated"; doc["updated_at"] = now_iso()
+    await db.docstudio_documents.insert_one(doc)
+    return doc
+
+
+async def compose_valuation_approx(company_id: str = None, cif: str = None,
+                                   brand_id: str = "brand_bud", user: str = None) -> Dict:
+    """Aproximación de valor (A5). Documento corto: la valoración REAL del motor financiero
+    (honesta: market_observed vs inferred_reference, o nada si insuficiente) + su método."""
+    from services.cnae_catalog import CNAE_DIVISIONS
+    bundle = await DA.company_intelligence(company_id or cif, include_signals=False)
+    if not bundle.get("found"):
+        return {"error": "Company not found"}
+    ident = bundle["identity"]; name = ident.get("name", "Empresa"); cnae = ident.get("cnae_code", "")
+    val = bundle.get("valuation", {}) or {}
+
+    doc = new_document(title=f"Aproximación de Valor — {name}", template_id="tpl_valuation_approx",
+                       brand_id=brand_id, created_by=user)
+    s1 = new_section("Portada", 1, [cover_block(title="Aproximación de Valor",
+                     subtitle=f"{name} — CNAE {cnae}: {CNAE_DIVISIONS.get(cnae, {}).get('label', '')}")])
+    s2_blocks = _company_kpi_blocks(bundle)[:3]
+    vb = _valuation_block(bundle)
+    if vb:
+        s2_blocks.insert(0, vb)
+    s2 = new_section("Valoración orientativa", 2, s2_blocks)
+
+    s3_blocks = []
+    rng = val.get("range") or {}
+    if rng.get("low") and rng.get("high"):
+        s3_blocks.append(text_block(f"Rango orientativo: {rng['low']:,.0f} € – {rng['high']:,.0f} € "
+                                    f"(confianza {val.get('confidence', '—')}).", style="body"))
+    for h in val.get("hypotheses", []):
+        s3_blocks.append(insight_block("Supuesto", h, importance="medium"))
+    if not s3_blocks:
+        s3_blocks.append(text_block("Datos insuficientes para una valoración fiable.", style="body"))
+    s3 = new_section("Método y supuestos", 3, s3_blocks)
+
+    doc["sections"] = [s1, s2, s3]
+    doc["metadata"] = {"type": "valuation_approx", "master_id": bundle["master_id"],
+                       "valuation_method": val.get("method"), "fact_locked": True, "schema": "modern"}
+    doc["status"] = "generated"; doc["updated_at"] = now_iso()
+    await db.docstudio_documents.insert_one(doc)
+    return doc
+
+
+async def compose_valuation_advanced(company_id: str = None, cif: str = None,
+                                     brand_id: str = "brand_bud", user: str = None) -> Dict:
+    """Valoración avanzada (A6). Valoración real + comparables reales + escenarios
+    (conservador/base/agresivo) del Strategy Engine + narrativa."""
+    from services.engines.strategy import engine as strat
+    from services.cnae_catalog import CNAE_DIVISIONS
+    bundle = await DA.company_intelligence(company_id or cif)
+    if not bundle.get("found"):
+        return {"error": "Company not found"}
+    ident = bundle["identity"]; name = ident.get("name", "Empresa"); cnae = ident.get("cnae_code", "")
+    val = bundle.get("valuation", {}) or {}
+    scen = await strat.scenarios(bundle["master_id"]) or {}
+
+    doc = new_document(title=f"Valoración Avanzada — {name}", template_id="tpl_valuation_advanced",
+                       brand_id=brand_id, created_by=user)
+    s1 = new_section("Portada", 1, [cover_block(title="Valoración Avanzada",
+                     subtitle=f"{name} — CNAE {cnae}: {CNAE_DIVISIONS.get(cnae, {}).get('label', '')}")])
+
+    s2_blocks = _company_kpi_blocks(bundle)[:3]
+    vb = _valuation_block(bundle)
+    if vb:
+        s2_blocks.insert(0, vb)
+    rng = val.get("range") or {}
+    if rng.get("low") and rng.get("high"):
+        s2_blocks.append(kpi_block("Rango de valoración", f"{rng['low']:,.0f} – {rng['high']:,.0f}", "EUR"))
+    s2 = new_section("Valoración", 2, s2_blocks)
+
+    # Comparables reales (del motor financiero)
+    comps = (bundle.get("comparables", {}) or {}).get("peers", [])
+    crows = []
+    for c in comps[:8]:
+        m = c.get("ebitda_margin")
+        crows.append([(c.get("name") or "")[:34], f"{c['revenue']:,.0f}" if c.get("revenue") else "—",
+                      f"{m*100:.1f}%" if m is not None else "—", c.get("provincia", "—")])
+    s3 = new_section("Comparables", 3, [table_block("Empresas comparables (sector+tamaño+geografía)",
+        ["Empresa", "Revenue (EUR)", "Margen", "Provincia"], crows)]) if crows else None
+
+    # Escenarios (Strategy Engine)
+    srows = []
+    for sc in scen.get("scenarios", []):
+        srows.append([sc.get("scenario", ""), f"{round((sc.get('score') or 0)*100)}%",
+                      (sc.get("narrative") or "")[:80]])
+    s4 = new_section("Escenarios", 4, [table_block("Escenarios estratégicos",
+        ["Escenario", "Atractivo", "Descripción"], srows)]) if srows else None
+
+    ai_context = {"company_name": name, "valuation": val, "scenarios": scen.get("decision_support"),
+                  "comparables_count": len(comps)}
+    ai_result = await generate_summary(ai_context, doc_type="company_profile", document_id=doc["document_id"])
+    s5 = new_section("Lectura del analista", 5, [])
+    if ai_result.get("executive_summary"):
+        b = text_block(ai_result["executive_summary"], style="executive_summary")
+        b["data_lineage"] = {"source": "ai", "model": "claude", "task": "valuation_narrative", "date": now_iso()}
+        s5["blocks"].append(b)
+
+    doc["sections"] = [s for s in [s1, s2, s3, s4, s5] if s]
+    doc["metadata"] = {"type": "valuation_advanced", "master_id": bundle["master_id"],
+                       "valuation_method": val.get("method"), "fact_locked": True, "schema": "modern"}
+    doc["status"] = "generated"; doc["updated_at"] = now_iso()
+    await db.docstudio_documents.insert_one(doc)
+    return doc
+
+
+async def compose_strategic_analysis(company_id: str = None, cif: str = None,
+                                     brand_id: str = "brand_bud", user: str = None) -> Dict:
+    """Análisis estratégico de empresa (A3). El más compuesto: Financial + Signal +
+    Strategy (tesis estratégica con dimensiones, tipo recomendado y alternativa)."""
+    from services.engines.strategy import engine as strat
+    from services.cnae_catalog import CNAE_DIVISIONS
+    bundle = await DA.company_intelligence(company_id or cif)
+    if not bundle.get("found"):
+        return {"error": "Company not found"}
+    ident = bundle["identity"]; name = ident.get("name", "Empresa"); cnae = ident.get("cnae_code", "")
+    th = await strat.thesis(bundle["master_id"]) or {}
+
+    doc = new_document(title=f"Análisis Estratégico — {name}", template_id="tpl_strategic",
+                       brand_id=brand_id, created_by=user)
+    s1 = new_section("Portada", 1, [cover_block(title="Análisis Estratégico de Empresa",
+                     subtitle=f"{name} — CNAE {cnae}: {CNAE_DIVISIONS.get(cnae, {}).get('label', '')}")])
+    s2 = new_section("Indicadores", 2, _company_kpi_blocks(bundle))
+
+    sig_blocks = _signal_insight_blocks(bundle)
+    s3 = new_section("Señales Activas", 3, sig_blocks) if sig_blocks else None
+
+    # Tesis estratégica
+    s4_blocks = []
+    if th:
+        if th.get("statement"):
+            s4_blocks.append(text_block(th["statement"], style="executive_summary"))
+        s4_blocks.append(kpi_block("Tesis recomendada", th.get("thesis_type", "—"),
+                                   f"score {th.get('score', '—')}"))
+        if th.get("preferred_rationale"):
+            s4_blocks.append(insight_block("Por qué esta tesis", th["preferred_rationale"], importance="high"))
+        for alt in th.get("alternatives", [])[:2]:
+            s4_blocks.append(insight_block(f"Alternativa: {alt.get('thesis_type', '')}",
+                                           alt.get("why_not_preferred", ""), importance="medium"))
+    s4 = new_section("Tesis Estratégica", 4, s4_blocks) if s4_blocks else None
+
+    ai_context = {"company_name": name, "kpis": bundle.get("kpis"),
+                  "assessment": bundle.get("assessment"),
+                  "thesis": {"type": th.get("thesis_type"), "statement": th.get("statement")},
+                  "active_signals": [s.get("signal_type") for s in bundle.get("signals", [])]}
+    ai_result = await generate_summary(ai_context, doc_type="company_profile", document_id=doc["document_id"])
+    s5 = new_section("Conclusión", 5, [])
+    if ai_result.get("conclusion") or ai_result.get("executive_summary"):
+        b = text_block(ai_result.get("conclusion") or ai_result["executive_summary"], style="conclusion")
+        b["data_lineage"] = {"source": "ai", "model": "claude", "task": "strategic_narrative", "date": now_iso()}
+        s5["blocks"].append(b)
+
+    doc["sections"] = [s for s in [s1, s2, s3, s4, s5] if s]
+    doc["metadata"] = {"type": "strategic_analysis", "master_id": bundle["master_id"],
+                       "thesis_type": th.get("thesis_type"), "fact_locked": True, "schema": "modern"}
+    doc["status"] = "generated"; doc["updated_at"] = now_iso()
+    await db.docstudio_documents.insert_one(doc)
+    return doc
+
+
+async def compose_comparative_analysis(company_id: str = None, cif: str = None,
+                                       brand_id: str = "brand_bud", user: str = None) -> Dict:
+    """Análisis comparativo (A4). Empresa frente a sus comparables reales (sector+tamaño+
+    geografía, del Financial Engine), lado a lado por métrica. Datos reales, sin inventar."""
+    from services.cnae_catalog import CNAE_DIVISIONS
+    bundle = await DA.company_intelligence(company_id or cif, include_signals=False)
+    if not bundle.get("found"):
+        return {"error": "Company not found"}
+    ident = bundle["identity"]; name = ident.get("name", "Empresa"); cnae = ident.get("cnae_code", "")
+    kpis = bundle.get("kpis", {})
+    peers = (bundle.get("comparables", {}) or {}).get("peers", [])
+
+    doc = new_document(title=f"Análisis Comparativo — {name}", template_id="tpl_comparative",
+                       brand_id=brand_id, created_by=user)
+    s1 = new_section("Portada", 1, [cover_block(title="Análisis Comparativo",
+                     subtitle=f"{name} — CNAE {cnae}: {CNAE_DIVISIONS.get(cnae, {}).get('label', '')}")])
+    s2 = new_section("La empresa", 2, _company_kpi_blocks(bundle))
+
+    # Tabla lado a lado: empresa (primera fila destacada) + comparables
+    def _row(label, rev, mar, emp, prov):
+        return [label, f"{rev:,.0f}" if rev else "—",
+                f"{mar*100:.1f}%" if mar is not None else "—",
+                str(emp) if emp else "—", prov or "—"]
+    rows = [_row(f"» {name}", kpis.get("revenue"), kpis.get("ebitda_margin"),
+                 (bundle.get("statements") or {}).get("employees"), ident.get("provincia"))]
+    for c in peers[:8]:
+        rows.append(_row((c.get("name") or "")[:34], c.get("revenue"), c.get("ebitda_margin"), None, c.get("provincia")))
+    s3 = new_section("Comparación lado a lado", 3, [table_block("Empresa vs comparables",
+        ["Empresa", "Revenue (EUR)", "Margen EBITDA", "Empleados", "Provincia"], rows)])
+
+    # Posición relativa (percentil de margen ya calculado por el motor)
+    pct = (bundle.get("comparables", {}) or {}).get("subject_ebitda_margin_percentile")
+    s4_blocks = []
+    if pct is not None:
+        s4_blocks.append(kpi_block("Percentil de margen EBITDA", f"P{round(pct*100)}", "vs comparables"))
+    s4 = new_section("Posición relativa", 4, s4_blocks) if s4_blocks else None
+
+    ai_context = {"company_name": name, "kpis": kpis, "peers_count": len(peers),
+                  "margin_percentile": pct}
+    ai_result = await generate_summary(ai_context, doc_type="company_profile", document_id=doc["document_id"])
+    s5 = new_section("Lectura del analista", 5, [])
+    if ai_result.get("executive_summary"):
+        b = text_block(ai_result["executive_summary"], style="executive_summary")
+        b["data_lineage"] = {"source": "ai", "model": "claude", "task": "comparative_narrative", "date": now_iso()}
+        s5["blocks"].append(b)
+
+    doc["sections"] = [s for s in [s1, s2, s3, s4, s5] if s]
+    doc["metadata"] = {"type": "comparative", "master_id": bundle["master_id"],
+                       "peers": len(peers), "fact_locked": True, "schema": "modern"}
+    doc["status"] = "generated"; doc["updated_at"] = now_iso()
+    await db.docstudio_documents.insert_one(doc)
+    return doc
+
+
 def compute_quality_score(doc: Dict) -> Dict:
     """Compute a quality score for a document. Deterministic, no AI."""
     scores = {}

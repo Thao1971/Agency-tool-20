@@ -70,11 +70,8 @@ const navSections = [
   {
     label: 'DOCUMENTOS Y CONTENIDO',
     items: [
-      { path: '/documents', label: 'Documentos', icon: FileText },
-      { path: '/brands', label: 'Marcas', icon: Palette },
-      { path: '/editorial', label: 'Editorial', icon: Newspaper },
       { path: '/doc-studio', label: 'Document Studio', icon: FileDown },
-      { path: '/template-builder', label: 'Template Builder', icon: Layers },
+      { path: '/editorial', label: 'Editorial', icon: Newspaper },
       { path: '/manual', label: 'Manual', icon: BookOpen },
     ],
   },

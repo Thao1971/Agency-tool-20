@@ -1078,6 +1078,10 @@ async def startup():
     await start_cnmv_bme_scheduler()
     await start_placsp_scheduler()
 
+    # DocStudio async compose worker (Fase 4 — generación asíncrona + notificaciones)
+    from docstudio.compose_worker import start_compose_worker
+    await start_compose_worker()
+
     # Public-data sources scheduler (BDNS / INE / SEPE)
     from services.intelligence_engine.scheduler import start_public_sources_scheduler
     await start_public_sources_scheduler()
@@ -1497,5 +1501,7 @@ async def shutdown():
     await stop_datacomex_scheduler()
     await stop_watchlist_scheduler()
     await stop_cnmv_bme_scheduler()
+    from docstudio.compose_worker import stop_compose_worker
+    await stop_compose_worker()
     await stop_placsp_scheduler()
     client.close()

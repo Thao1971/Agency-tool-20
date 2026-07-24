@@ -189,6 +189,68 @@ def compose_brand(base: Dict, overlay: Optional[Dict] = None) -> Dict:
     return result
 
 
+def _thin_to_rich(thin: Dict) -> Dict:
+    """Convert a legacy thin `docstudio_brands` doc (primary/secondary/accent + font +
+    footer) into the rich token brand shape, so nothing is lost on unification. Colors
+    map onto the token slots that actually drive the render; the rest inherits sensible
+    neutral defaults. If the brand_id already matches a platform base, that base is used
+    as the starting point and the thin colors are layered on top."""
+    bid = thin.get("brand_id", "brand_custom")
+    base = copy.deepcopy(PLATFORM_BRANDS.get(bid) or PLATFORM_BRANDS[DEFAULT_PLATFORM_BRAND])
+    base["brand_id"] = bid
+    base["name"] = thin.get("name", base.get("name", bid))
+    primary = thin.get("primary_color")
+    accent = thin.get("accent_color") or primary
+    secondary = thin.get("secondary_color")
+    colors = base["tokens"]["colors"]
+    if accent:
+        colors["accent"] = accent
+        colors["kpi_value"] = accent
+        colors["tag_bg"] = accent
+        colors["strengths_bg"] = accent
+    if secondary:
+        base["tokens"]["cover"]["bg"] = secondary
+    if thin.get("font_family"):
+        base["tokens"]["fonts"]["heading"] = thin["font_family"]
+        base["tokens"]["fonts"]["body"] = thin["font_family"]
+    base["source_system"] = "docstudio_migrated"
+    return base
+
+
+async def migrate_brands_to_unified(db) -> Dict:
+    """Idempotent Fase-6 migration: fold legacy `docstudio_brands` (thin) into the rich
+    `document_brand_profiles` model. Also ensures the 4 platform base brands exist there.
+    Leaves `docstudio_brands` untouched (coexistence). Safe to re-run."""
+    from models import now_iso
+    counts = {"platform_seeded": 0, "docstudio_migrated": 0}
+    now = now_iso()
+
+    # 1) ensure the 4 platform base brands exist in the rich store
+    for bid, brand in PLATFORM_BRANDS.items():
+        existing = await db.document_brand_profiles.find_one({"brand_id": bid}, {"_id": 0})
+        if not existing:
+            await db.document_brand_profiles.update_one(
+                {"brand_id": bid}, {"$set": {**brand, "updated_at": now},
+                                    "$setOnInsert": {"created_at": now}}, upsert=True)
+            counts["platform_seeded"] += 1
+
+    # 2) migrate any thin docstudio brand not already present
+    async for thin in db.docstudio_brands.find({}, {"_id": 0}):
+        bid = thin.get("brand_id")
+        if not bid:
+            continue
+        exists = await db.document_brand_profiles.find_one({"brand_id": bid}, {"_id": 0})
+        if exists and exists.get("tokens"):
+            continue  # already a rich brand — don't clobber
+        rich = _thin_to_rich(thin)
+        await db.document_brand_profiles.update_one(
+            {"brand_id": bid}, {"$set": {**rich, "updated_at": now},
+                                "$setOnInsert": {"created_at": now}}, upsert=True)
+        counts["docstudio_migrated"] += 1
+
+    return counts
+
+
 def resolve_brand(platform: Optional[str] = None,
                    base_brand_id: Optional[str] = None,
                    client_overlay: Optional[Dict] = None) -> Dict:

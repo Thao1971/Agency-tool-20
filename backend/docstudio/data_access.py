@@ -61,6 +61,79 @@ async def active_signals(identifier: str, limit: int = 12) -> List[Dict]:
     return rows[:limit]
 
 
+async def scoped_opportunities(cnae_section: Optional[str] = None,
+                               provincia: Optional[str] = None,
+                               signal_types: Optional[List[str]] = None,
+                               sort_by: str = "impact", limit: int = 50) -> List[Dict]:
+    """Active M&A opportunities (severity=='opportunity') SCOPED by filters — never a
+    dump of the whole universe (decisión 6 del plan). Same taxonomy rule as the
+    Signal Engine's /opportunities. Joins to master for name/section/provincia.
+    """
+    q = {"severity": "opportunity", "status": "active"}
+    if signal_types:
+        q["signal_type"] = {"$in": signal_types}
+    dim = sort_by if sort_by in ("impact", "confidence", "urgency", "persistence") else "impact"
+    rows: List[Dict] = []
+    async for s in db.signals.find(q, {"_id": 0}).sort(f"dimensions.{dim}", -1).limit(limit * 4):
+        m = await db.master_companies.find_one(
+            {"master_id": s["master_id"]},
+            {"_id": 0, "identity.legal_name": 1, "classification.cnae_section": 1, "location.provincia": 1})
+        if not m:
+            continue
+        sec = (m.get("classification") or {}).get("cnae_section")
+        prov = (m.get("location") or {}).get("provincia")
+        if cnae_section and sec != cnae_section:
+            continue
+        if provincia and prov != provincia:
+            continue
+        rows.append({
+            "signal_id": s.get("signal_id"), "master_id": s["master_id"],
+            "name": (m.get("identity") or {}).get("legal_name"),
+            "provincia": prov, "cnae_section": sec,
+            "signal_type": s.get("signal_type"), "dimensions": s.get("dimensions", {}),
+            "explanation": s.get("explanation"), "trend": s.get("trend"),
+            "recommended_actions": s.get("recommended_actions"),
+        })
+        if len(rows) >= limit:
+            break
+    return rows
+
+
+async def rank_companies(cnae_section: Optional[str] = None, cnae_code: Optional[str] = None,
+                         provincia: Optional[str] = None, sort_by: str = "revenue",
+                         limit: int = 25) -> List[Dict]:
+    """Rank real companies in a sector/territory by a real metric (revenue). Reads
+    `master_companies` (financials.latest), enriches with active-signal count. For the
+    Ranking document (B4). Never estimated — companies without the metric are dropped."""
+    q: Dict = {"status": "active"}
+    if cnae_code:
+        q["classification.cnae_code"] = cnae_code
+    elif cnae_section:
+        q["classification.cnae_section"] = cnae_section
+    if provincia:
+        q["location.provincia"] = provincia
+    rows: List[Dict] = []
+    async for m in db.master_companies.find(
+        q, {"_id": 0, "master_id": 1, "identity.legal_name": 1, "location.provincia": 1,
+            "classification.cnae_code": 1, "financials.latest": 1}).limit(limit * 6):
+        fl = (m.get("financials") or {}).get("latest") or {}
+        rev = fl.get("revenue")
+        if rev is None:
+            continue
+        n_sig = await db.signals.count_documents({"master_id": m["master_id"], "status": "active"})
+        rows.append({
+            "master_id": m["master_id"],
+            "name": (m.get("identity") or {}).get("legal_name"),
+            "provincia": (m.get("location") or {}).get("provincia"),
+            "cnae_code": (m.get("classification") or {}).get("cnae_code"),
+            "revenue": rev, "ebitda": fl.get("ebitda"),
+            "ebitda_margin": fl.get("ebitda_margin"), "active_signals": n_sig,
+        })
+    key = "active_signals" if sort_by == "signals" else "revenue"
+    rows.sort(key=lambda r: (r.get(key) or 0), reverse=True)
+    return rows[:limit]
+
+
 def _identity(profile: Dict, company: Optional[Dict]) -> Dict:
     ident = profile.get("identity") or {}
     if not ident and company:

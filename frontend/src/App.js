@@ -14,8 +14,6 @@ import ReviewPage from "@/pages/ReviewPage";
 import SettingsPage from "@/pages/SettingsPage";
 import ApiDocsPage from "@/pages/ApiDocsPage";
 import HubPage from "@/pages/hub/HubPage";
-import DocumentsPage from "@/pages/documents/DocumentsPage";
-import BrandsPage from "@/pages/documents/BrandsPage";
 import ManualPage from "@/pages/ManualPage";
 import BormePage from "@/pages/BormePage";
 import MAPage from "@/pages/MAPage";
@@ -37,7 +35,6 @@ import BMEPage from "@/pages/BMEPage";
 import ValuationsPage from "@/pages/ValuationsPage";
 import ProcurementPage from "@/pages/ProcurementPage";
 import DocStudioPage from "@/pages/DocStudioPage";
-import TemplateBuilderPage from "@/pages/TemplateBuilderPage";
 import TransactionsPage from "@/pages/transactions/TransactionsPage";
 import AIChatPage from "@/pages/AIChatPage";
 import HealthPage from "@/pages/engine/HealthPage";
@@ -87,8 +84,9 @@ function AppRoutes() {
         <Route path="bulk" element={<BulkAnalysisPage />} />
         <Route path="results" element={<ResultsPage />} />
         <Route path="results/:id" element={<ResultDetailPage />} />
-        <Route path="documents" element={<DocumentsPage />} />
-        <Route path="brands" element={<BrandsPage />} />
+        {/* Unificado en Document Studio — rutas antiguas redirigen (sin pantallas huérfanas) */}
+        <Route path="documents" element={<Navigate to="/doc-studio" replace />} />
+        <Route path="brands" element={<Navigate to="/doc-studio" replace />} />
         <Route path="borme" element={<BormePage />} />
         <Route path="ma-radar" element={<MAPage />} />
         <Route path="data-providers" element={<DataProvidersPage />} />
@@ -115,7 +113,7 @@ function AppRoutes() {
         <Route path="ownership/control-synergy" element={<ControlSynergyPage />} />
         <Route path="procurement" element={<ProcurementPage />} />
         <Route path="doc-studio" element={<DocStudioPage />} />
-        <Route path="template-builder" element={<TemplateBuilderPage />} />
+        <Route path="template-builder" element={<Navigate to="/doc-studio" replace />} />
         <Route path="editorial" element={<EditorialPage />} />
         <Route path="transactions" element={<TransactionsPage />} />
         <Route path="taxonomy" element={<TaxonomyPage />} />

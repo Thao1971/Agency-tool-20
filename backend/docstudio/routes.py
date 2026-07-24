@@ -5,7 +5,7 @@ from fastapi.responses import Response
 from database import db
 from models import now_iso
 from auth_utils import get_current_user
-from docstudio.composer import compose_sector_report, compose_company_profile, compose_benchmark_report, compose_investment_memo, compose_teaser, compose_information_memorandum, compute_quality_score, compose_company_snapshot, compose_benchmark_advanced, compose_from_template, generate_template_preview
+from docstudio.composer import compose_sector_report, compose_company_profile, compose_benchmark_report, compose_investment_memo, compose_teaser, compose_information_memorandum, compute_quality_score, compose_company_snapshot, compose_benchmark_advanced, compose_from_template, generate_template_preview, compose_opportunities_document, compose_ranking_document, compose_fragmentation_document, compose_rollup_document, compose_succession_document, compose_valuation_approx, compose_valuation_advanced, compose_strategic_analysis, compose_comparative_analysis
 from docstudio.pdf_export import export_to_pdf
 from docstudio.templates import TEMPLATES, BRANDS
 import time
@@ -591,6 +591,212 @@ async def compose_bm_advanced(
         raise HTTPException(400, doc["error"])
     return {**_meta(t0), "document_id": doc["document_id"], "title": doc["title"],
             "sections": len(doc["sections"]), "status": doc["status"]}
+
+
+@router.post("/compose/opportunities")
+async def compose_opportunities(
+    cnae_section: str = Query(None),
+    provincia: str = Query(None),
+    signal_types: str = Query(None),
+    mandate_id: str = Query(None),
+    brand_id: str = Query("brand_bud"),
+    limit: int = Query(40, ge=1, le=200),
+    user=Depends(get_current_user),
+):
+    """Documento de Oportunidades — SIEMPRE acotado (por filtros o por mandato de comprador)."""
+    t0 = time.time()
+    types = [s.strip() for s in signal_types.split(",") if s.strip()] if signal_types else None
+    doc = await compose_opportunities_document(
+        cnae_section=cnae_section, provincia=provincia, signal_types=types,
+        mandate_id=mandate_id, brand_id=brand_id, user=user.get("email"), limit=limit)
+    if "error" in doc:
+        raise HTTPException(400, doc["error"])
+    gen_ms = await _record_timing(doc["document_id"], t0)
+    return {**_meta(t0), "document_id": doc["document_id"], "title": doc["title"],
+            "sections": len(doc["sections"]), "status": doc["status"],
+            "count": doc["metadata"].get("count", 0), "generation_time_ms": gen_ms}
+
+
+@router.post("/compose/ranking")
+async def compose_ranking(cnae_section: str = Query(None), cnae_code: str = Query(None),
+                          provincia: str = Query(None), sort_by: str = Query("revenue"),
+                          brand_id: str = Query("brand_bud"), limit: int = Query(25, ge=1, le=100),
+                          user=Depends(get_current_user)):
+    t0 = time.time()
+    doc = await compose_ranking_document(cnae_section=cnae_section, cnae_code=cnae_code,
+        provincia=provincia, sort_by=sort_by, brand_id=brand_id, user=user.get("email"), limit=limit)
+    if "error" in doc:
+        raise HTTPException(400, doc["error"])
+    gen_ms = await _record_timing(doc["document_id"], t0)
+    return {**_meta(t0), "document_id": doc["document_id"], "title": doc["title"],
+            "sections": len(doc["sections"]), "status": doc["status"], "generation_time_ms": gen_ms}
+
+
+@router.post("/compose/fragmentation")
+async def compose_fragmentation(cnae_section: str = Query(None), cnae_code: str = Query(None),
+                                brand_id: str = Query("brand_bud"), user=Depends(get_current_user)):
+    t0 = time.time()
+    doc = await compose_fragmentation_document(cnae_section=cnae_section, cnae_code=cnae_code,
+                                               brand_id=brand_id, user=user.get("email"))
+    if "error" in doc:
+        raise HTTPException(400, doc["error"])
+    gen_ms = await _record_timing(doc["document_id"], t0)
+    return {**_meta(t0), "document_id": doc["document_id"], "title": doc["title"],
+            "sections": len(doc["sections"]), "status": doc["status"], "generation_time_ms": gen_ms}
+
+
+@router.post("/compose/rollup")
+async def compose_rollup(cnae_section: str = Query(None), cnae_code: str = Query(None),
+                         brand_id: str = Query("brand_bud"), user=Depends(get_current_user)):
+    t0 = time.time()
+    doc = await compose_rollup_document(cnae_section=cnae_section, cnae_code=cnae_code,
+                                        brand_id=brand_id, user=user.get("email"))
+    if "error" in doc:
+        raise HTTPException(400, doc["error"])
+    gen_ms = await _record_timing(doc["document_id"], t0)
+    return {**_meta(t0), "document_id": doc["document_id"], "title": doc["title"],
+            "sections": len(doc["sections"]), "status": doc["status"], "generation_time_ms": gen_ms}
+
+
+@router.post("/compose/succession")
+async def compose_succession(company_id: str = Query(None), cif: str = Query(None),
+                             brand_id: str = Query("brand_bud"), user=Depends(get_current_user)):
+    if not company_id and not cif:
+        raise HTTPException(400, "Provide company_id or cif")
+    t0 = time.time()
+    doc = await compose_succession_document(company_id=company_id, cif=cif,
+                                            brand_id=brand_id, user=user.get("email"))
+    if "error" in doc:
+        raise HTTPException(400, doc["error"])
+    gen_ms = await _record_timing(doc["document_id"], t0)
+    return {**_meta(t0), "document_id": doc["document_id"], "title": doc["title"],
+            "sections": len(doc["sections"]), "status": doc["status"], "generation_time_ms": gen_ms}
+
+
+@router.post("/compose/comparative")
+async def compose_comparative(company_id: str = Query(None), cif: str = Query(None),
+                              brand_id: str = Query("brand_bud"), user=Depends(get_current_user)):
+    if not company_id and not cif:
+        raise HTTPException(400, "Provide company_id or cif")
+    t0 = time.time()
+    doc = await compose_comparative_analysis(company_id=company_id, cif=cif, brand_id=brand_id, user=user.get("email"))
+    if "error" in doc:
+        raise HTTPException(400, doc["error"])
+    gen_ms = await _record_timing(doc["document_id"], t0)
+    return {**_meta(t0), "document_id": doc["document_id"], "title": doc["title"],
+            "sections": len(doc["sections"]), "status": doc["status"], "generation_time_ms": gen_ms}
+
+
+@router.post("/admin/migrate-unified")
+async def migrate_unified(user=Depends(get_current_user)):
+    """Fase 6 — migración idempotente: marcas (docstudio_brands→document_brand_profiles rico)
+    + plantillas (docstudio_templates/document_templates→unified_templates). No borra nada legacy."""
+    from documents.brand_unified import migrate_brands_to_unified
+    from documents.template_model import migrate_templates_to_unified
+    brands = await migrate_brands_to_unified(db)
+    templates = await migrate_templates_to_unified(db)
+    return {"brands": brands, "templates": templates}
+
+
+@router.post("/compose/valuation-approx")
+async def compose_val_approx(company_id: str = Query(None), cif: str = Query(None),
+                             brand_id: str = Query("brand_bud"), user=Depends(get_current_user)):
+    if not company_id and not cif:
+        raise HTTPException(400, "Provide company_id or cif")
+    t0 = time.time()
+    doc = await compose_valuation_approx(company_id=company_id, cif=cif, brand_id=brand_id, user=user.get("email"))
+    if "error" in doc:
+        raise HTTPException(400, doc["error"])
+    gen_ms = await _record_timing(doc["document_id"], t0)
+    return {**_meta(t0), "document_id": doc["document_id"], "title": doc["title"],
+            "sections": len(doc["sections"]), "status": doc["status"], "generation_time_ms": gen_ms}
+
+
+@router.post("/compose/valuation-advanced")
+async def compose_val_advanced(company_id: str = Query(None), cif: str = Query(None),
+                               brand_id: str = Query("brand_bud"), user=Depends(get_current_user)):
+    if not company_id and not cif:
+        raise HTTPException(400, "Provide company_id or cif")
+    t0 = time.time()
+    doc = await compose_valuation_advanced(company_id=company_id, cif=cif, brand_id=brand_id, user=user.get("email"))
+    if "error" in doc:
+        raise HTTPException(400, doc["error"])
+    gen_ms = await _record_timing(doc["document_id"], t0)
+    return {**_meta(t0), "document_id": doc["document_id"], "title": doc["title"],
+            "sections": len(doc["sections"]), "status": doc["status"], "generation_time_ms": gen_ms}
+
+
+@router.post("/compose/strategic-analysis")
+async def compose_strategic(company_id: str = Query(None), cif: str = Query(None),
+                            brand_id: str = Query("brand_bud"), user=Depends(get_current_user)):
+    if not company_id and not cif:
+        raise HTTPException(400, "Provide company_id or cif")
+    t0 = time.time()
+    doc = await compose_strategic_analysis(company_id=company_id, cif=cif, brand_id=brand_id, user=user.get("email"))
+    if "error" in doc:
+        raise HTTPException(400, doc["error"])
+    gen_ms = await _record_timing(doc["document_id"], t0)
+    return {**_meta(t0), "document_id": doc["document_id"], "title": doc["title"],
+            "sections": len(doc["sections"]), "status": doc["status"], "generation_time_ms": gen_ms}
+
+
+# ══════════════════════════════════════════
+# ASYNC COMPOSE + NOTIFICATIONS (Fase 4, decisión 9)
+# ══════════════════════════════════════════
+
+class ComposeAsyncRequest(BaseModel):
+    doc_type: str
+    params: dict = {}
+    brand_id: str = "brand_bud"
+
+
+@router.post("/compose-async")
+async def compose_async(req: ComposeAsyncRequest, user=Depends(get_current_user)):
+    """Encola la generación de un documento y devuelve job_id + ETA. El usuario no espera:
+    recibirá una notificación en plataforma cuando esté listo."""
+    from docstudio.compose_worker import enqueue_compose
+    return await enqueue_compose(req.doc_type, req.params, req.brand_id, user.get("email"))
+
+
+@router.get("/compose-jobs/{job_id}")
+async def compose_job_status(job_id: str, user=Depends(get_current_user)):
+    job = await db.docstudio_compose_jobs.find_one({"job_id": job_id}, {"_id": 0})
+    if not job:
+        raise HTTPException(404, "Job not found")
+    return job
+
+
+@router.get("/eta")
+async def compose_eta(doc_type: str = Query(...), user=Depends(get_current_user)):
+    """Tiempo estimado de generación (ms) para un tipo de documento, a partir de la
+    telemetría real. `null` si aún no hay historial (nunca un número inventado)."""
+    from docstudio.compose_worker import estimate_ms
+    return {"doc_type": doc_type, "eta_ms": await estimate_ms(doc_type)}
+
+
+@router.get("/notifications")
+async def list_notifications(unread_only: bool = Query(False), limit: int = Query(30, ge=1, le=100),
+                             user=Depends(get_current_user)):
+    q = {"user": user.get("email")}
+    if unread_only:
+        q["read"] = False
+    items = await db.docstudio_notifications.find(q, {"_id": 0}).sort("created_at", -1).limit(limit).to_list(limit)
+    unread = await db.docstudio_notifications.count_documents({"user": user.get("email"), "read": False})
+    return {"notifications": items, "unread": unread}
+
+
+@router.post("/notifications/{notification_id}/read")
+async def mark_notification_read(notification_id: str, user=Depends(get_current_user)):
+    await db.docstudio_notifications.update_one(
+        {"notification_id": notification_id, "user": user.get("email")}, {"$set": {"read": True}})
+    return {"status": "read"}
+
+
+@router.post("/notifications/read-all")
+async def mark_all_read(user=Depends(get_current_user)):
+    res = await db.docstudio_notifications.update_many(
+        {"user": user.get("email"), "read": False}, {"$set": {"read": True}})
+    return {"status": "read", "count": res.modified_count}
 
 
 @router.post("/compose/from-template")
