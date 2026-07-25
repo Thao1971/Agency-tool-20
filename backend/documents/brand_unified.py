@@ -172,6 +172,15 @@ def compose_brand(base: Dict, overlay: Optional[Dict] = None) -> Dict:
         if k in ov:
             result[k] = ov[k]
 
+    # White-label: if the client overlay provides its OWN logo (text or image), it fully
+    # replaces the platform logo — clear any platform logo field the overlay didn't set,
+    # so the client's logo wins (a client text logo shouldn't fall back to the platform image).
+    _logo_keys = ("logo_text", "logo_light", "logo_dark")
+    if any(k in ov for k in _logo_keys):
+        for k in _logo_keys:
+            if k not in ov:
+                result.pop(k, None)
+
     # Token overrides, section by section (colors/fonts/cover/closing), key by key.
     ov_tokens = (overlay or {}).get("tokens") or {}
     result.setdefault("tokens", {})

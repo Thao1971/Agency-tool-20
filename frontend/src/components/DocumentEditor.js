@@ -7,7 +7,7 @@ import { Textarea } from '@/components/ui/textarea';
 import {
   Trash2, Save, Download, ArrowLeft, Plus,
   Loader2, Check, Pencil, X, ChevronUp, ChevronDown, Zap, Palette,
-  Maximize2, Minimize2,
+  Maximize2, Minimize2, Eye, PencilRuler,
 } from 'lucide-react';
 import api from '@/lib/api';
 import { toast } from 'sonner';
@@ -160,6 +160,9 @@ export default function DocumentEditor({ doc, onBack, onSaved }) {
   const [dirty, setDirty] = useState(false);
   const [brandOpen, setBrandOpen] = useState(false);
   const [maximized, setMaximized] = useState(false);
+  const [view, setView] = useState('edit'); // 'edit' | 'preview'
+  const [previewHtml, setPreviewHtml] = useState('');
+  const [previewLoading, setPreviewLoading] = useState(false);
   const [logoText, setLogoText] = useState(doc.brand_overlay?.logo_text || '');
   const [accent, setAccent] = useState(doc.brand_overlay?.tokens?.colors?.accent || '#2563eb');
   const [kpiColor, setKpiColor] = useState(doc.color_override?.kpi_value || '#2563eb');
@@ -256,6 +259,18 @@ export default function DocumentEditor({ doc, onBack, onSaved }) {
     setRegenerating(null);
   };
 
+  const loadPreview = async () => {
+    setPreviewLoading(true);
+    try {
+      if (dirty) await saveDocument();
+      const res = await api.get(`/docstudio/documents/${docId}/preview`, { responseType: 'text' });
+      setPreviewHtml(typeof res.data === 'string' ? res.data : '');
+    } catch { toast.error('Error cargando la vista previa'); }
+    setPreviewLoading(false);
+  };
+
+  const showPreview = async () => { setView('preview'); await loadPreview(); };
+
   const doExport = async (fmt) => {
     try {
       if (dirty) await saveDocument();
@@ -289,6 +304,17 @@ export default function DocumentEditor({ doc, onBack, onSaved }) {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {/* Toggle Editar / Vista previa */}
+          <div className="flex rounded-md border border-zinc-700 overflow-hidden">
+            <button onClick={() => setView('edit')} data-testid="view-edit"
+              className={`px-2.5 h-7 text-xs flex items-center gap-1 ${view === 'edit' ? 'bg-zinc-800 text-zinc-100' : 'text-zinc-400 hover:text-zinc-200'}`}>
+              <PencilRuler className="w-3 h-3" /> Editar
+            </button>
+            <button onClick={showPreview} data-testid="view-preview"
+              className={`px-2.5 h-7 text-xs flex items-center gap-1 ${view === 'preview' ? 'bg-zinc-800 text-zinc-100' : 'text-zinc-400 hover:text-zinc-200'}`}>
+              <Eye className="w-3 h-3" /> Vista previa
+            </button>
+          </div>
           <Button variant="outline" size="sm" onClick={() => setMaximized(m => !m)} className="border-zinc-700 text-zinc-300 h-7 text-xs" data-testid="maximize-toggle" title={maximized ? 'Restaurar' : 'Maximizar visualización'}>
             {maximized ? <Minimize2 className="w-3 h-3 mr-1.5" /> : <Maximize2 className="w-3 h-3 mr-1.5" />}
             {maximized ? 'Restaurar' : 'Maximizar'}
@@ -333,8 +359,23 @@ export default function DocumentEditor({ doc, onBack, onSaved }) {
         </Card>
       )}
 
-      {/* Sections */}
-      {docState.sections?.map((section, si) => {
+      {/* Vista previa HTML del documento maquetado */}
+      {view === 'preview' && (
+        <div data-testid="doc-preview">
+          {previewLoading ? (
+            <div className="flex items-center justify-center py-20"><Loader2 className="w-5 h-5 animate-spin text-zinc-500" /></div>
+          ) : (
+            <div className="bg-white rounded-lg overflow-hidden border border-zinc-800">
+              <iframe title="Vista previa del documento" srcDoc={previewHtml}
+                style={{ width: '100%', height: maximized ? 'calc(100vh - 90px)' : '70vh', border: 'none' }} />
+            </div>
+          )}
+          <p className="text-[10px] text-zinc-600 mt-2">Vista previa con la marca aplicada. Para maquetar (añadir/mover módulos, saltos de página, colores) usa el modo <b>Editar</b>; los cambios se reflejan aquí al guardar.</p>
+        </div>
+      )}
+
+      {/* Sections (modo edición) */}
+      {view === 'edit' && docState.sections?.map((section, si) => {
         const hasAiBlocks = section.blocks?.some(b => b.data_lineage?.source === 'ai');
         return (
           <Card key={section.section_id} className="bg-zinc-900/50 border-zinc-800">
@@ -381,9 +422,11 @@ export default function DocumentEditor({ doc, onBack, onSaved }) {
       })}
 
       {/* Add section */}
-      <Button variant="outline" size="sm" onClick={addSection} className="border-dashed border-zinc-700 text-zinc-400 h-8 text-xs w-full" data-testid="add-section">
-        <Plus className="w-3 h-3 mr-1.5" /> Añadir sección
-      </Button>
+      {view === 'edit' && (
+        <Button variant="outline" size="sm" onClick={addSection} className="border-dashed border-zinc-700 text-zinc-400 h-8 text-xs w-full" data-testid="add-section">
+          <Plus className="w-3 h-3 mr-1.5" /> Añadir sección
+        </Button>
+      )}
     </div>
   );
 }

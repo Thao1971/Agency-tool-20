@@ -56,7 +56,40 @@ _DEFS = {
     "capital_intensity": ("Intensidad de capital", "efficiency", "Activo total / Ingresos",
                           "Activos necesarios por unidad de ingreso.",
                           lambda m, e: _safe_div(m.get("total_assets"), m.get("revenue"))),
+    # Working-capital / cash-cycle ratios (need full-EAV line items; N/D on abbreviated data).
+    "dso": ("Periodo medio de cobro (días)", "working_capital", "Clientes / Ingresos × 365",
+            "Días que tarda en cobrar a clientes.",
+            lambda m, e: _safe_div(m.get("trade_debtors"), m.get("revenue")) and
+                         round(_safe_div(m.get("trade_debtors"), m.get("revenue")) * 365, 1)),
+    "dpo": ("Periodo medio de pago (días)", "working_capital", "Proveedores / Aprovisionamientos × 365",
+            "Días que tarda en pagar a proveedores.",
+            lambda m, e: _safe_div(m.get("suppliers"), m.get("supplies")) and
+                         round(_safe_div(m.get("suppliers"), m.get("supplies")) * 365, 1)),
+    "inventory_days": ("Días de existencias", "working_capital", "Existencias / Aprovisionamientos × 365",
+                       "Días de stock sobre el consumo.",
+                       lambda m, e: _safe_div(m.get("inventories"), m.get("supplies")) and
+                                    round(_safe_div(m.get("inventories"), m.get("supplies")) * 365, 1)),
+    "cash_conversion_cycle": ("Ciclo de conversión de caja (días)", "working_capital",
+                              "PMC + Días existencias − PMP",
+                              "Días netos que el circulante inmoviliza caja.",
+                              lambda m, e: _ccc(m)),
+    "working_capital": ("Fondo de maniobra", "working_capital",
+                        "Activo corriente − Pasivo corriente",
+                        "Capital circulante neto disponible.",
+                        lambda m, e: (round(m.get("current_assets") - m.get("current_liabilities"), 2)
+                                      if (m.get("current_assets") is not None
+                                          and m.get("current_liabilities") is not None) else None)),
 }
+
+
+def _ccc(m: Dict):
+    """Cash conversion cycle = DSO + inventory days − DPO (days). None if inputs missing."""
+    dso = _safe_div(m.get("trade_debtors"), m.get("revenue"))
+    inv = _safe_div(m.get("inventories"), m.get("supplies"))
+    dpo = _safe_div(m.get("suppliers"), m.get("supplies"))
+    if dso is None or dpo is None:
+        return None
+    return round((dso + (inv or 0) - dpo) * 365, 1)
 
 SOURCE = "Iberinform statements (Normalized Layer)"
 

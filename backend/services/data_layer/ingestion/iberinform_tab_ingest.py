@@ -32,11 +32,18 @@ Writes to the EXACT SAME target collections (`norm_company`, `norm_financials`,
 shape, so the existing, unmodified `rebuild_master()` / `rebuild_ownership_graph()`
 (services/data_layer/master/*) pick this data up with no changes on their end.
 
-Deliberately NOT reused in this MVP pass (documented, not silently dropped):
-Datos_RATIOS.tab (924-code crosswalk covers ratios too, but derive_metrics() only
-needs the 6 core accounts — ratios stored raw would need a new `norm_ratios`
-collection, no current consumer), Datos_SUCURSALES.tab / Datos_OTRAS_DIRECCIONES.tab
-(branch/alternate addresses, no current consumer).
+FULL INGESTION (2026-07-24, decisión de Daniel "guardar TODO, no tirar nada"):
+- Datos_BALANCES.tab: ahora se guarda el EAV COMPLETO (~500 partidas por empresa-año),
+  no solo las 6 canónicas. Habilita ratios propios antes N/D sin cambiar los motores.
+- Datos_RATIOS.tab: los 31 ratios precalculados de Iberinform -> `norm_financials.ratios`
+  (fusionados en el mismo doc empresa-año). Se guardan todos; la curación de exposición
+  en documentos está en memory/IBERINFORM_RATIOS_PRIORITY.md.
+- Datos_SUCURSALES.tab / Datos_OTRAS_DIRECCIONES.tab -> `norm_company.branches` /
+  `norm_company.alt_addresses` (fila cruda íntegra, nada se descarta).
+Los nombres exactos de columna de los .tab de RATIOS/SUCURSALES/OTRAS_DIRECCIONES no
+están en el fixture de muestra (solo el CSV Valu8); sus loaders resuelven columnas de
+forma tolerante (`_resolve_col`) y registran error en el manifiesto si no las encuentran.
+VALIDAR contra la primera entrega real.
 """
 
 import csv
@@ -154,15 +161,19 @@ async def ingest_generales_file(path: str, source_version: str, job_id: str) -> 
     return {"file": man["file_name"], "rows": rows, "parent_edges": parent_edges, **up_company.stats()}
 
 
-# ── BALANCES → norm_financials (EAV pivot, filtered to the 6 mapped account codes) ──
+# ── BALANCES → norm_financials (EAV pivot, FULL: every balance/P&L/cash-flow line) ──
 async def ingest_balances_file(path: str, source_version: str, job_id: str, basis: str = "individual") -> Dict:
     man = _manifest_base(path, source_version, job_id, "norm_financials")
     up = BulkUpserter(db.norm_financials)
     rows = 0
-    # (cif_normalized, year) -> {account_code: value}. Only the 6 codes in ACCOUNT_MAP
-    # are kept — the file carries ~900 possible line items per company-year, but
-    # derive_metrics() only ever reads these 6, so there is no correctness reason
-    # (and real memory reasons not to) keep the rest for 25k companies x N years.
+    # (cif_normalized, year) -> {account_code: value}. We keep the FULL EAV — every
+    # line item the file carries (~500 balance/P&L/cash-flow codes per company-year),
+    # NOT just the 6 canonical ones. Rationale (Daniel, 2026-07-24): the source is
+    # knowledge, nothing is discarded; storing raw is cheap (a per-doc code→value map)
+    # and it lets the engines derive ratios that were N/D before (gross margin, liquidity,
+    # interest coverage, financial debt…) with no engine change — `metrics.py` already
+    # reads those extra codes; they were simply never stored. `derive_metrics()` still
+    # reads its 6 canonical codes from the same full map for the summary fields.
     acc: Dict[Tuple[str, int], Dict[str, float]] = defaultdict(dict)
     cif_by_norm: Dict[str, str] = {}
 
@@ -170,7 +181,7 @@ async def ingest_balances_file(path: str, source_version: str, job_id: str, basi
         rows += 1
         cif = _s(r, "REG_NUMBER")
         code = _s(r, "BALANCE_SHEET_ITEM")
-        if not cif or code not in _ACCOUNT_CODES:
+        if not cif or not code:
             continue
         cifn = normalize_cif(cif)
         if not cifn:
@@ -293,6 +304,124 @@ async def ingest_officers_file(path: str, source_version: str, job_id: str) -> D
     return {"file": man["file_name"], "rows": rows, **up.stats()}
 
 
+async def _fail_manifest(man: Dict, error: str) -> None:
+    """Persist a manifest as FAILED (never masked as completed — `_finish_manifest`
+    always sets status=completed, so error paths must write their own record)."""
+    man.update({"rows": 0, "status": "error", "error": error, "finished_at": now_iso()})
+    await db.raw_ingestion_manifest.insert_one(man)
+
+
+def _resolve_col(fieldnames, candidates) -> Optional[str]:
+    """Find the first present column among `candidates` (case-insensitive, ignoring
+    spaces/underscores). Returns the real field name or None. Used because the exact
+    `.tab` headers for the RATIOS / branch files are not in our sample fixture and
+    must be resolved tolerantly against the first real delivery."""
+    norm = {str(f).strip().lower().replace(" ", "").replace("_", ""): f for f in (fieldnames or [])}
+    for c in candidates:
+        k = c.lower().replace(" ", "").replace("_", "")
+        if k in norm:
+            return norm[k]
+    return None
+
+
+# ── RATIOS → norm_financials.ratios (merge into the same company-year doc) ──
+async def ingest_ratios_file(path: str, source_version: str, job_id: str, basis: str = "individual") -> Dict:
+    """Ingest Datos_RATIOS.tab — Iberinform's 31 precomputed ratios per company-year —
+    merging them into the matching norm_financials document as a `ratios` map
+    (code -> value). Stores ALL ratios raw (curation to 28 for documents is a read-layer
+    concern, see memory/IBERINFORM_RATIOS_PRIORITY.md). Column names are resolved
+    tolerantly (see `_resolve_col`) and asserted; if the code column can't be found the
+    manifest records an error rather than silently ingesting nothing."""
+    man = _manifest_base(path, source_version, job_id, "norm_financials")
+    up = BulkUpserter(db.norm_financials)
+    rows = 0
+
+    # peek header
+    enc = detect_encoding(path)
+    with open(path, encoding=enc, errors="replace", newline="") as fh:
+        reader = csv.DictReader(fh, delimiter="\t")
+        fields = reader.fieldnames
+    col_cif = _resolve_col(fields, ["REG_NUMBER", "NIF", "ES_NIF"])
+    col_code = _resolve_col(fields, ["RATIO_ITEM", "RATIO_CODE", "RATIO_ID", "RATIO", "ES_Account_number"])
+    col_year = _resolve_col(fields, ["RATIO_YEAR", "YEAR", "BALANCE_SHEET_YEAR", "Year"])
+    col_val = _resolve_col(fields, ["RATIO_VALUE", "RATIO_ITEM_VALUE", "VALUE", "AMOUNT", "Amount_Eur"])
+    if not (col_cif and col_code and col_val):
+        msg = (f"No se pudieron resolver columnas de RATIOS (cif={col_cif}, code={col_code}, "
+               f"year={col_year}, value={col_val}); cabecera real: {fields}")
+        await _fail_manifest(man, msg)
+        return {"file": man["file_name"], "rows": 0, "error": msg}
+
+    ratios_by: Dict[Tuple[str, Optional[int]], Dict[str, float]] = defaultdict(dict)
+    cif_by_norm: Dict[str, str] = {}
+    for r in _stream_tab_rows(path):
+        rows += 1
+        cif = _s(r, col_cif)
+        code = _s(r, col_code)
+        cifn = normalize_cif(cif)
+        if not cifn or not code:
+            continue
+        year = _int(r.get(col_year)) if col_year else None
+        val = parse_amount(r.get(col_val))
+        if val is None:
+            continue
+        cif_by_norm[cifn] = cif
+        ratios_by[(cifn, year)][code] = val
+
+    now = now_iso()
+    for (cifn, year), ratios in ratios_by.items():
+        # merge into the company-year doc (created by balances); upsert is safe either way
+        up.upsert({"cif_normalized": cifn, "year": year, "basis": basis},
+                  {"cif_normalized": cifn, "cif": cif_by_norm.get(cifn), "year": year, "basis": basis,
+                   "ratios": ratios, "ratios_source": "iberinform", "source_version": source_version,
+                   "source_file_id": man["source_file_id"], "ingestion_job_id": job_id,
+                   "pipeline_version": PIPELINE_VERSION, "updated_at": now})
+        await up.maybe_flush()
+    await up.flush()
+    await _finish_manifest(man, rows, up.stats())
+    return {"file": man["file_name"], "rows": rows, "company_years": len(ratios_by),
+            "columns": {"cif": col_cif, "code": col_code, "year": col_year, "value": col_val}, **up.stats()}
+
+
+# ── SUCURSALES / OTRAS_DIRECCIONES → norm_company.branches / alt_addresses ──
+async def ingest_addresses_file(path: str, source_version: str, job_id: str,
+                                field: str = "branches") -> Dict:
+    """Ingest branch / alternate-address rows and attach them to the company as a list
+    (`branches` or `alt_addresses`). Stores the whole row raw so nothing is lost; the
+    exact `.tab` columns are resolved tolerantly against the first real delivery."""
+    man = _manifest_base(path, source_version, job_id, "norm_company")
+    up = BulkUpserter(db.norm_company)
+    rows = 0
+    enc = detect_encoding(path)
+    with open(path, encoding=enc, errors="replace", newline="") as fh:
+        reader = csv.DictReader(fh, delimiter="\t")
+        fields = reader.fieldnames
+    col_cif = _resolve_col(fields, ["REG_NUMBER", "NIF", "ES_NIF"])
+    if not col_cif:
+        msg = f"No se pudo resolver REG_NUMBER; cabecera: {fields}"
+        await _fail_manifest(man, msg)
+        return {"file": man["file_name"], "rows": 0, "error": msg}
+
+    by_cif: Dict[str, list] = defaultdict(list)
+    for r in _stream_tab_rows(path):
+        rows += 1
+        cifn = normalize_cif(r.get(col_cif))
+        if not cifn:
+            continue
+        # keep the full row raw (minus the cif key), nothing discarded
+        by_cif[cifn].append({k: (v.strip() if isinstance(v, str) else v)
+                             for k, v in r.items() if k != col_cif and v not in (None, "")})
+
+    now = now_iso()
+    for cifn, items in by_cif.items():
+        up.upsert({"cif_normalized": cifn},
+                  {"cif_normalized": cifn, field: items, f"{field}_count": len(items),
+                   "updated_at": now}, )
+        await up.maybe_flush()
+    await up.flush()
+    await _finish_manifest(man, rows, up.stats())
+    return {"file": man["file_name"], "rows": rows, "companies": len(by_cif), "field": field, **up.stats()}
+
+
 # ── Orchestrator ─────────────────────────────────────────────────────
 _FILE_MAP = {
     "Datos_GENERALES.tab": ("generales", None),
@@ -302,8 +431,9 @@ _FILE_MAP = {
     "Datos_ORG_SOCIALES.tab": ("officers", None),
     "Datos_RESTO_ORG_SOCIALES.tab": ("officers", None),
     "Datos_APODERADOS.tab": ("officers", None),
-    # Deliberately not ingested in this pass — see module docstring.
-    # "Datos_RATIOS.tab", "Datos_SUCURSALES.tab", "Datos_OTRAS_DIRECCIONES.tab"
+    "Datos_RATIOS.tab": ("ratios", None),
+    "Datos_SUCURSALES.tab": ("sucursales", None),
+    "Datos_OTRAS_DIRECCIONES.tab": ("otras_direcciones", None),
 }
 
 
@@ -336,5 +466,12 @@ async def ingest_tab_directory(directory: str, source_version: Optional[str] = N
     for fname in ("Datos_ORG_SOCIALES.tab", "Datos_RESTO_ORG_SOCIALES.tab", "Datos_APODERADOS.tab"):
         if fname in present:
             results.append(await ingest_officers_file(present[fname], source_version, job_id))
+    # RATIOS after BALANCES so it merges into the existing company-year documents.
+    if "Datos_RATIOS.tab" in present:
+        results.append(await ingest_ratios_file(present["Datos_RATIOS.tab"], source_version, job_id))
+    if "Datos_SUCURSALES.tab" in present:
+        results.append(await ingest_addresses_file(present["Datos_SUCURSALES.tab"], source_version, job_id, field="branches"))
+    if "Datos_OTRAS_DIRECCIONES.tab" in present:
+        results.append(await ingest_addresses_file(present["Datos_OTRAS_DIRECCIONES.tab"], source_version, job_id, field="alt_addresses"))
 
     return {"ingestion_job_id": job_id, "source_version": source_version, "files": results}

@@ -79,7 +79,19 @@ def compute_evolution(series: List[Dict]) -> Dict:
         "trend": trend, "years": len(series), "anomaly": anomaly,
         "revenue_growth_yoy": rev_growth, "ebitda_growth_yoy": ebitda_growth,
         "points": [{"year": s.get("year"), "revenue": s.get("revenue"),
-                    "ebitda": s.get("ebitda"), "net_income": s.get("net_income")} for s in series],
+                    "ebitda": s.get("ebitda"), "net_income": s.get("net_income"),
+                    "gross_margin": (R._safe_div((s.get("revenue") - s.get("supplies")), s.get("revenue"))
+                                     if (s.get("revenue") is not None and s.get("supplies") is not None) else None),
+                    "ebitda_margin": R._safe_div(s.get("ebitda"), s.get("revenue")),
+                    "personnel_costs": s.get("personnel_costs"),
+                    "personnel_pct": R._safe_div(s.get("personnel_costs"), s.get("revenue")),
+                    # Fondo de maniobra = activo corriente − pasivo corriente.
+                    "working_capital": (round(s["current_assets"] - s["current_liabilities"], 2)
+                                        if (s.get("current_assets") is not None and s.get("current_liabilities") is not None) else None),
+                    # Posición financiera neta = deuda financiera (c/p + l/p) − tesorería.
+                    "net_financial_position": (round((s.get("financial_debt") or 0) - s["cash"], 2)
+                                               if (s.get("cash") is not None and s.get("financial_debt") is not None) else None),
+                    "employees": None} for s in series],
     }
 
 

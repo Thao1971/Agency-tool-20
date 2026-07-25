@@ -44,6 +44,18 @@ async def financial_profile(identifier: str) -> Dict:
     return prof or {}
 
 
+async def iberinform_ratios(cif_normalized: str) -> Dict:
+    """Iberinform's own precomputed ratios for the latest year (raw code->value map),
+    stored by the full ingestion in `norm_financials.ratios`. Empty until the delivery
+    with Datos_RATIOS.tab is (re)ingested — honest, never invented."""
+    if not cif_normalized:
+        return {}
+    doc = await db.norm_financials.find_one(
+        {"cif_normalized": cif_normalized, "ratios": {"$exists": True, "$ne": {}}},
+        {"_id": 0, "ratios": 1, "year": 1}, sort=[("year", -1)])
+    return (doc or {}).get("ratios", {}) or {}
+
+
 async def active_signals(identifier: str, limit: int = 12) -> List[Dict]:
     """Active signals/opportunities for the company from the Signal Engine.
 
@@ -135,14 +147,25 @@ async def rank_companies(cnae_section: Optional[str] = None, cnae_code: Optional
 
 
 def _identity(profile: Dict, company: Optional[Dict]) -> Dict:
-    ident = profile.get("identity") or {}
-    if not ident and company:
-        ident = {
-            "name": (company.get("identity") or {}).get("legal_name"),
-            "cnae_code": (company.get("classification") or {}).get("cnae_code"),
-            "cnae_section": (company.get("classification") or {}).get("cnae_section"),
-            "provincia": (company.get("location") or {}).get("provincia"),
-        }
+    ident = dict(profile.get("identity") or {})
+    if company:
+        cid = company.get("identity") or {}
+        cls = company.get("classification") or {}
+        loc = company.get("location") or {}
+        size = company.get("size") or {}
+        ident.setdefault("name", cid.get("legal_name"))
+        ident.setdefault("cnae_code", cls.get("cnae_code"))
+        ident.setdefault("cnae_section", cls.get("cnae_section"))
+        ident.setdefault("provincia", loc.get("provincia"))
+        # Descriptive/company-register fields for a full company description
+        ident["commercial_name"] = cid.get("commercial_name")
+        ident["cnae_description"] = cls.get("cnae_description")
+        ident["municipio"] = loc.get("municipio")
+        ident["pais"] = loc.get("pais")
+        ident["web"] = (company.get("contact") or {}).get("web")
+        ident["objeto_social"] = company.get("objeto_social")
+        ident["capital_social"] = size.get("capital_social")
+        ident["workforce"] = company.get("workforce")
     return ident
 
 
@@ -171,6 +194,7 @@ async def company_intelligence(identifier: str = None, cif: str = None,
     master_id = company.get("master_id")
     profile = await financial_profile(master_id)
     signals = await active_signals(master_id) if include_signals else []
+    ib_ratios = await iberinform_ratios(company.get("cif_normalized"))
 
     return {
         "found": True,
@@ -179,6 +203,8 @@ async def company_intelligence(identifier: str = None, cif: str = None,
         "identity": _identity(profile, company),
         "has_financials": profile.get("has_financials", False),
         "kpis": profile.get("kpis", {}),
+        "ratios": profile.get("ratios", {}),
+        "iberinform_ratios": ib_ratios,
         "valuation": profile.get("valuation", {}),
         "evolution": profile.get("evolution", {}),
         "comparables": profile.get("comparables", {}),

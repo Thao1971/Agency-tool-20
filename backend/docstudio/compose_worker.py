@@ -134,6 +134,11 @@ async def _run_compose_job(job: Dict) -> Dict:
     try:
         doc = await _dispatch(job["doc_type"], job.get("params", {}),
                               job.get("brand_id", "brand_bud"), job.get("user"))
+        # Inyectar contenido comercial manual (Modelo B: lo aporta arroba.com/el asesor)
+        mb = (job.get("params") or {}).get("manual_blocks")
+        if mb and doc and "error" not in doc:
+            from docstudio.composer import apply_manual_blocks
+            doc = await apply_manual_blocks(doc["document_id"], mb)
         if not doc or "error" in doc:
             msg = (doc or {}).get("error", "Error desconocido")
             await db.docstudio_compose_jobs.update_one(

@@ -17,6 +17,8 @@ BLOCK_TYPES = [
     "cover", "text", "kpi", "table", "chart",
     "insight", "image", "divider", "appendix",
     "page_break",  # layout control — forces a page break in PDF/print output
+    "ownership",   # diagrama de estructura societaria (accionistas · sociedad · participadas)
+    "orgchart",    # organigrama / estructura operativa (nodo raíz · departamentos · miembros)
 ]
 
 CHART_TYPES = [
@@ -104,6 +106,22 @@ def chart_block(title: str, chart_type: str, dataset: Dict, config: Dict = None)
     return new_block("chart", data={
         "title": title, "chart_type": chart_type, "dataset": dataset, "config": config or {},
     })
+
+
+def ownership_block(company: Dict, shareholders: list, investees: list) -> Dict:
+    """Diagrama de estructura societaria: accionistas -> sociedad -> participadas."""
+    return new_block("ownership", data={
+        "company": company, "shareholders": shareholders, "investees": investees,
+    })
+
+
+def orgchart_block(root: Dict, groups: list, title: str = "") -> Dict:
+    """Organigrama / estructura operativa.
+
+    root   -> {"name": str, "role": str}  (nodo superior, p. ej. Dirección General)
+    groups -> [ {"lead": {"name","role"}, "members": [{"name","role"}, ...]}, ... ]
+    """
+    return new_block("orgchart", data={"root": root, "groups": groups, "title": title})
 
 
 def insight_block(title: str, summary: str, importance: str = "medium",

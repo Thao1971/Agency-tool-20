@@ -15,6 +15,13 @@ CODES = {
     "non_current_assets": "11000", "current_assets": "12000", "cash": "12700",
     "non_current_liabilities": "31000", "current_liabilities": "32000",
     "lt_debt": "31200", "st_debt": "32300",
+    # Working-capital line items (now stored with the full EAV) -> cash-cycle ratios.
+    "trade_debtors": "12300", "inventories": "12200", "suppliers": "32510",
+    # Cash-flow statement (EFE, PGC codes 61xxx-65xxx). Present only when the company
+    # files full — not abbreviated/PYME — accounts; absent -> cashflow stays None (honest).
+    "cf_operating": "61500", "cf_investing": "62300", "cf_financing": "63400",
+    "cf_capex": "62100", "cf_net_change": "65000",
+    "cash_start": "65100", "cash_end": "65200",
 }
 
 
@@ -33,6 +40,11 @@ def _year_metrics(acc: Dict) -> Dict[str, Optional[float]]:
         fin_debt = round((lt or 0) + (st or 0), 2)
     eq, ta = _g(acc, "equity"), _g(acc, "total_assets")
     total_liabilities = round(ta - eq, 2) if (ta is not None and eq is not None) else None
+    # Cash flow (only present for full-account filers). FCF = operating + investing
+    # (investing is stored negative). Cash conversion = operating CF / EBITDA.
+    cf_op, cf_inv = _g(acc, "cf_operating"), _g(acc, "cf_investing")
+    fcf = round(cf_op + cf_inv, 2) if (cf_op is not None and cf_inv is not None) else None
+    cash_conv = round(cf_op / ebitda, 4) if (cf_op is not None and ebitda not in (None, 0)) else None
     return {
         "revenue": _g(acc, "revenue"), "supplies": _g(acc, "supplies"),
         "personnel_costs": _g(acc, "personnel_costs"),
@@ -44,6 +56,12 @@ def _year_metrics(acc: Dict) -> Dict[str, Optional[float]]:
         "non_current_liabilities": _g(acc, "non_current_liabilities"),
         "current_liabilities": _g(acc, "current_liabilities"),
         "financial_debt": fin_debt, "total_liabilities": total_liabilities,
+        "cf_operating": cf_op, "cf_investing": cf_inv, "cf_financing": _g(acc, "cf_financing"),
+        "cf_capex": _g(acc, "cf_capex"), "cf_net_change": _g(acc, "cf_net_change"),
+        "cash_start": _g(acc, "cash_start"), "cash_end": _g(acc, "cash_end"),
+        "free_cash_flow": fcf, "cash_conversion": cash_conv,
+        "trade_debtors": _g(acc, "trade_debtors"), "inventories": _g(acc, "inventories"),
+        "suppliers": _g(acc, "suppliers"),
     }
 
 
@@ -72,6 +90,10 @@ def statements(latest: Dict, employees: Optional[int]) -> Dict:
                           ("non_current_assets", "current_assets", "cash", "total_assets",
                            "equity", "non_current_liabilities", "current_liabilities",
                            "financial_debt", "total_liabilities")},
-        "cashflow": None,  # not provided in individual statements
+        # Cash flow only when the company filed it (full accounts). None otherwise — honest.
+        "cashflow": ({k: latest.get(k) for k in
+                      ("cf_operating", "cf_investing", "cf_financing", "cf_capex",
+                       "cf_net_change", "cash_start", "cash_end", "free_cash_flow", "cash_conversion")}
+                     if latest.get("cf_operating") is not None else None),
         "employees": employees,
     }

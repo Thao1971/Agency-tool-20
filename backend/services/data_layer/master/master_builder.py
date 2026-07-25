@@ -51,6 +51,7 @@ def _profile_hash(nc: Dict, fin_latest: Optional[Dict], own: List[Dict]) -> str:
 
 
 def _fin_summary(fin_docs: List[Dict]) -> Dict:
+    from services.engines.financial import metrics as _M, ratios_library as _R
     individual = [f for f in fin_docs if f.get("basis") == "individual"]
     chosen = sorted(individual or fin_docs, key=lambda f: (f.get("year") or 0), reverse=True)
     keys = ("revenue", "ebitda", "ebitda_margin", "equity", "total_assets", "net_income",
@@ -59,6 +60,17 @@ def _fin_summary(fin_docs: List[Dict]) -> Dict:
     if chosen:
         f = chosen[0]
         latest = {"year": f.get("year"), "basis": f.get("basis"), **{k: f.get(k) for k in keys}}
+        # Rich ratios summary for sector percentiles (partial/empty until the full EAV is
+        # ingested — honest, never invented). Employees unknown here -> revenue/employee
+        # is left to the sector helper (which has size.employees_total).
+        ym = _M._year_metrics(f.get("accounts") or {})
+        ratios = {k: v["value"] for k, v in _R.compute_all(ym, None).items()
+                  if v.get("value") is not None}
+        if ratios:
+            latest["ratios"] = ratios
+        for extra in ("free_cash_flow", "cash_conversion"):
+            if ym.get(extra) is not None:
+                latest[extra] = ym[extra]
     history = [{"year": f.get("year"), "basis": f.get("basis"),
                 "revenue": f.get("revenue"), "ebitda": f.get("ebitda"),
                 "net_income": f.get("net_income")} for f in chosen]
@@ -151,6 +163,7 @@ async def _process_batch(ncs: List[Dict], source: str, force: bool, stats: Dict)
             "ownership": _ownership_summary(own),
             "officers_count": off_counts.get(cif, 0),
             "objeto_social": nc.get("objeto_social"),
+            "workforce": nc.get("workforce"),
             "provenance": prov, "sources": sources,
             "pipeline_version": PIPELINE_VERSION, "source_hash": phash, "dirty": True,
             "built_at": now, "updated_at": now,

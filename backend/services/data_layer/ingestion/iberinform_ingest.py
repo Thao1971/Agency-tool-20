@@ -105,6 +105,13 @@ async def ingest_company_file(path: str, source_version: str, job_id: str) -> Di
                 "pais": (r.get("PAIS") or "").strip() or None,
             },
             "employees_total": _int(r.get("TOTAL_EMPLEADOS")),
+            "workforce": {  # composición de plantilla (sexo y tipo de contrato) — dato real Iberinform
+                "total": _int(r.get("TOTAL_EMPLEADOS")),
+                "fijos": _int(r.get("FIJOS")),
+                "temporales": _int(r.get("TEMPORALES")),
+                "hombres": _int(r.get("TOTAL_HOMBRES")),
+                "mujeres": _int(r.get("TOTAL_MUJERES")),
+            },
             "capital_social": parse_amount(r.get("CAPITAL_SOCIAL")),
             "sales": parse_amount(r.get("VENTAS")),
             "sit_mercantil": (r.get("SIT_MERCANTIL") or "").strip() or None,

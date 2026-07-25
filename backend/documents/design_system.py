@@ -49,8 +49,8 @@ BRANDS = {
                 "disclaimer_bg": "#0d0d0d",
             },
             "fonts": {
-                "heading": "'Inter', 'Helvetica Neue', Helvetica, Arial, sans-serif",
-                "body": "'Inter', 'Helvetica Neue', Helvetica, Arial, sans-serif",
+                "heading": "'Montserrat', 'Helvetica Neue', Helvetica, Arial, sans-serif",
+                "body": "'Montserrat', 'Helvetica Neue', Helvetica, Arial, sans-serif",
                 "mono": "'JetBrains Mono', 'Courier New', Courier, monospace",
             },
             "cover": {

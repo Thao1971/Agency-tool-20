@@ -109,6 +109,19 @@ async def delete_document(document_id: str, user=Depends(get_current_user)):
     return {"status": "deleted", "document_id": document_id}
 
 
+@router.get("/documents/{document_id}/preview")
+async def preview_document_html(document_id: str, user=Depends(get_current_user)):
+    """Vista previa HTML del documento tal como quedará, con la marca real (base de
+    plataforma + overlay de cliente). Se muestra en el editor en un iframe."""
+    from fastapi.responses import HTMLResponse
+    from docstudio.html_render import render_html, resolve_doc_brand
+    doc = await db.docstudio_documents.find_one({"document_id": document_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(404, "Document not found")
+    brand = resolve_doc_brand(doc)
+    return HTMLResponse(content=render_html(doc, brand))
+
+
 # ══════════════════════════════════════════
 # EDITOR — Save, update blocks, reorder, regenerate
 # ══════════════════════════════════════════
@@ -738,6 +751,82 @@ async def compose_strategic(company_id: str = Query(None), cif: str = Query(None
     gen_ms = await _record_timing(doc["document_id"], t0)
     return {**_meta(t0), "document_id": doc["document_id"], "title": doc["title"],
             "sections": len(doc["sections"]), "status": doc["status"], "generation_time_ms": gen_ms}
+
+
+# ══════════════════════════════════════════
+# API EXTERNA (X-API-Key) — para arroba.com / Valuo / CIS (Modelo B: autoservicio)
+# Mismo motor que la interfaz interna, pero autenticado por clave de servicio e
+# identificado por CIF/master_id (identificador agnóstico del contrato arroba).
+# ══════════════════════════════════════════
+
+from services.service_auth import require_service_key
+
+
+class ExtComposeRequest(BaseModel):
+    doc_type: str
+    cif: Optional[str] = None
+    company_id: Optional[str] = None
+    cnae_section: Optional[str] = None
+    cnae_code: Optional[str] = None
+    provincia: Optional[str] = None
+    mandate_id: Optional[str] = None
+    brand_id: str = "brand_arroba"
+    consumer: Optional[str] = None       # arroba | valuo | cis (traza)
+    manual_blocks: Optional[dict] = None  # contenido comercial que aporta el consumidor
+
+
+@router.post("/ext/compose")
+async def ext_compose(req: ExtComposeRequest, _key=Depends(require_service_key)):
+    """Encola la generación de un documento para un consumidor externo (arroba.com).
+    Devuelve job_id + ETA; el consumidor sondea /ext/jobs/{id}. No bloquea."""
+    from docstudio.compose_worker import enqueue_compose
+    params = {k: v for k, v in {
+        "cif": req.cif, "company_id": req.company_id, "cnae_section": req.cnae_section,
+        "cnae_code": req.cnae_code, "provincia": req.provincia, "mandate_id": req.mandate_id,
+        "manual_blocks": req.manual_blocks,
+    }.items() if v is not None}
+    user = f"consumer:{req.consumer or 'external'}"
+    return await enqueue_compose(req.doc_type, params, req.brand_id, user)
+
+
+@router.get("/ext/jobs/{job_id}")
+async def ext_job_status(job_id: str, _key=Depends(require_service_key)):
+    job = await db.docstudio_compose_jobs.find_one({"job_id": job_id}, {"_id": 0})
+    if not job:
+        raise HTTPException(404, "Job not found")
+    return {"job_id": job["job_id"], "status": job["status"], "document_id": job.get("document_id"),
+            "error": job.get("error")}
+
+
+@router.get("/ext/documents/{document_id}")
+async def ext_get_document(document_id: str, _key=Depends(require_service_key)):
+    doc = await db.docstudio_documents.find_one({"document_id": document_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(404, "Document not found")
+    return doc
+
+
+@router.get("/ext/documents/{document_id}/preview")
+async def ext_preview(document_id: str, _key=Depends(require_service_key)):
+    from fastapi.responses import HTMLResponse
+    from docstudio.html_render import render_html, resolve_doc_brand
+    doc = await db.docstudio_documents.find_one({"document_id": document_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(404, "Document not found")
+    return HTMLResponse(content=render_html(doc, resolve_doc_brand(doc)))
+
+
+@router.get("/ext/documents/{document_id}/export/pdf")
+async def ext_export_pdf(document_id: str, _key=Depends(require_service_key)):
+    from fastapi.responses import Response
+    doc = await db.docstudio_documents.find_one({"document_id": document_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(404, "Document not found")
+    brand = await db.docstudio_brands.find_one({"brand_id": doc.get("brand_id", "brand_bud")}, {"_id": 0}) or BRANDS["bud_advisors"]
+    pdf_bytes = await export_to_pdf(doc, brand)
+    fn = ''.join(ch for ch in (doc.get("title", "documento").replace(" ", "_")[:50]) if ch.isascii() and ch not in '<>:"/\\|?*')
+    return Response(content=pdf_bytes, media_type="application/pdf",
+                    headers={"Content-Disposition": f'attachment; filename="{fn}.pdf"'})
 
 
 # ══════════════════════════════════════════
