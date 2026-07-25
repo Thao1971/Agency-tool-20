@@ -1,0 +1,46 @@
+{
+  "summary": "v23 Chromium flags patch + Cuaderno de Venta (Information Memorandum) verified. 21/21 pytest tests PASSED. (1) CHROMIUM PATCH: grep confirms '--no-sandbox --disable-setuid-sandbox --disable-dev-shm-usage' present in bme_connector.py:57, bme_enrichment.py:90, datacomex_playwright.py:53; backend health 200; Playwright cache /root/.cache/ms-playwright present with chromium dir. Smoke-tested live: POST /api/v1/datacomex/sync → 200 status=completed, 1169 records synced (chromium launched OK, ~40s runtime); POST /api/v1/bme-markets/sync → 200 partial, principal market imported 123 rows, only external-URL-migration warnings for growth/scaleup (ignorable per spec, NOT a chromium crash). No 'Target page/context/browser closed' or 'Executable doesn't exist' errors observed. (2) INFORMATION MEMORANDUM: POST /docstudio/compose/information-memorandum?company_id=mc_36c100bcee4a → 200 with document_id; fetched document has 27 sections including 'Equipo y Organización' (7 blocks + costes/productividad 6 blocks), 'Mercado y Competencia · Competidores', 'Posicionamiento Sectorial · Mapa del sector', 'Posición Financiera · Fondo de maniobra y deuda neta' (6 blocks), 'EBITDA Bridge · Puente a EBITDA ajustado' (with chart_type='waterfall' confirmed), 'Proyecciones / Plan de Negocio' (9 blocks with conservador/base/optimista scenarios found), 'Motivo de la Operación'. Orgchart block populated with root+groups. Export PDF → 200 application/pdf; PPTX → 200 officedocument.presentationml. (3) ASYNC COMPOSE: POST /docstudio/compose-async → 200 job_id, poll /compose-jobs/{id} eventually 'done' with document_id. (4) M&A ENGINES: fragmentation, rollup-thesis, ratios/catalog, control-synergy (used mc_36c100bcee4a/mc_d06d23d431d7 — the provided mc_c6a1440c3ff8/mc_e7c308a8e883 do NOT exist in master_companies, see minor note), signal-intelligence/stats+opportunities/view, watchlist POST+GET, admin/iberinform/stats, data-providers/health — ALL 200. (5) AUTH NEGATIVES: service endpoints w/o & w/ bad X-API-Key → 401/403; JWT endpoints (stats/view, opportunities/view, watchlist, admin/iberinform/stats, control-synergy, docstudio compose infomemo) w/o token → 401/403. (6) UI: /doc-studio shows 5 sub-tabs (Generar/Documentos(21)/Plantillas/Constructor/Marcas); /documents /brands /template-builder all redirect to /doc-studio; notif-bell present; opening a LABORATORIOS SERVIER document shows data-testid='document-editor' + 'maximize-toggle' + 'brand-toggle' + PDF/PPTX/Guardar; clicking 'Generar informe' shows toast 'Informe sectorial: generando en segundo plano (~1 s). Te avisaremos al terminar.'; /opportunities, /signals, /data-quality, /data-providers all render with 0 console errors.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "review-request seed IDs", "issue": "Provided master_ids mc_c6a1440c3ff8 & mc_e7c308a8e883 do not exist in master_companies (24992 docs; verified via pymongo). Substituted valid IDs mc_36c100bcee4a & mc_d06d23d431d7 for control-synergy test — endpoint returns 200. Not a code defect, just stale test IDs in the request payload."}
+    ]
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "verified_functionality": {
+    "chromium_flags_files": "bme_connector.py:57, bme_enrichment.py:90, datacomex_playwright.py:53 all contain --no-sandbox --disable-setuid-sandbox --disable-dev-shm-usage.",
+    "chromium_binary": "/root/.cache/ms-playwright/chromium-* present.",
+    "datacomex_sync_live": "POST /api/v1/datacomex/sync → 200, 1169 real records synced via Playwright, no chromium crash.",
+    "bme_sync_live": "POST /api/v1/bme-markets/sync → 200 partial, principal market 123 rows imported; growth/scaleup only fail with external site URL migration (expected/ignorable) — chromium process launched fine.",
+    "infomemo_compose": "POST /docstudio/compose/information-memorandum?company_id=mc_36c100bcee4a → 200 with document_id.",
+    "infomemo_structure": "27 sections; orgchart with root+groups; chart_type='waterfall' in EBITDA Bridge; Posición Financiera KPIs; 3 scenarios in Proyecciones; all mandatory keyword sections present (equipo, mercado, posici, ebitda, proyec, motivo).",
+    "infomemo_exports": "PDF 200 application/pdf; PPTX 200 officedocument.presentationml.",
+    "async_compose": "POST /docstudio/compose-async → 200 job_id → poll /compose-jobs/{id} → 'done' with document_id.",
+    "engine_regressions": "fragmentation (cnae 4711), rollup-thesis, ratios/catalog, control-synergy, signals stats+opps, watchlist POST+GET, admin/iberinform/stats, data-providers/health — all 200.",
+    "auth_negatives": "Missing/bad X-API-Key → 401/403 on 3 service endpoints; missing JWT → 401/403 on 5 JWT endpoints + docstudio compose infomemo.",
+    "ui_docstudio": "5 sub-tabs (Generar/Documentos/Plantillas/Constructor/Marcas), notif-bell present, editor+maximize+brand+PDF/PPTX/Guardar controls visible on document open, launch buttons for 13 doc types incl Info Memo.",
+    "ui_legacy_redirects": "/documents /brands /template-builder all → /doc-studio.",
+    "ui_toast": "'Informe sectorial: generando en segundo plano (~1 s). Te avisaremos al terminar.' shown after clicking Generar informe.",
+    "ui_regression_screens": "/opportunities /signals /data-quality /data-providers load with 0 console errors."
+  },
+  "test_report_links": [
+    "/app/tests/test_v23_chromium_infomemo.py",
+    "/app/test_reports/pytest/iteration_12.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Chromium patch is minimal and correct: identical arg-list applied at exactly the chromium.launch call site in each of the three files. Consider extracting a shared constant (e.g. services/_playwright_common.py: CHROMIUM_LAUNCH_ARGS) to avoid drift with cnmv_connector.py which already has its own CNMV_LAUNCH_ARGS.",
+    "docstudio/routes.py still 1300+ lines (flagged in previous iterations) — split recommended but not blocking.",
+    "Review request contained stale master_ids for control-synergy; recommend main-agent update its documented sample IDs to two verified existing IDs, e.g. mc_36c100bcee4a & mc_d06d23d431d7."
+  ],
+  "updated_files": [
+    "/app/tests/test_v23_chromium_infomemo.py"
+  ],
+  "success_rate": {"backend": "100% (21/21)", "frontend": "100% (0 console errors, all v23 UI features verified)"},
+  "test_credentials": "daniel@wearebudadvisors.com / Thao1971@ (from /app/memory/test_credentials.md). X-API-Key from /app/backend/.env ARROBA_SERVICE_API_KEY.",
+  "seed_data_creation": "None. Infomemo compose creates a new document from existing master mc_36c100bcee4a (LABORATORIOS SERVIER); document_id from this run: 9a648d6c-c7f0-4194-b8dc-ab31a768308f. Watchlist test upserts note='TEST_v23' (idempotent).",
+  "should_call_test_agent_after_fix": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Chromium flags patch is verified end-to-end (files + live sync of DataComex 1169 rows + BME 123 rows, both via Playwright, no crashes). Cuaderno de Venta / Information Memorandum is fully functional: 27 sections with real financial data, waterfall EBITDA bridge, orgchart, working-capital + net-financial-position, 3-scenario projections. Real infomemo companies available: mc_36c100bcee4a (LABORATORIOS SERVIER, 6y financials), mc_d06d23d431d7. Any future control-synergy test should use two IDs verified to exist in master_companies (the two above work). BME site URL migration & BORME timeout & object-storage 400 are external noise — NOT regressions.",
+  "rca_of_the_issue": "N/A — no functional regressions found. Only note: review-request-supplied control-synergy IDs do not exist in DB; substituted verified IDs."
+}

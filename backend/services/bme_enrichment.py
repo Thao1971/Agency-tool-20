@@ -87,7 +87,8 @@ async def run_full_enrichment(max_companies: int = 300, batch_size: int = 5) -> 
 
     try:
         async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=True)
+            browser = await p.chromium.launch(headless=True, args=[
+                "--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"])
             page = await browser.new_page()
 
             for i, company in enumerate(companies):

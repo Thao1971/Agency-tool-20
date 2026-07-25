@@ -50,7 +50,8 @@ async def sync_via_playwright(years: List[int] = None) -> Dict:
 
     try:
         async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=True)
+            browser = await p.chromium.launch(headless=True, args=[
+                "--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"])
             page = await browser.new_page()
 
             logger.info("DataComex sync: loading page...")
