@@ -1,0 +1,19 @@
+{
+  "summary": "Independently verified patch_v17_1_pdf: infomemo PDF export is landscape 960x540pt (ratio 1.78), 27 MediaBoxes all landscape, 677KB — Chromium path used, NOT WeasyPrint fallback. Preview endpoint /api/v1/docstudio/documents/{id}/preview renders slide HTML with 17+ SVG charts (waterfall/orgchart/donut/scatter/ebitda/bridge indicators). Frontend 'Ver' button (25 rows) opens HTML slide viewer in new tab with 17 SVGs (293KB) — PDF button remains alongside. All M&A regression endpoints, auth negatives, chromium flags, and watchlist CRUD pass. 15/15 backend pytest tests green.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/tests/test_v24_infomemo_pdf_fix.py",
+    "/app/test_reports/pytest/v24_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [],
+  "updated_files": ["/app/tests/test_v24_infomemo_pdf_fix.py"],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "seed_data_creation": "Composed a fresh infomemo document for mc_36c100bcee4a during test; watchlist TEST_v24 entry created.",
+  "should_call_test_agent_after_fix": false,
+  "should_main_agent_self_test": false,
+  "test_credentials": "daniel@wearebudadvisors.com / Thao1971@ (from /app/memory/test_credentials.md). Auth login returns key 'token' (not 'access_token').",
+  "context_for_next_testing_agent": "PDF export MediaBox check: parse /MediaBox [x0 y0 x1 y1] with regex; a passing infomemo yields ratio ~1.78 (960x540pt) and size >300KB. Preview endpoint is GET /api/v1/docstudio/documents/{id}/preview (returns text/html via HTMLResponse) — used by DocStudioPage 'Ver' button which fetches with axios then window.open(blob). Frontend route is /doc-studio (not /docstudio). Tab label is 'Documentos (N)' — match with :has-text('Documentos'). Watchlist requires master_id (company_id alone -> 422). Flow-layout documents not tested — noted in request as acceptable since all current doc types are presentation-layout.",
+  "rca_of_the_issue": "N/A — fix confirmed working. Previous WeasyPrint fallback would have produced portrait A4 (~595x842pt) and small (<100KB) file with no SVGs."
+}

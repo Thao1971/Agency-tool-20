@@ -8,7 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
 import {
   Loader2, FileText, Download, Plus, Palette, BarChart3, Building2, Zap,
-  Star, Clock, Trash2, Bell, CheckCheck
+  Star, Clock, Trash2, Bell, CheckCheck, Eye
 } from 'lucide-react';
 import { toast } from 'sonner';
 import DocumentEditor from '@/components/DocumentEditor';
@@ -132,6 +132,15 @@ export default function DocStudioPage() {
       const { data: res } = await api.get(`/docstudio/documents/${docId}`);
       setSelectedDoc(res.document);
     } catch { toast.error('Error cargando documento'); }
+  };
+
+  const openHtml = async (docId) => {
+    try {
+      // Vista HTML (mismas diapositivas que la vista previa del editor), autenticada vía JWT.
+      const res = await api.get(`/docstudio/documents/${docId}/preview`, { responseType: 'text' });
+      const blob = new Blob([res.data], { type: 'text/html' });
+      window.open(window.URL.createObjectURL(blob), '_blank');
+    } catch { toast.error('Error abriendo la vista HTML'); }
   };
 
   const exportPDF = async (docId) => {
@@ -436,6 +445,7 @@ export default function DocStudioPage() {
                     <TableCell className="py-1.5 text-[10px] text-zinc-500">{fmtDate(d.created_at)}</TableCell>
                     <TableCell className="py-1.5">
                       <div className="flex items-center gap-1">
+                        <Button variant="ghost" size="sm" onClick={() => openHtml(d.document_id)} className="h-5 px-1.5 text-[10px] text-amber-400"><Eye className="w-2.5 h-2.5 mr-1" />Ver</Button>
                         <Button variant="ghost" size="sm" onClick={() => exportPDF(d.document_id)} className="h-5 px-1.5 text-[10px] text-blue-400"><Download className="w-2.5 h-2.5 mr-1" />PDF</Button>
                         <Button variant="ghost" size="sm" onClick={() => deleteDoc(d.document_id)} className="h-5 px-1.5 text-[10px] text-rose-400"><Trash2 className="w-2.5 h-2.5" /></Button>
                       </div>

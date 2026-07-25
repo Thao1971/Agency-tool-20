@@ -161,36 +161,56 @@ def _render_section(section: Dict, brand: Dict) -> str:
     </div>"""
 
 
-async def export_to_pdf(doc: Dict, brand: Dict) -> bytes:
-    """Export document to PDF bytes using WeasyPrint."""
-    html = render_document_html(doc, brand)
+def _layout_is_slides(doc: Dict) -> bool:
+    from docstudio.html_render import _layout_for
+    try:
+        return _layout_for(doc) == "slides"
+    except Exception:
+        return False
 
+
+def _pdfize_slides_html(html: str) -> str:
+    """Adapta el HTML del renderizador de slides (1280×720) a PDF: página apaisada exacta,
+    una diapositiva por página, sin márgenes ni sombras."""
+    inject = ("@page{size:1280px 720px;margin:0;} "
+              ".slide{margin:0 auto!important;box-shadow:none!important;border-radius:0!important;} ")
+    html = html.replace("<style>", "<style>" + inject, 1)
+    html = html.replace("padding:26px 30px;", "padding:0;", 1)
+    return html
+
+
+async def export_to_pdf(doc: Dict, brand: Dict) -> bytes:
+    """Export a PDF. Para documentos tipo presentación (infomemo, teaser, etc.) usa el MISMO
+    renderizador de slides que la vista previa (`docstudio/html_render.render_html`) — con todos
+    los bloques reales (gráficos SVG, organigrama, separadores, EBITDA bridge…) — y lo convierte
+    con Chromium en apaisado. Solo los documentos en 'flujo' usan la plantilla clásica A4."""
+    if _layout_is_slides(doc):
+        from docstudio.html_render import render_html
+        html = _pdfize_slides_html(render_html(doc, brand))
+        return await _playwright_pdf(html, css_page_size=True)
+    # Documentos en flujo (vertical): plantilla A4 clásica.
+    html = render_document_html(doc, brand)
     try:
         from weasyprint import HTML
-        pdf_bytes = HTML(string=html).write_pdf()
-        return pdf_bytes
+        return HTML(string=html).write_pdf()
     except ImportError:
         logger.warning("WeasyPrint not available, trying Playwright PDF")
         return await _playwright_pdf(html)
 
 
-async def _playwright_pdf(html: str) -> bytes:
-    """Fallback: use Playwright to generate PDF from HTML."""
+async def _playwright_pdf(html: str, css_page_size: bool = False) -> bytes:
+    """Genera el PDF con Chromium (fidelidad total a flex/SVG, a diferencia de WeasyPrint)."""
     from playwright.async_api import async_playwright
-    import tempfile
-    import os
-
-    with tempfile.NamedTemporaryFile(suffix=".html", delete=False, mode='w') as f:
-        f.write(html)
-        html_path = f.name
-
-    try:
-        async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=True)
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=True, args=[
+            "--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"])
+        try:
             page = await browser.new_page()
-            await page.goto(f"file://{html_path}", wait_until="networkidle")
-            pdf_bytes = await page.pdf(format="A4", print_background=True)
+            await page.set_content(html, wait_until="networkidle")
+            if css_page_size:
+                pdf_bytes = await page.pdf(prefer_css_page_size=True, print_background=True)
+            else:
+                pdf_bytes = await page.pdf(format="A4", print_background=True)
+            return pdf_bytes
+        finally:
             await browser.close()
-        return pdf_bytes
-    finally:
-        os.unlink(html_path)
