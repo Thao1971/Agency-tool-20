@@ -122,6 +122,26 @@ async def preview_document_html(document_id: str, user=Depends(get_current_user)
     return HTMLResponse(content=render_html(doc, brand))
 
 
+@router.post("/brands/preview-live")
+async def brands_preview_live(body: dict, user=Depends(get_current_user)):
+    """Vista previa EN TIEMPO REAL del editor de marca. Recibe la marca SIN GUARDAR (colores,
+    tipografías, portada, logo) y devuelve el HTML de una diapositiva-muestra renderizada con
+    esos tokens. No toca la BBDD — es instantáneo, para editar y ver el resultado al vuelo."""
+    from fastapi.responses import HTMLResponse
+    from docstudio.html_render import render_html
+    from docstudio.brand_preview import brand_sample_doc
+    from documents.brand_unified import compose_brand, PLATFORM_BRANDS, DEFAULT_PLATFORM_BRAND
+    import copy
+    brand = body.get("brand") or {}
+    # Si llega una marca "rica" completa (con tokens), se usa tal cual; si viene parcial,
+    # se compone sobre la base de plataforma correspondiente para no perder tokens.
+    if not brand.get("tokens"):
+        base = copy.deepcopy(PLATFORM_BRANDS.get(brand.get("brand_id"), PLATFORM_BRANDS[DEFAULT_PLATFORM_BRAND]))
+        brand = compose_brand(base, brand)
+    doc = brand_sample_doc(brand)
+    return HTMLResponse(content=render_html(doc, brand))
+
+
 # ══════════════════════════════════════════
 # EDITOR — Save, update blocks, reorder, regenerate
 # ══════════════════════════════════════════

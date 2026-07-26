@@ -1,0 +1,31 @@
+{
+  "summary": "Verified patch_v17_3_brand_editor. Backend LIVE brand preview endpoint POST /api/v1/docstudio/brands/preview-live works perfectly (200, >=3 SVGs, accent #E4002B, Playfair Display font applied; partial-brand composition also returns valid HTML; missing JWT -> 403). PPTX regression PASSES (200 application/vnd.openxmlformats-officedocument.presentationml.presentation, >20KB) - the await->sync fix is correct. PDF export still 200, landscape (>300KB). Brand CRUD PUT persists accent+heading font. All M&A regression endpoints (fragmentation/ratios/signal stats/opportunities/watchlist/iberinform/data-providers) and auth negatives pass. 17/17 backend pytest tests green. FRONTEND FINDING: the new BrandsPage.js component exists but is NEVER imported into the app; the /doc-studio 'Marcas' TabsContent (DocStudioPage.js line 488-508) still renders the OLD read-only 4-card grid (BUD Advisors / Valuo.pro / arroba.com / Marca personalizada) with no click handler, no editor, no iframe preview. The 2-panel live editor UI is unreachable from the running frontend.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "DocStudioPage / Marcas tab", "issue": "New BrandsPage.js (2-panel live editor with iframe preview) is not wired into the app. DocStudioPage.js lines 488-508 still render old read-only cards inline; brand cards are not clickable and no editor opens. `grep -rn BrandsPage /app/frontend/src` returns only the file definition, no import. Result: the entire LIVE brand editor + live iframe preview feature is inaccessible from the UI.", "selector": "[role=tab]:has-text('Marcas') -> TabsContent value='brands'", "priority": "HIGH"}
+    ],
+    "integration_issues": [
+      {"flow": "Marcas -> open brand -> live edit -> save", "issue": "Not testable via UI: brand cards on /doc-studio Marcas tab have no onClick, no data-testid, and the editor component is never mounted. Backend endpoint /docstudio/brands/preview-live is fully functional and was verified directly.", "affected_selectors": ["[data-testid=brands-page]", "[data-testid^=brand-card-]", "[data-testid=brand-editor]", "iframe[title='Vista previa de marca']", "[data-testid=brand-save-btn]"]}
+    ],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/tests/test_v25_brand_live_editor.py",
+    "/app/test_reports/pytest/v25_results.xml"
+  ],
+  "action_items": [
+    "Wire the new BrandsPage into DocStudioPage.js: import BrandsPage from './documents/BrandsPage' and replace the inline old <TabsContent value='brands'> block (DocStudioPage.js lines 488-508) with <TabsContent value='brands' className='mt-3'><BrandsPage /></TabsContent>. Ensure @/lib/api base is /api/v1 so POST /docstudio/brands/preview-live and PUT /documents/brands/{id} resolve correctly."
+  ],
+  "critical_code_review_comments": [
+    "Patch v17_3 shipped BrandsPage.js but omitted the DocStudioPage wiring. The old inline brand grid (DocStudioPage.js lines 488-508) shadows the new component. This is a one-line fix but blocks the entire feature end-to-end."
+  ],
+  "updated_files": ["/app/tests/test_v25_brand_live_editor.py"],
+  "success_rate": {"backend": "100%", "frontend": "0% (feature UI not mounted; backend fully OK)"},
+  "seed_data_creation": "Composed a fresh infomemo document for mc_36c100bcee4a; created TEST_v25 watchlist entry; briefly mutated BUD brand accent/heading font via PUT then restored via same PUT.",
+  "should_call_test_agent_after_fix": true,
+  "should_main_agent_self_test": false,
+  "test_credentials": "daniel@wearebudadvisors.com / Thao1971@ (from /app/memory/test_credentials.md). Login stores 'as_token' + 'as_user' in localStorage; auth JSON key 'token'.",
+  "context_for_next_testing_agent": "Backend LIVE preview endpoint verified perfect. When DocStudioPage is wired to import BrandsPage, retest UI: login -> /doc-studio -> click [role=tab]:has-text('Marcas') -> [data-testid=brands-page] should appear with clickable [data-testid^=brand-card-] cards -> click brand-card-bud -> [data-testid=brand-editor] with iframe[title='Vista previa de marca'], 2 select elements (heading/body font: Montserrat/Inter/Playfair Display/Georgia/Helvetica), input[type=color] x ~17 (base 6 + accent 6 + tables 3 + cover 4), and [data-testid=brand-save-btn]. Editing debounces 350ms; verify iframe srcdoc contains 'Playfair Display' and '#E4002B' after change. Save + reload should persist. PPTX/PDF/M&A regression already green.",
+  "rca_of_the_issue": "Patch v17_3 was a 3-file patch. Files (1) brand_preview.py + (2) routes.py edits are present and functional. File (3) BrandsPage.js was created at /app/frontend/src/pages/documents/BrandsPage.js but no edit was made to /app/frontend/src/pages/DocStudioPage.js to replace the inline old read-only <TabsContent value='brands'> block with <BrandsPage />. `grep -rn BrandsPage /app/frontend/src` confirms zero imports. Additionally, main agent's 'await export_to_pptx(...)' -> sync correction is verified correct (pptx_export.export_to_pptx is `def`, returns bytes; PPTX 200 65KB confirmed)."
+}
