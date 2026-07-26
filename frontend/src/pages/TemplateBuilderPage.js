@@ -132,8 +132,9 @@ function VisualBlock({ blockType, isSelected, onClick, brand }) {
 
 function VisualSection({ section, sectionIdx, selectedBlock, onSelectBlock, onAddBlock, brand }) {
   const isCover = section.block_types?.includes('cover');
-  const primary = brand?.primary_color || '#1a56db';
-  const accent = brand?.accent_color || '#3b82f6';
+  const _c = brand?.tokens?.colors || {};
+  const primary = _c.accent || brand?.primary_color || '#1a56db';
+  const accent = _c.accent || brand?.accent_color || '#3b82f6';
 
   return (
     <div className="bg-white rounded-lg shadow-sm border overflow-hidden">
