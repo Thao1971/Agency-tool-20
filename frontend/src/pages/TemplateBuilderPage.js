@@ -44,14 +44,20 @@ const SAMPLE = {
 // ══════════════════════════════════════════
 
 function VisualBlock({ blockType, isSelected, onClick, brand }) {
-  const primary = brand?.primary_color || '#1a56db';
-  const accent = brand?.accent_color || '#3b82f6';
+  // Marca "rica" (tokens.*) con fallback a los campos antiguos (primary/accent_color) para
+  // no quedarse siempre en azul cuando la marca usa el modelo nuevo (tokens).
+  const _c = brand?.tokens?.colors || {};
+  const _cov = brand?.tokens?.cover || {};
+  const primary = _c.accent || brand?.primary_color || '#1a56db';
+  const accent = _c.accent || brand?.accent_color || '#3b82f6';
+  const coverBg = _cov.bg || brand?.secondary_color || '#0e1629';
+  const tableBg = _c.table_header_bg || primary;
   const ring = isSelected ? 'ring-2 ring-blue-500' : 'hover:ring-1 hover:ring-zinc-500';
 
   if (blockType === 'cover') {
     return (
       <div className={`rounded-lg p-5 cursor-pointer transition-all ${ring}`} onClick={onClick}
-        style={{ background: brand?.secondary_color || '#0e1629', minHeight: 80 }}>
+        style={{ background: coverBg, minHeight: 80 }}>
         <p className="text-base font-bold text-white">{SAMPLE.company}</p>
         <p className="text-[10px] mt-1" style={{ color: accent }}>Titulo del documento</p>
         <div className="mt-3 pt-2 border-t" style={{ borderColor: accent + '40' }}>
@@ -86,7 +92,7 @@ function VisualBlock({ blockType, isSelected, onClick, brand }) {
     return (
       <div className={`rounded-lg cursor-pointer transition-all overflow-hidden ${ring}`} onClick={onClick}>
         <table className="w-full text-[8px] border-collapse">
-          <thead><tr>{['Metrica','Q1','Mediana','Q3'].map((h,i) => <th key={i} className="text-left py-1 px-2 text-white" style={{background:primary}}>{h}</th>)}</tr></thead>
+          <thead><tr>{['Metrica','Q1','Mediana','Q3'].map((h,i) => <th key={i} className="text-left py-1 px-2 text-white" style={{background:tableBg}}>{h}</th>)}</tr></thead>
           <tbody>
             <tr className="border-b border-gray-100"><td className="py-1 px-2 text-gray-600">Revenue</td><td className="py-1 px-2">500K</td><td className="py-1 px-2 font-medium">1.2M</td><td className="py-1 px-2">2.5M</td></tr>
             <tr><td className="py-1 px-2 text-gray-600">EBITDA</td><td className="py-1 px-2">50K</td><td className="py-1 px-2 font-medium">150K</td><td className="py-1 px-2">350K</td></tr>
@@ -238,7 +244,7 @@ function PropertiesPanel({ selection, section, onUpdate, onDelete, onClose }) {
 // MAIN PAGE
 // ══════════════════════════════════════════
 
-export default function TemplateBuilderPage() {
+export default function TemplateBuilderPage({ openTemplateId = null } = {}) {
   const [templates, setTemplates] = useState([]);
   const [brands, setBrands] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -253,13 +259,15 @@ export default function TemplateBuilderPage() {
   const [showProps, setShowProps] = useState(true);
 
   useEffect(() => { loadAll(); }, []);
+  // Abrir directamente una plantilla concreta (p. ej. al pinchar una tarjeta en la pestaña Plantillas).
+  useEffect(() => { if (openTemplateId) loadTemplate(openTemplateId); /* eslint-disable-next-line */ }, [openTemplateId]);
 
   const loadAll = async () => {
     setLoading(true);
     try {
       const [tplRes, brandRes] = await Promise.all([
         api.get('/docstudio/templates'),
-        api.get('/docstudio/brands'),
+        api.get('/documents/brands'),  // modelo de marca rico (tokens.*), no el fino de docstudio
       ]);
       setTemplates(tplRes.data?.templates || []);
       setBrands(brandRes.data?.brands || []);

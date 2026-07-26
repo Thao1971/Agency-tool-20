@@ -13,6 +13,7 @@ import {
 import { toast } from 'sonner';
 import DocumentEditor from '@/components/DocumentEditor';
 import TemplateBuilderPage from '@/pages/TemplateBuilderPage';
+import BrandsPage from '@/pages/documents/BrandsPage';
 
 function fmtDate(iso) {
   if (!iso) return '—';
@@ -41,6 +42,7 @@ export default function DocStudioPage() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState('dashboard');
+  const [builderOpenId, setBuilderOpenId] = useState(null);
   const [templates, setTemplates] = useState([]);
   const [brands, setBrands] = useState([]);
   const [composing, setComposing] = useState(false);
@@ -461,7 +463,8 @@ export default function DocStudioPage() {
         <TabsContent value="templates" className="mt-3">
           <div className="grid grid-cols-2 gap-3">
             {templates.map(t => (
-              <Card key={t.template_id} className="bg-zinc-900/50 border-zinc-800">
+              <Card key={t.template_id} className="bg-zinc-900/50 border-zinc-800 cursor-pointer hover:border-zinc-600 transition-colors"
+                onClick={() => { setBuilderOpenId(t.template_id); setTab('builder'); }} title="Editar en el Constructor">
                 <CardContent className="p-4">
                   <h3 className="text-sm font-semibold text-zinc-200">{t.name}</h3>
                   <p className="text-xs text-zinc-500 mt-1">{t.description}</p>
@@ -482,29 +485,12 @@ export default function DocStudioPage() {
         </TabsContent>
 
         <TabsContent value="builder" className="mt-3">
-          <TemplateBuilderPage />
+          <TemplateBuilderPage openTemplateId={builderOpenId} />
         </TabsContent>
 
         <TabsContent value="brands" className="mt-3">
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            {brands.map(b => (
-              <Card key={b.brand_id} className="bg-zinc-900/50 border-zinc-800">
-                <CardContent className="p-4">
-                  <div className="flex items-center gap-2 mb-3">
-                    <div className="w-6 h-6 rounded" style={{background: b.primary_color}} />
-                    <div className="w-6 h-6 rounded" style={{background: b.accent_color}} />
-                    <span className="text-sm font-semibold text-zinc-200">{b.name}</span>
-                  </div>
-                  <div className="space-y-1 text-[10px] text-zinc-500">
-                    <p>Primario: {b.primary_color}</p>
-                    <p>Acento: {b.accent_color}</p>
-                    <p>Fuente: {b.font_family?.split(',')[0]}</p>
-                    <p>Idioma: {b.language}</p>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+          {/* Editor de marca real: clic en una marca -> editar colores/tipografía con vista previa en vivo. */}
+          <BrandsPage />
         </TabsContent>
       </Tabs>
     </div>

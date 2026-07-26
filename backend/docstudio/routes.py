@@ -1061,7 +1061,7 @@ async def export_pptx(document_id: str, user=Depends(get_current_user)):
         brand = BRANDS["bud_advisors"]
 
     from docstudio.pptx_export import export_to_pptx
-    pptx_bytes = export_to_pptx(doc, brand)
+    pptx_bytes = await export_to_pptx(doc, brand)
 
     await db.docstudio_exports.insert_one({
         "export_id": now_iso(),

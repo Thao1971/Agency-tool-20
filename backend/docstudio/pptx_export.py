@@ -17,8 +17,50 @@ def _hex_to_rgb(hex_color: str) -> RGBColor:
     return RGBColor(int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16))
 
 
-def export_to_pptx(doc: Dict, brand: Dict) -> bytes:
-    """Export document to PPTX bytes. Fully editable, branded."""
+async def export_to_pptx(doc: Dict, brand: Dict) -> bytes:
+    """Export a PPTX. Para documentos tipo presentación (infomemo, teaser, etc.) rasteriza cada
+    diapositiva del MISMO renderizador de la vista previa (`render_html`, con todos los gráficos)
+    vía Chromium y la inserta a pantalla completa en un PPTX 16:9 — así el PPT respeta EXACTAMENTE
+    el layout generado. Los documentos en 'flujo' usan el generador PPTX nativo clásico."""
+    try:
+        from docstudio.pdf_export import _layout_is_slides, _pdfize_slides_html
+        if _layout_is_slides(doc):
+            from docstudio.html_render import render_html
+            html = _pdfize_slides_html(render_html(doc, brand))
+            return await _slides_to_pptx(html)
+    except Exception as e:  # ante cualquier fallo, cae al PPTX nativo (no romper la descarga)
+        import logging; logging.getLogger(__name__).warning("PPTX slides render failed: %s", e)
+    return _native_pptx(doc, brand)
+
+
+async def _slides_to_pptx(html: str) -> bytes:
+    """Captura cada `.slide` (1280×720) con Chromium y monta un PPTX 16:9, una imagen por slide."""
+    from playwright.async_api import async_playwright
+    shots: List[bytes] = []
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=True, args=[
+            "--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"])
+        try:
+            page = await browser.new_page(viewport={"width": 1280, "height": 720},
+                                          device_scale_factor=2)
+            await page.set_content(html, wait_until="networkidle")
+            for el in await page.query_selector_all(".slide"):
+                shots.append(await el.screenshot(type="png"))
+        finally:
+            await browser.close()
+    prs = Presentation()
+    prs.slide_width = Inches(13.333)
+    prs.slide_height = Inches(7.5)
+    blank = prs.slide_layouts[6]
+    for png in shots:
+        slide = prs.slides.add_slide(blank)
+        slide.shapes.add_picture(BytesIO(png), 0, 0, width=prs.slide_width, height=prs.slide_height)
+    buf = BytesIO(); prs.save(buf)
+    return buf.getvalue()
+
+
+def _native_pptx(doc: Dict, brand: Dict) -> bytes:
+    """Export document to PPTX bytes. Fully editable, branded (solo documentos en flujo vertical)."""
     prs = Presentation()
     prs.slide_width = Inches(13.33)
     prs.slide_height = Inches(7.5)

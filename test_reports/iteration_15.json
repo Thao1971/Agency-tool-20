@@ -1,0 +1,31 @@
+{
+  "summary": "Frontend-only smoke of /doc-studio (snapshot v18). Login OK, header 'Document Intelligence Studio' y las 5 pestañas (Generar, Documentos, Plantillas, Constructor, Marcas) presentes. Marcas: 5 tarjetas listadas (brand_bud, brand_cis, brand_arroba, brand_valuo, brand_custom). Click en BUD Advisors abre el editor real. Cambio de color acento y tipografía disparan POST /api/v1/docstudio/brands/preview-live con payload {brand:{...tokens.colors.accent...}} y la iframe se actualiza en vivo (contiene el nuevo #ff00aa y la fuente Playfair). Guardar hace PUT /api/v1/documents/brands/brand_bud → 200, y al recargar la marca el color y la fuente PERSISTEN. Plantillas: 5 tarjetas clicables; click abre la plantilla dentro de la pestaña Constructor. Constructor: el selector de marca funciona; al cambiar a CIS el bloque de PORTADA sí adopta el color de marca (rgb(109,94,0)), pero los ENCABEZADOS DE SECCIÓN (barra + título) siguen en azul por defecto rgb(26,86,219)/rgb(59,130,246) — regla de fallback incompleta.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "TemplateBuilderPage → VisualSection",
+        "issue": "Los encabezados de sección (barra inferior + título) no se colorean con la marca seleccionada — quedan siempre en azul por defecto (#1a56db texto, #3b82f6 borde). Solo se colorean correctamente los bloques (VisualBlock) y la portada, que sí leen brand.tokens.colors.accent con fallback. VisualSection en /app/frontend/src/pages/TemplateBuilderPage.js líneas 135-136 usa únicamente los campos planos legacy: `const primary = brand?.primary_color || '#1a56db'; const accent = brand?.accent_color || '#3b82f6';` y no cae en tokens.colors.accent. Para brand_cis, brand_valuo, brand_arroba (que solo definen tokens.*) todos los títulos de sección salen azules pese a cambiar la marca. Repro: abrir cualquier plantilla en Constructor → cambiar Marca a 'CIS' o 'Arroba' → observar que 'Resumen Ejecutivo', 'KPIs del Sector', etc. mantienen barra/título azul.",
+        "selector": "div.pb-1 p.font-bold (dentro de VisualSection)",
+        "priority": "HIGH"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [
+    "En /app/frontend/src/pages/TemplateBuilderPage.js VisualSection (líneas 133-142) leer color de marca con la misma lógica rica que VisualBlock: `const _c = brand?.tokens?.colors || {}; const primary = _c.accent || brand?.primary_color || '#1a56db'; const accent = _c.accent || brand?.accent_color || '#3b82f6';` (o usar tokens.colors.text_primary para el título). Sin esto, cambiar la marca en Constructor sigue mostrando encabezados azules para las 3 marcas nuevas."
+  ],
+  "critical_code_review_comments": [
+    "VisualSection duplica la lógica de VisualBlock pero sin el fallback a tokens.* — factorizar un helper `resolveBrandColors(brand)` que devuelva {primary, accent, coverBg, ...} y consumirlo en ambos componentes para evitar drift."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a (skipped)", "frontend": "80%"},
+  "seed_data_creation": "Ninguna. Los cambios de brand_bud fueron restaurados al final del test (accent=#3b82f6, heading=Montserrat).",
+  "should_call_test_agent_after_fix": false,
+  "should_main_agent_self_test": true,
+  "test_credentials": "daniel@wearebudadvisors.com / Thao1971@",
+  "context_for_next_testing_agent": "Login+doc-studio+brands editor+templates→builder navegación validados. Pendiente: verificar que tras arreglar VisualSection, los títulos de sección adopten el color de marca para brand_cis/brand_arroba/brand_valuo (no solo la portada). También hay ahora 5 marcas en lugar de 4 (aparece brand_cis) — no es bug, sólo divergencia respecto a lo indicado en el enunciado.",
+  "rca_of_the_issue": "TemplateBuilderPage.js define dos componentes de preview: VisualBlock (líneas 46-...) lee correctamente `brand.tokens.colors.accent` con fallback a `brand.accent_color`. VisualSection (líneas 133-142) solo lee los campos planos legacy `brand.primary_color` / `brand.accent_color`. Las marcas nuevas (brand_cis, brand_arroba, brand_valuo, brand_custom) exponen sus colores únicamente bajo `tokens.colors.*`, por lo que VisualSection cae siempre en los defaults azules `#1a56db` y `#3b82f6`. Fix: aplicar la misma lectura de tokens que VisualBlock."
+}
