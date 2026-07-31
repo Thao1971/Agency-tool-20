@@ -201,9 +201,10 @@ async def _call_nvidia(prompt: str) -> Dict:
     api_key = os.environ.get("NVIDIA_API_KEY")
     if not api_key:
         return {"error": "NVIDIA_API_KEY no configurada", "_model": model}
+    timeout = float(os.environ.get("NVIDIA_TIMEOUT", "120"))
     try:
         import httpx
-        async with httpx.AsyncClient(timeout=45) as client:
+        async with httpx.AsyncClient(timeout=timeout) as client:
             r = await client.post(
                 "https://integrate.api.nvidia.com/v1/chat/completions",
                 headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
@@ -217,8 +218,8 @@ async def _call_nvidia(prompt: str) -> Dict:
         parsed["_model"] = model
         return parsed
     except Exception as e:
-        logger.error(f"NVIDIA call failed: {e}")
-        return {"error": str(e), "_model": model}
+        logger.error(f"NVIDIA call failed: {e!r}")
+        return {"error": str(e) or repr(e), "_model": model}
 
 
 def _extract_json(text: str) -> Dict:
