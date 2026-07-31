@@ -10,7 +10,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 
 from services.engines.recommendation import engine as rec_engine
-from services.engines.recommendation import scoring as S
+from services.engines.recommendation import scoring as SC
 from services.engines.recommendation import memory as MEM
 from services.engines.signal import actions as sig_actions
 from services.service_auth import require_service_key
@@ -125,8 +125,8 @@ async def memory(req: MemoryRequest, _key=Depends(require_service_key)):
 @router.get("/catalog", responses=_ok(S.RecommendationCatalogResponse))
 async def catalog(_key=Depends(require_service_key)):
     return {"engine_version": rec_engine.ENGINE_VERSION,
-            "recommendation_method": S.SCORE_METHOD, "weights": S.WEIGHTS,
-            "fit_dimensions": list(S.WEIGHTS.keys()),
+            "recommendation_method": SC.SCORE_METHOD, "weights": SC.WEIGHTS,
+            "fit_dimensions": list(SC.WEIGHTS.keys()),
             "recommendation_types": ["comparable", "buyer", "seller", "investor",
                                      "advisor", "opportunity", "match"],
             "recommendation_roles": list(rec_engine.ACTIONS_BY_ROLE.keys()),
