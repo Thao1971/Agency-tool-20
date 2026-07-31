@@ -61,6 +61,7 @@ async def generate_summary(context: Dict, doc_type: str = "sector_report",
     templates = {
         "sector_report": "Generate an executive summary for a sector intelligence report. Include: overview of the sector, key economic indicators, growth trends, main players dynamics, and outlook.",
         "company_profile": "Generate an executive summary for a company profile. Include: company positioning, financial health assessment, competitive landscape, and strategic outlook.",
+        "investment_decision": "You are the secretary of an M&A Investment Committee. Write the narrative for a decision ALREADY taken by the committee. The recommendation, score and band are FIXED and given in the context — do NOT change them, do NOT compute or introduce any figure that is not in the context. Only turn the committee's structured conclusions into an executive summary and an investment thesis.",
     }
     instruction = templates.get(doc_type, templates["sector_report"])
 
@@ -112,6 +113,8 @@ async def _call_provider(provider: str, task: str, prompt: str, document_id: str
             result = await _call_openai(prompt)
         elif provider == "claude":
             result = await _call_claude(prompt)
+        elif provider == "nvidia":
+            result = await _call_nvidia(prompt)
         else:
             result = {"error": f"Unknown provider: {provider}"}
 
@@ -187,6 +190,35 @@ async def _call_claude(prompt: str) -> Dict:
     except Exception as e:
         logger.error(f"Claude call failed: {e}")
         return {"error": str(e), "_model": "claude-sonnet-4-6"}
+
+
+async def _call_nvidia(prompt: str) -> Dict:
+    """Call NVIDIA NIM (OpenAI-compatible endpoint). Requiere NVIDIA_API_KEY.
+    Modelo configurable con NVIDIA_MODEL (por defecto un instruct de calidad). Barato/independiente
+    para narrativa de volumen (cartera, comparaciones). No altera cifras (fact-lock en el prompt)."""
+    import os
+    model = os.environ.get("NVIDIA_MODEL", "meta/llama-3.1-70b-instruct")
+    api_key = os.environ.get("NVIDIA_API_KEY")
+    if not api_key:
+        return {"error": "NVIDIA_API_KEY no configurada", "_model": model}
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=45) as client:
+            r = await client.post(
+                "https://integrate.api.nvidia.com/v1/chat/completions",
+                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                json={"model": model, "temperature": 0.2, "max_tokens": 900,
+                      "messages": [
+                          {"role": "system", "content": "You are a professional executive writer generating polished narratives in Spanish. Always return valid JSON."},
+                          {"role": "user", "content": prompt}]})
+            r.raise_for_status()
+            text = r.json()["choices"][0]["message"]["content"]
+        parsed = _extract_json(text)
+        parsed["_model"] = model
+        return parsed
+    except Exception as e:
+        logger.error(f"NVIDIA call failed: {e}")
+        return {"error": str(e), "_model": model}
 
 
 def _extract_json(text: str) -> Dict:
