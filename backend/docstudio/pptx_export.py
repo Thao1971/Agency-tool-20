@@ -23,6 +23,11 @@ async def export_to_pptx(doc: Dict, brand: Dict) -> bytes:
     vía Chromium y la inserta a pantalla completa en un PPTX 16:9 — así el PPT respeta EXACTAMENTE
     el layout generado. Los documentos en 'flujo' usan el generador PPTX nativo clásico."""
     try:
+        from docstudio.onepager_render import is_onepager, render_onepager_html
+        if is_onepager(doc):
+            from docstudio.html_render import resolve_doc_brand
+            html = render_onepager_html(doc, resolve_doc_brand(doc) or brand)
+            return await _onepager_to_pptx(html)
         from docstudio.pdf_export import _layout_is_slides, _pdfize_slides_html
         if _layout_is_slides(doc):
             from docstudio.html_render import render_html
@@ -31,6 +36,31 @@ async def export_to_pptx(doc: Dict, brand: Dict) -> bytes:
     except Exception as e:  # ante cualquier fallo, cae al PPTX nativo (no romper la descarga)
         import logging; logging.getLogger(__name__).warning("PPTX slides render failed: %s", e)
     return _native_pptx(doc, brand)
+
+
+async def _onepager_to_pptx(html: str) -> bytes:
+    """Captura la página A4 vertical (794×1123) con Chromium y monta un PPTX A4 vertical,
+    una sola diapositiva con la imagen a página completa."""
+    from playwright.async_api import async_playwright
+    png = None
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=True, args=[
+            "--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"])
+        try:
+            page = await browser.new_page(viewport={"width": 794, "height": 1123},
+                                          device_scale_factor=2)
+            await page.set_content(html, wait_until="networkidle")
+            el = await page.query_selector(".page")
+            png = await (el.screenshot(type="png") if el else page.screenshot(type="png"))
+        finally:
+            await browser.close()
+    prs = Presentation()
+    prs.slide_width = Inches(8.27)   # A4 portrait
+    prs.slide_height = Inches(11.69)
+    slide = prs.slides.add_slide(prs.slide_layouts[6])
+    slide.shapes.add_picture(BytesIO(png), 0, 0, width=prs.slide_width, height=prs.slide_height)
+    buf = BytesIO(); prs.save(buf)
+    return buf.getvalue()
 
 
 async def _slides_to_pptx(html: str) -> bytes:

@@ -5,7 +5,7 @@ from fastapi.responses import Response
 from database import db
 from models import now_iso
 from auth_utils import get_current_user
-from docstudio.composer import compose_sector_report, compose_company_profile, compose_benchmark_report, compose_investment_memo, compose_teaser, compose_information_memorandum, compute_quality_score, compose_company_snapshot, compose_benchmark_advanced, compose_from_template, generate_template_preview, compose_opportunities_document, compose_ranking_document, compose_fragmentation_document, compose_rollup_document, compose_succession_document, compose_valuation_approx, compose_valuation_advanced, compose_strategic_analysis, compose_comparative_analysis
+from docstudio.composer import compose_sector_report, compose_company_profile, compose_benchmark_report, compose_investment_memo, compose_teaser, compose_one_pager, compose_information_memorandum, compute_quality_score, compose_company_snapshot, compose_benchmark_advanced, compose_from_template, generate_template_preview, compose_opportunities_document, compose_ranking_document, compose_fragmentation_document, compose_rollup_document, compose_succession_document, compose_valuation_approx, compose_valuation_advanced, compose_strategic_analysis, compose_comparative_analysis
 from docstudio.pdf_export import export_to_pdf
 from docstudio.templates import TEMPLATES, BRANDS
 import time
@@ -119,6 +119,9 @@ async def preview_document_html(document_id: str, user=Depends(get_current_user)
     if not doc:
         raise HTTPException(404, "Document not found")
     brand = resolve_doc_brand(doc)
+    from docstudio.onepager_render import is_onepager, render_onepager_html
+    if is_onepager(doc):
+        return HTMLResponse(content=render_onepager_html(doc, brand))
     return HTMLResponse(content=render_html(doc, brand))
 
 
@@ -565,6 +568,23 @@ async def compose_teaser_endpoint(
         raise HTTPException(400, doc["error"])
     return {**_meta(t0), "document_id": doc["document_id"], "title": doc["title"],
             "sections": len(doc["sections"]), "status": doc["status"]}
+
+
+@router.post("/compose/one-pager")
+async def compose_one_pager_endpoint(
+    company_id: str = Query(None), cif: str = Query(None),
+    brand_id: str = Query("brand_bud"), user=Depends(get_current_user),
+):
+    """Compose an Investment One Pager (A4 vertical, blind) for a company."""
+    if not company_id and not cif:
+        raise HTTPException(400, "Provide company_id or cif")
+    t0 = time.time()
+    doc = await compose_one_pager(company_id, cif, brand_id, user.get("email"))
+    if "error" in doc:
+        raise HTTPException(400, doc["error"])
+    return {**_meta(t0), "document_id": doc["document_id"], "title": doc["title"],
+            "sections": len(doc["sections"]), "status": doc["status"]}
+
 
 
 @router.post("/compose/information-memorandum")

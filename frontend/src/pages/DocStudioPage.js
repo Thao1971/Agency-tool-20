@@ -317,6 +317,10 @@ export default function DocStudioPage() {
                 disabled={composing} className="h-8 text-xs bg-amber-600 hover:bg-amber-700">
                 <Plus className="w-3 h-3 mr-1.5" /> Teaser
               </Button>
+              <Button onClick={() => composeAsync('one_pager', { cif: cifInput }, 'Investment One Pager')}
+                disabled={composing} data-testid="compose-one-pager-btn" className="h-8 text-xs bg-fuchsia-600 hover:bg-fuchsia-700">
+                <Plus className="w-3 h-3 mr-1.5" /> One Pager
+              </Button>
               <Button onClick={() => composeAsync('information_memorandum', { cif: cifInput }, 'Information Memorandum')}
                 disabled={composing} className="h-8 text-xs bg-rose-600 hover:bg-rose-700">
                 <Plus className="w-3 h-3 mr-1.5" /> Info Memo

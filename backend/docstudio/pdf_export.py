@@ -184,6 +184,13 @@ async def export_to_pdf(doc: Dict, brand: Dict) -> bytes:
     renderizador de slides que la vista previa (`docstudio/html_render.render_html`) — con todos
     los bloques reales (gráficos SVG, organigrama, separadores, EBITDA bridge…) — y lo convierte
     con Chromium en apaisado. Solo los documentos en 'flujo' usan la plantilla clásica A4."""
+    try:
+        from docstudio.onepager_render import is_onepager, render_onepager_html
+        if is_onepager(doc):
+            html = render_onepager_html(doc, brand)
+            return await _playwright_pdf(html, css_page_size=True)
+    except Exception as e:
+        logger.warning("One pager PDF render failed, falling back: %s", e)
     if _layout_is_slides(doc):
         from docstudio.html_render import render_html
         html = _pdfize_slides_html(render_html(doc, brand))

@@ -41,6 +41,8 @@ async def _dispatch(doc_type: str, params: Dict, brand_id: str, user: Optional[s
         return await C.compose_company_snapshot(p.get("company_id"), p.get("cif"), brand_id, user)
     if doc_type == "teaser":
         return await C.compose_teaser(p.get("company_id"), p.get("cif"), brand_id, user)
+    if doc_type == "one_pager":
+        return await C.compose_one_pager(p.get("company_id"), p.get("cif"), brand_id, user)
     if doc_type == "investment_memo":
         return await C.compose_investment_memo(p.get("company_id"), p.get("cif"), brand_id, user)
     if doc_type == "information_memorandum":

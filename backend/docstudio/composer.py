@@ -2823,6 +2823,113 @@ async def compose_teaser(company_id: str = None, cif: str = None,
     return doc
 
 
+async def compose_one_pager(company_id: str = None, cif: str = None,
+                            brand_id: str = "brand_bud", user: str = None) -> Dict:
+    """Investment One Pager — A4 vertical, CIEGO (perfil anónimo). Una sola página pensada para
+    leerse en <3 min y despertar interés: la TESIS DE INVERSIÓN es el bloque protagonista
+    ("¿por qué merece la pena?"), seguida de KPIs clave, aspectos destacados y el Deal Snapshot
+    estándar de bud advisors. Sin identidad (nombre/CIF/web/municipio) y SIN valoración (esa vive
+    en el Infomemo / Informe de Valoración). Render dedicado A4 (HTML→Chromium) para HTML/PDF/PPTX."""
+    from services.cnae_catalog import CNAE_DIVISIONS
+
+    bundle = await DA.company_intelligence(company_id or cif)
+    if not bundle.get("found"):
+        return {"error": "Company not found"}
+
+    ident = bundle["identity"]
+    kpis = bundle.get("kpis", {}) or {}
+    cnae = ident.get("cnae_code", "")
+    cnae_label = CNAE_DIVISIONS.get(cnae, {}).get("label", "") or (ident.get("cnae_description") or "su sector")
+    provincia = ident.get("provincia")
+    rev = kpis.get("revenue")
+    emp = (bundle.get("statements") or {}).get("employees")
+    band = _size_band(rev, emp)
+
+    # Perfil anónimo (misma lógica ciega que el teaser).
+    perfil = f"{band.capitalize()} del sector {cnae_label} (CNAE {cnae})."
+    if provincia:
+        perfil += f" Con sede en la provincia de {provincia}."
+    perfil += " Se estudia la entrada de un socio mediante la adquisición total o parcial del capital."
+
+    # TESIS DE INVERSIÓN (protagonista). IA fact-locked con contexto CIEGO (sin nombre); si falla,
+    # fallback determinista igualmente ciego. La IA solo redacta, no introduce cifras nuevas.
+    blind_ctx = {
+        "perfil": perfil, "sector": cnae_label, "cnae": cnae, "provincia": provincia,
+        "banda_tamano": band,
+        "kpis": {k: kpis.get(k) for k in ("revenue", "revenue_cagr", "revenue_growth_yoy",
+                                           "ebitda", "ebitda_margin", "revenue_per_employee", "solvency")
+                 if kpis.get(k) is not None},
+        "instruccion_ciega": ("Documento CIEGO: NO menciones el nombre, CIF, web ni municipio de la "
+                              "empresa. Refiérete siempre a 'la compañía'. Redacta una tesis de "
+                              "inversión de 3-4 frases que responda '¿por qué merece la pena esta "
+                              "oportunidad?', apoyándote solo en las cifras dadas. NO incluyas valoración."),
+    }
+    thesis = _investment_thesis_text("La compañía", bundle)
+    try:
+        ai = await generate_summary(blind_ctx, doc_type="company_profile", document_id=None) or {}
+        cand = (ai.get("executive_summary") or "").strip()
+        low = cand.lower()
+        name_l = (ident.get("name") or "").lower()
+        # Solo si la IA respetó la regla ciega (no filtró el nombre) y devolvió algo sustancial.
+        if cand and len(cand) > 60 and (not name_l or name_l not in low) and "valorac" not in low:
+            thesis = cand
+    except Exception as e:
+        logging.getLogger(__name__).warning("One pager thesis AI failed: %s", e)
+
+    # KPIs (de _hero_kpi_blocks: title/value/unit/commentary) → strip compacto.
+    kpi_items = []
+    for b in _hero_kpi_blocks(bundle):
+        d = b.get("data", {})
+        kpi_items.append({"label": d.get("title"), "value": d.get("value"),
+                          "unit": d.get("unit"), "note": d.get("commentary")})
+    # CAGR como 4º KPI si hay hueco y existe.
+    if kpis.get("revenue_cagr") is not None and len(kpi_items) < 4:
+        kpi_items.append({"label": "CAGR de ingresos", "value": _pct(kpis["revenue_cagr"], 1),
+                          "unit": "", "note": "crecimiento estructural"})
+
+    # Aspectos destacados (de _positive_signal_cards: title/summary).
+    highlights = []
+    for b in _positive_signal_cards(bundle)[:4]:
+        d = b.get("data", {})
+        highlights.append({"title": d.get("title"), "summary": d.get("summary")})
+
+    # Deal Snapshot estándar (items).
+    ds = _deal_snapshot(bundle).get("data", {}).get("items", [])
+
+    doc = new_document(title="Investment One Pager — Proyecto Confidencial",
+                       template_id="tpl_one_pager", brand_id=brand_id, created_by=user)
+    doc["orientation"] = "portrait"
+    doc["onepager"] = {
+        "header": "CONFIDENTIAL · Investment Opportunity · Executive One Pager",
+        "title": "Oportunidad de Inversión",
+        "subtitle": f"Proyecto Confidencial · {cnae_label}",
+        "profile": perfil,
+        "thesis_title": "¿Por qué merece la pena esta oportunidad?",
+        "thesis": thesis,
+        "kpis": kpi_items[:4],
+        "highlights": highlights,
+        "deal_snapshot": ds,
+        "advisor": _advisor_label(brand_id),
+        "date": _month_year_es(),
+        "cta": "Firme el NDA para acceder al Information Memorandum completo",
+        "confidentiality": ("Documento confidencial y ciego. Perfil anónimo elaborado por el asesor a "
+                            "efectos de primer contacto; no constituye oferta ni recomendación de inversión."),
+    }
+    # Secciones mínimas para que el documento se liste/edite con gracia (el render usa 'onepager').
+    doc["sections"] = [new_section("Investment One Pager", 1, [
+        text_block(thesis, "executive_summary"),
+    ])]
+    doc["metadata"] = {
+        "master_id": bundle["master_id"], "cif": bundle["cif_normalized"], "type": "one_pager",
+        "financial_engine_used": True, "fact_locked": True, "schema": "modern", "blind": True,
+    }
+    doc["status"] = "generated"
+    doc["updated_at"] = now_iso()
+    await db.docstudio_documents.insert_one(doc)
+    return doc
+
+
+
 async def compose_information_memorandum(company_id: str = None, cif: str = None,
                                          brand_id: str = "brand_bud", user: str = None) -> Dict:
     """Full Information Memorandum. Fase 2: modern schema + real engines + REAL valuation.
