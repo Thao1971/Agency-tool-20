@@ -19,6 +19,7 @@ BLOCK_TYPES = [
     "page_break",  # layout control — forces a page break in PDF/print output
     "ownership",   # diagrama de estructura societaria (accionistas · sociedad · participadas)
     "orgchart",    # organigrama / estructura operativa (nodo raíz · departamentos · miembros)
+    "deal_snapshot",  # estándar bud advisors: 6 elementos clave de la operación (misma identidad en todos los docs)
 ]
 
 CHART_TYPES = [
@@ -130,6 +131,14 @@ def insight_block(title: str, summary: str, importance: str = "medium",
         "title": title, "summary": summary, "importance": importance,
         "source_reference": source_ref,
     })
+
+
+def deal_snapshot_block(items: list, title: str = "Deal Snapshot") -> Dict:
+    """Bloque estándar de bud advisors: 6 elementos clave de la operación con identidad
+    gráfica propia y consistente en One Pager, Teaser e Investment Memo.
+    items -> [{"label": str, "text": str}] (recomendado: Opportunity, Transaction, Seller,
+    Buyer Fit, Management, Process)."""
+    return new_block("deal_snapshot", data={"title": title, "items": items})
 
 
 def divider_block() -> Dict:

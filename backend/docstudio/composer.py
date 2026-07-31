@@ -8,12 +8,13 @@ honest `valuation()` (market_observed vs inferred_reference), never a heuristic.
 """
 
 import logging
-from typing import Dict
+from typing import Dict, Optional
 from database import db
 from models import now_iso
 from docstudio import (
     new_document, new_section, cover_block, text_block, kpi_block,
     table_block, chart_block, insight_block, divider_block, ownership_block, orgchart_block,
+    deal_snapshot_block,
 )
 from docstudio.model_provider import generate_summary
 from docstudio import data_access as DA
@@ -561,8 +562,11 @@ async def _load_peers(bundle: Dict) -> list:
             mar = fl["ebitda"] / rev
         if rev and mar is not None:
             emp = (m.get("size") or {}).get("employees_total")
+            eq, ta = fl.get("equity"), fl.get("total_assets")
+            sol = (eq / ta) if (eq is not None and ta) else None
             peers.append({"revenue": rev, "margin": mar,
                           "rpe": (rev / emp if emp else None),
+                          "solvency": sol,
                           "name": (m.get("identity") or {}).get("legal_name")})
     return peers
 
@@ -610,7 +614,11 @@ async def _sector_charts(bundle: Dict, peers: list = None) -> Dict:
 
     # Scatter — mapa sectorial: ingresos vs margen EBITDA (empresa destacada, cuadrantes)
     if len(peers) >= 8:
-        spts = [{"x": p["revenue"], "y": p["margin"], "label": p.get("name")} for p in peers]
+        # Etiquetar SOLO las principales (mayores por ingresos) + la empresa destacada, para no
+        # solapar nombres en el mapa. El resto se dibuja como punto sin etiqueta.
+        _top_names = {p.get("name") for p in sorted(peers, key=lambda p: -(p.get("revenue") or 0))[:6]}
+        spts = [{"x": p["revenue"], "y": p["margin"],
+                 "label": (p.get("name") if p.get("name") in _top_names else None)} for p in peers]
         if kp.get("revenue") and kp.get("ebitda_margin") is not None:
             spts.append({"x": kp["revenue"], "y": kp["ebitda_margin"], "highlight": True,
                          "label": (bundle.get("identity") or {}).get("name")})
@@ -679,7 +687,11 @@ async def _team_org_blocks(bundle: Dict, master_id: str, cif_norm: str, peers: l
         peers = await _load_peers(bundle)
     ppe = [p for p in peers if p.get("rpe")]
     if len(ppe) >= 8:
-        spts = [{"x": p["margin"], "y": p["rpe"], "label": p.get("name")} for p in ppe]
+        # Etiquetar SOLO las 6 mayores por ingresos + la empresa destacada, para que no se
+        # solapen los nombres; el resto se dibujan como puntos sin etiqueta.
+        _top_names = {p.get("name") for p in sorted(ppe, key=lambda p: -(p.get("revenue") or 0))[:6]}
+        spts = [{"x": p["margin"], "y": p["rpe"],
+                 "label": (p.get("name") if p.get("name") in _top_names else None)} for p in ppe]
         rpe_self = kp.get("revenue_per_employee")
         mar_self = kp.get("ebitda_margin")
         if rpe_self and mar_self is not None:
@@ -751,22 +763,50 @@ async def _market_competition_blocks(bundle: Dict, peers: list, econ: Dict) -> d
 
     if frag.get("hhi") is not None or frag.get("market_actors_count"):
         g["context"].append(text_block("Estructura competitiva del mercado", "subhead"))
-        struct = []
+        # Fila 1 — concentración HHI como termómetro 0–10.000 + lectura de la escala
         if frag.get("hhi") is not None:
-            struct.append(kpi_block("Concentración (HHI)", _es(f"{frag['hhi']:,.0f}"), "",
-                                    commentary=f"mercado {_hhi_label_es(frag.get('concentration_label'))} · escala DOJ/FTC 0–10.000"))
+            hhi = frag["hhi"]
+            hhi_txt = _es(f"{hhi:,.0f}")
+            label_es = _hhi_label_es(frag.get("concentration_label")) or "moderadamente concentrado"
+            gb = chart_block("", "gauge", {
+                "value": hhi, "min": 0, "max": 10000,
+                "value_label": f"HHI {hhi_txt}",
+                "ticks": [0, 1500, 2500, 5000, 10000],
+                "zones": [
+                    {"to": 1500, "label": "No concentrado"},
+                    {"to": 2500, "label": "Moderado"},
+                    {"to": 10000, "label": "Concentrado"},
+                ]})
+            gb["data_lineage"] = {"source": "fragmentation-v1 (HHI)", "date": now_iso()}
+            g["context"].append(gb)
+            _ins_hhi = insight_block(
+                "Concentración del mercado (HHI)",
+                f"Con un HHI de {hhi_txt}, el mercado es {label_es} en la escala DOJ/FTC (0–10.000): "
+                f"por debajo de 1.500 se considera no concentrado, entre 1.500 y 2.500 moderadamente "
+                f"concentrado, y por encima de 2.500 altamente concentrado. El HHI es la suma de los "
+                f"cuadrados de las cuotas de mercado y mide cuánto se reparte el sector entre pocos o "
+                f"muchos actores.", importance="medium")
+            _ins_hhi["data"]["full_width"] = True
+            g["context"].append(_ins_hhi)
+        # Fila 2 — actores de mercado + objetivos independientes, a todo el ancho
+        parts2 = []
         if frag.get("market_actors_count"):
-            struct.append(kpi_block("Actores de mercado", _es(f"{frag['market_actors_count']:,.0f}"), "",
-                                    commentary="grupos reales de propiedad (no empresas sueltas)"))
+            _ac = _es(f"{frag['market_actors_count']:,.0f}")
+            parts2.append(f"{_ac} actores de mercado (grupos reales de propiedad, no empresas sueltas)")
         if frag.get("standalone_targets_count"):
-            struct.append(kpi_block("Objetivos independientes", _es(f"{frag['standalone_targets_count']:,.0f}"), "",
-                                    commentary="empresas sin grupo — candidatos a consolidación"))
-        g["context"].extend(struct)
+            _st = _es(f"{frag['standalone_targets_count']:,.0f}")
+            parts2.append(f"{_st} objetivos independientes (empresas sin grupo, candidatas a consolidación)")
+        if parts2:
+            _ins_act = insight_block("Actores y objetivos de consolidación",
+                                     " · ".join(parts2) + ".", importance="low")
+            _ins_act["data"]["full_width"] = True
+            g["context"].append(_ins_act)
 
     # Síntesis reglada: cómo compite y qué debería hacer (fact-lock sobre cifras reales)
     synth = _market_synthesis(name, kp, peers, frag)
     if synth:
         ins = insight_block("Lectura de mercado y posición competitiva", synth, importance="high")
+        ins["data"]["full_width"] = True
         ins["data_lineage"] = {"source": "fragmentation-v1 + financial-intelligence + master_companies",
                                "note": "síntesis reglada; ampliable por LLM con fact-lock", "date": now_iso()}
         g["context"].append(ins)
@@ -1136,6 +1176,181 @@ def _valuation_block(bundle: Dict):
     return b
 
 
+def _pctile(sorted_vals: list, x: float) -> Optional[float]:
+    """Percentil (0-1) de x dentro de sorted_vals (fracción de la muestra por debajo)."""
+    if not sorted_vals or x is None:
+        return None
+    below = sum(1 for v in sorted_vals if v is not None and v < x)
+    return below / len(sorted_vals)
+
+
+def _valuation_scenarios_blocks(bundle: Dict, peers: list) -> dict:
+    """Valoración orientativa al estilo del front de arroba (Valuo): Quality Score con
+    percentiles de posicionamiento (margen EBITDA 50 % · ingresos/empleado 35 % · salud de
+    balance 15 %), múltiplo = 4x + (quality/100)·(8x−4x), factor de comprador, y escenarios
+    Bajo/Medio/Alto con Enterprise Value y Equity Value. Todo determinista sobre datos reales;
+    el asesor puede ajustar múltiplo, EBITDA base (reportado/ajustado) y tipo de comprador.
+
+    Devuelve {'score': [...], 'scenarios': [...], 'benchmark': [...]} para repartir en slides.
+    Devuelve {} cuando no hay EBITDA ni comparables suficientes."""
+    import statistics
+    ident = bundle.get("identity") or {}
+    name = ident.get("name") or "La compañía"
+    kp = bundle.get("kpis", {}) or {}
+    pts = sorted([p for p in ((bundle.get("evolution") or {}).get("points") or []) if p.get("year")],
+                 key=lambda x: x["year"])
+    last = pts[-1] if pts else {}
+
+    # ── EBITDA base (reportado) + media 3 años ──
+    ebitda = kp.get("ebitda")
+    if ebitda is None:
+        ebitda = last.get("ebitda")
+    if not ebitda or ebitda <= 0:
+        return {}
+    ebitdas = [p.get("ebitda") for p in pts if p.get("ebitda") is not None]
+    ebitda_avg = (sum(ebitdas[-3:]) / len(ebitdas[-3:])) if ebitdas else None
+
+    # ── Deuda financiera neta (para el puente EV → Equity) ──
+    net_debt = last.get("net_financial_position")
+
+    # ── Percentiles de posicionamiento vs comparables del sector ──
+    peers = peers or []
+    n_comp = len(peers)
+    margins = sorted([p["margin"] for p in peers if p.get("margin") is not None])
+    rpes = sorted([p["rpe"] for p in peers if p.get("rpe") is not None])
+    sols = sorted([p["solvency"] for p in peers if p.get("solvency") is not None])
+
+    subj_margin = kp.get("ebitda_margin")
+    subj_rpe = kp.get("revenue_per_employee")
+    subj_sol = kp.get("solvency")
+    if subj_sol is None and last.get("equity") and last.get("total_assets"):
+        subj_sol = last["equity"] / last["total_assets"]
+
+    p_margin = _pctile(margins, subj_margin) if (margins and subj_margin is not None) else None
+    p_rpe = _pctile(rpes, subj_rpe) if (rpes and subj_rpe is not None) else None
+    p_sol = _pctile(sols, subj_sol) if (sols and subj_sol is not None) else None
+
+    # ── Quality Score ponderado (renormaliza pesos con los ejes disponibles) ──
+    axes_w = [(p_margin, 0.50), (p_rpe, 0.35), (p_sol, 0.15)]
+    avail = [(p, w) for p, w in axes_w if p is not None]
+    if avail:
+        wsum = sum(w for _p, w in avail)
+        quality = sum(p * w for p, w in avail) / wsum * 100
+    else:
+        quality = 50.0  # sin comparables: neutro
+
+    # ── Múltiplo por calidad (4x–8x) + factor de comprador (Financiero = 1.00x) ──
+    buyer_factor = 1.00
+    base_mult = (4 + (quality / 100) * (8 - 4)) * buyer_factor
+    lo_mult = max(4.0, base_mult - 1.0)
+    hi_mult = min(8.0, base_mult + 1.0)
+
+    def _ev(mult):
+        return mult * ebitda
+
+    def _eq(ev):
+        return (ev - net_debt) if net_debt is not None else None
+
+    scen = [("Bajo", lo_mult), ("Medio", base_mult), ("Alto", hi_mult)]
+
+    # ── Bloque 1: Quality Score + percentiles de posicionamiento ──
+    score = [text_block("Posicionamiento y calidad (Quality Score)", "subhead")]
+    qb = kpi_block("Quality Score", _es(f"{quality:.0f}"), "/100",
+                   commentary=f"percentil ponderado · {n_comp} comparables del sector")
+    qb["data_lineage"] = {"source": "master_companies (percentiles) + financial-intelligence",
+                          "calculation": "0,50·P(margen)+0,35·P(ingresos/emp)+0,15·P(salud balance)",
+                          "date": now_iso()}
+    score.append(qb)
+    for lbl, pv, comm in [
+        ("Margen EBITDA", p_margin, "rentabilidad operativa vs sector"),
+        ("Ingresos / empleado", p_rpe, "productividad vs sector"),
+        ("Salud de balance", p_sol, "autonomía financiera (PN/activo) vs sector")]:
+        if pv is not None:
+            score.append(kpi_block(lbl, "P" + _es(f"{pv*100:.0f}"), "", commentary=comm))
+    # Cómo se lee la puntuación
+    score.append(insight_block(
+        "Cómo se interpreta",
+        f"El Quality Score (0–100) es el percentil ponderado de {name} dentro de sus comparables "
+        f"de sector: 50 % margen EBITDA, 35 % ingresos por empleado y 15 % salud de balance. "
+        f"Un valor de {quality:.0f} indica que la compañía supera aproximadamente a ese porcentaje "
+        f"de las empresas del sector en calidad conjunta.", importance="medium"))
+
+    # ── Bloque 2: escenarios (tabla) + gráfico EV ──
+    scenarios = [text_block("Escenarios de valoración (EV/EBITDA)", "subhead")]
+    base_lbl = "reportado"
+    note = (f"EBITDA base: {_es(f'{ebitda:,.0f}')} € ({base_lbl}"
+            + (f"; media 3 ej.: {_es(f'{ebitda_avg:,.0f}')} €" if ebitda_avg else "") + "). "
+            f"Tipo de comprador: financiero (factor 1,00x). Múltiplo sugerido {_es(f'{base_mult:,.1f}')}x "
+            f"(rango {_es(f'{lo_mult:,.1f}')}x–{_es(f'{hi_mult:,.1f}')}x). El asesor puede ajustar el "
+            f"EBITDA base (reportado/ajustado), el múltiplo y el tipo de comprador.")
+    scenarios.append(text_block(note, style="body"))
+    rows = []
+    for lbl, mult in scen:
+        ev = _ev(mult); eq = _eq(ev)
+        rows.append([lbl, _es(f"{mult:,.1f}") + "x", _es(f"{ev:,.0f}") + " €",
+                     (_es(f"{eq:,.0f}") + " €") if eq is not None else "n/d"])
+    tb = table_block("Resumen de escenarios",
+                     ["Escenario", "Múltiplo", "Enterprise Value", "Equity Value (aprox.)"], rows)
+    tb["data_lineage"] = {"source": "financial-intelligence + comparables",
+                          "calculation": "EV = múltiplo × EBITDA; Equity = EV − deuda financiera neta",
+                          "date": now_iso()}
+    scenarios.append(tb)
+    # Gráfico de barras Enterprise Value por escenario (par con explicación)
+    ev_bars = [{"label": lbl, "value": _ev(mult)} for lbl, mult in scen]
+    cev = chart_block("Enterprise Value por escenario", "bar", {"bars": ev_bars, "fmt": "millions"},
+                      {"pair": True, "pair_width": _CHART_COL, "pair_align": "flex-start", "max_width": "100%"})
+    cev["data_lineage"] = {"source": "financial-intelligence", "calculation": "EV = múltiplo × EBITDA", "date": now_iso()}
+    scenarios.append(cev)
+    ev_mid = _ev(base_mult); eq_mid = _eq(ev_mid)
+    exp_parts = [f"En el escenario medio ({_es(f'{base_mult:,.1f}')}x) el Enterprise Value orientativo es "
+                 f"{_es(f'{ev_mid:,.0f}')} €"]
+    if eq_mid is not None:
+        etiqueta = "deuda financiera neta" if (net_debt or 0) >= 0 else "caja neta"
+        exp_parts.append(f"que, descontada la {etiqueta} de {_es(f'{abs(net_debt):,.0f}')} €, "
+                         f"equivale a un Equity Value aproximado de {_es(f'{eq_mid:,.0f}')} €")
+    scenarios.append(insight_block("Lectura de la valoración", ", ".join(exp_parts) + ".", importance="high"))
+
+    # ── Bloque 3: radar vs mediana de categoría + metodología ──
+    benchmark = [text_block("Benchmark vs. mediana de la categoría", "subhead")]
+    axes = ["Quality Score", "Margen EBITDA", "Ingresos/empleado", "Salud balance"]
+    emp_vals = [quality,
+                (p_margin * 100 if p_margin is not None else 50),
+                (p_rpe * 100 if p_rpe is not None else 50),
+                (p_sol * 100 if p_sol is not None else 50)]
+    med_vals = [50, 50, 50, 50]
+    cr = chart_block("", "radar",
+                     {"axes": axes,
+                      "series": [{"name": "Empresa", "color": "#378ADD", "values": emp_vals},
+                                 {"name": "Mediana categoría", "color": "#EF9F27", "values": med_vals}],
+                      "max_value": 100},
+                     {"pair": True, "pair_width": "440px", "pair_align": "flex-start"})
+    cr["data_lineage"] = {"source": "master_companies (percentiles de sector)", "date": now_iso()}
+    benchmark.append(cr)
+    benchmark.append(insight_block(
+        "Posición relativa",
+        f"El radar compara a {name} (percentiles) con la mediana de su categoría (P50 en cada eje). "
+        f"El área que sobresale de la línea naranja marca las dimensiones en las que la compañía bate "
+        f"a la mediana del sector.", importance="medium"))
+    metod = (
+        "Metodología (cálculo automático). Quality Score (0–100): percentil ponderado en la categoría — "
+        "50 % margen EBITDA, 35 % ingresos por empleado, 15 % salud de balance (patrimonio neto/activo). "
+        "Múltiplo: 4x + (quality/100)·(8x−4x), ajustado por el factor de tipo de comprador (financiero 1,00x; "
+        "estratégico >1,00x). Escenarios: múltiplo base ±1,0x, acotado al rango 4x–8x. Enterprise Value = "
+        "múltiplo × EBITDA base; Equity Value ≈ Enterprise Value − deuda financiera neta. Son referencias "
+        "orientativas sobre datos reales de Iberinform y comparables de sector; no constituyen una fairness "
+        "opinion ni sustituyen una due diligence de valoración.")
+    mb = text_block(metod, style="legal")
+    mb["data_lineage"] = {"source": "metodología de valoración (composer)", "date": now_iso()}
+    benchmark.append(mb)
+    # Contraste con el motor honesto (si aporta múltiplo de mercado observado)
+    vb = _valuation_block(bundle)
+    if vb:
+        benchmark.append(vb)
+
+    return {"score": score, "scenarios": scenarios, "benchmark": benchmark,
+            "quality": quality, "base_mult": base_mult, "ev_mid": ev_mid, "eq_mid": eq_mid}
+
+
 async def compose_sector_report(cnae_code: str, brand_id: str = "brand_bud",
                                 user: str = None) -> Dict:
     """Compose a full sector report from platform data."""
@@ -1455,9 +1670,590 @@ async def compose_benchmark_report(cnae_code: str, brand_id: str = "brand_bud",
     return doc
 
 
+def _investment_thesis_text(name: str, bundle: Dict) -> str:
+    """Tesis de inversión reglada (fallback sin IA) a partir de cifras reales."""
+    import statistics
+    kp = bundle.get("kpis", {}) or {}
+    parts = [f"{name} presenta un perfil de inversión atractivo"]
+    cagr = kp.get("revenue_cagr")
+    if cagr and cagr > 0:
+        parts.append(f"apoyado en un crecimiento sostenido (CAGR de ingresos del {_pct(cagr, 0)})")
+    mar = kp.get("ebitda_margin")
+    if mar is not None:
+        parts.append(f"y una rentabilidad probada (margen EBITDA del {_pct(mar)})")
+    frase = " ".join(parts) + "."
+    rpe = kp.get("revenue_per_employee")
+    if rpe:
+        frase += (f" La productividad ({_es(f'{rpe:,.0f}')} € por empleado) y la posición en su sector "
+                  f"refuerzan la calidad del modelo de negocio.")
+    frase += (" La operación permitiría a un inversor capturar valor mediante crecimiento orgánico, "
+              "mejora operativa y adquisiciones selectivas. [Editable por el analista.]")
+    return frase
+
+
+def _financial_kpis_blocks(bundle: Dict) -> list:
+    """Cuadro de KPIs financieros (estilo dashboard) con valor real + referencia saludable.
+    Usa las métricas que el motor ya calcula (sin inventar): crecimiento, márgenes, Rule of 40,
+    apalancamiento, autonomía financiera, productividad y circulante."""
+    kp = bundle.get("kpis", {}) or {}
+    ratios = bundle.get("ratios", {}) or {}
+    pts = sorted([p for p in ((bundle.get("evolution") or {}).get("points") or []) if p.get("year")],
+                 key=lambda x: x["year"])
+    last = pts[-1] if pts else {}
+    rows = []
+
+    def add(k, val, ref):
+        if val not in (None, ""):
+            rows.append([k, val, ref])
+
+    rev = kp.get("revenue")
+    add("Ingresos", (_es(f"{rev:,.0f}") + " €") if rev else None, "escala y tendencia (ver crecimiento)")
+    g = kp.get("revenue_growth_yoy")
+    add("Crecimiento de ingresos (YoY)", _pct(g, 1, signed=True) if g is not None else None,
+        "sostenido y positivo; >10 % se lee como dinámico")
+    cagr = kp.get("revenue_cagr")
+    add("CAGR de ingresos", _pct(cagr, 1) if cagr is not None else None, "crecimiento estructural a medio plazo")
+    gm = last.get("gross_margin")
+    add("Margen bruto", _pct(gm) if gm is not None else None, "cuanto mayor, más valor por venta")
+    m = kp.get("ebitda_margin")
+    add("Margen EBITDA", _pct(m) if m is not None else None, "rentabilidad operativa; comparar con el sector")
+    eb = kp.get("ebitda")
+    add("EBITDA", (_es(f"{eb:,.0f}") + " €") if eb is not None else None, "base de la valoración por múltiplo")
+    growth40 = g if g is not None else cagr
+    if growth40 is not None and m is not None:
+        r40 = (growth40 + m) * 100
+        add("Rule of 40 (crecimiento % + margen EBITDA %)", _es(f"{r40:,.0f}") + " %",
+            "≥ 40 es el filtro rápido estándar")
+    nd = last.get("net_financial_position")
+    if nd is not None and eb:
+        add("Deuda financiera neta / EBITDA", _es(f"{nd/eb:,.1f}") + "x",
+            "<3x cómodo; negativo = caja neta")
+    sol = kp.get("solvency")
+    add("Autonomía financiera (PN/activo)", _pct(sol, 0) if sol is not None else None,
+        "cuanto mayor, más solidez de balance")
+    rpe = kp.get("revenue_per_employee")
+    add("Ingresos por empleado", (_es(f"{rpe:,.0f}") + " €") if rpe else None,
+        "productividad; comparar con el sector")
+    ccc = (ratios.get("cash_conversion_cycle") or {}).get("value")
+    add("Ciclo de conversión de caja", (_es(f"{ccc:,.0f}") + " días") if ccc is not None else None,
+        "cuanto menor, mejor gestión del circulante")
+
+    out = [text_block("KPIs financieros", "subhead")]
+    if rows:
+        tb = table_block("", ["KPI", "Valor", "Referencia saludable"], rows)
+        tb["data_lineage"] = {"source": _FIN, "calculation": "KPIs financieros", "date": now_iso()}
+        out.append(tb)
+    else:
+        out.append(text_block("[A completar por el usuario: KPIs financieros del negocio.]", "body"))
+    out.append(text_block("Referencias orientativas; deben leerse junto al sector y el momento de la "
+                          "compañía. [El usuario puede añadir KPIs propios del modelo — p. ej. MRR, ARR, "
+                          "LTV/CAC, NRR o Magic Number si el negocio es recurrente.]", "legal"))
+    return out
+
+
+def _business_model_blocks(bundle: Dict, prof: Dict = None) -> list:
+    """Modelo de negocio y problema que resuelve, dentro de 'Compañía'. Usa el perfil semántico
+    (propuesta de valor / objeto social) para el relato y deja editable lo que no consta."""
+    prof = prof or {}
+    ident = bundle.get("identity") or {}
+    name = ident.get("name") or "La compañía"
+    vp = (prof.get("value_proposition") or {}).get("value")
+    obj = ident.get("objeto_social")
+    out = [text_block("Modelo de negocio y problema que resuelve", "subhead")]
+    # Problema que resuelve
+    out.append(text_block("Problema que resuelve", "subhead"))
+    out.append(text_block(
+        (f"{name} atiende una necesidad concreta de su mercado en {ident.get('cnae_description') or 'su sector'}. "
+         "[A completar por el usuario: dolor del cliente y por qué existe la compañía.]"), style="body"))
+    # Solución / propuesta de valor
+    out.append(text_block("Cómo lo resuelve (propuesta de valor)", "subhead"))
+    if vp:
+        b = text_block(vp, style="executive_summary")
+        b["data_lineage"] = {"source": "semantic-intelligence-v1", "task": "value_proposition", "date": now_iso()}
+        out.append(b)
+    elif obj:
+        out.append(text_block(f"Actividad (objeto social): {_smart_case(obj.strip())}", style="conclusion"))
+    else:
+        out.append(text_block("[A completar por el usuario: propuesta de valor y solución que ofrece.]", "body"))
+    # Modelo de negocio / ingresos
+    out.append(text_block("Modelo de negocio e ingresos", "subhead"))
+    caps = [c.get("value") for c in (prof.get("capabilities") or []) if isinstance(c, dict) and c.get("value")]
+    for c in caps[:4]:
+        out.append(text_block(_smart_case(c), "bullet"))
+    out.append(text_block("[A completar por el usuario: cómo genera ingresos (recurrente/proyecto/mixto), "
+                          "clientes objetivo y palancas de escalabilidad del modelo.]", "body"))
+    return out
+
+
+def _deal_snapshot(bundle: Dict) -> Dict:
+    """Deal Snapshot — estándar bud advisors (6 elementos), idéntico en todos los documentos.
+    Opportunity se rellena con dato real; el resto son campos de operación editables por el asesor."""
+    kp = bundle.get("kpis", {}) or {}
+    cagr = kp.get("revenue_cagr"); m = kp.get("ebitda_margin")
+    bits = []
+    if cagr is not None and cagr > 0:
+        bits.append(f"CAGR +{_pct(cagr, 0)}")
+    if m is not None:
+        bits.append(f"margen EBITDA {_pct(m)}")
+    opp = "Compañía rentable y en crecimiento" + (f" ({', '.join(bits)})" if bits else "") + "."
+    succ = any(("suces" in (s.get("signal_type") or "").lower()) or (s.get("severity") == "succession")
+               for s in (bundle.get("signals") or []))
+    seller = ("Relevo generacional / búsqueda de un socio que dé continuidad al proyecto."
+              if succ else "Cristalización del valor y entrada de un socio para acelerar el crecimiento.")
+    items = [
+        {"label": "Opportunity", "text": opp},
+        {"label": "Transaction", "text": "[Definir: venta 100 % · mayoría · minoría · ampliación de capital.]"},
+        {"label": "Seller", "text": seller + " [Ajustar al mandato real.]"},
+        {"label": "Buyer Fit", "text": "Comprador estratégico, private equity o family office con capacidad de crecimiento."},
+        {"label": "Management", "text": "[Definir: rol y continuidad del equipo directivo tras la operación.]"},
+        {"label": "Process", "text": "[Definir: fase actual del proceso y próximos hitos.]"},
+    ]
+    b = deal_snapshot_block(items, title="Deal Snapshot")
+    b["data_lineage"] = {"source": "bud advisors — Deal Snapshot estándar", "date": now_iso()}
+    return b
+
+
+def _transaction_overview_sections(bundle: Dict, benchmark: Dict, start_order: int = 30) -> list:
+    """Capítulo Transaction Overview completo (5.1–5.6). Devuelve una lista de secciones ya
+    numeradas. Contenido de operación editable por el asesor, con ganchos de dato real."""
+    kp = bundle.get("kpis", {}) or {}
+    name = (bundle.get("identity") or {}).get("name") or "La compañía"
+    cagr = kp.get("revenue_cagr"); m = kp.get("ebitda_margin")
+    o = start_order
+
+    # 5.1 Transaction Summary
+    s51 = new_section("Transaction Overview · 5.1 Transaction Summary", o, [
+        text_block("5.1 Resumen de la transacción", "subhead"),
+        text_block("Tipo de operación: [venta 100 % · mayoría · minoría · ampliación de capital — a definir].", "bullet"),
+        text_block("Alcance de la transacción: [porcentaje ofrecido y control resultante — a definir].", "bullet"),
+        text_block("Activos incluidos: [negocio, marcas, inmuebles, filiales — a definir].", "bullet"),
+        text_block("Perímetro: [sociedades y actividades dentro/fuera del perímetro — a definir].", "bullet"),
+    ]); o += 1
+
+    # 5.2 Investment Opportunity (real hooks)
+    s52_blocks = [text_block("5.2 Oportunidad de inversión", "subhead")]
+    for c in _positive_signal_cards(bundle)[:3]:
+        s52_blocks.append(c)
+    fit = "Encaje estratégico: plataforma consolidada en su sector con recorrido de crecimiento orgánico e inorgánico."
+    s52_blocks.append(insight_block("Encaje estratégico", fit, importance="medium"))
+    s52 = new_section("Transaction Overview · 5.2 Investment Opportunity", o, s52_blocks); o += 1
+
+    # 5.3 Seller Objectives
+    succ = any(("suces" in (s.get("signal_type") or "").lower()) or (s.get("severity") == "succession")
+               for s in (bundle.get("signals") or []))
+    mot = ("Relevo generacional / sucesión ordenada de la propiedad." if succ
+           else "Cristalización del valor construido e incorporación de un socio para crecer.")
+    s53 = new_section("Transaction Overview · 5.3 Seller Objectives", o, [
+        text_block("5.3 Objetivos del vendedor", "subhead"),
+        text_block(f"Motivación de la operación: {mot}", "bullet"),
+        text_block("Objetivos del accionista: [liquidez, crecimiento, diversificación, sucesión — a definir].", "bullet"),
+        text_block("Continuidad prevista: [permanencia o salida progresiva de los actuales propietarios — a definir].", "bullet"),
+    ]); o += 1
+
+    # 5.4 Ideal Buyer Profile
+    s54 = new_section("Transaction Overview · 5.4 Ideal Buyer Profile", o, [
+        text_block("5.4 Perfil de comprador ideal", "subhead"),
+        insight_block("Comprador estratégico", "Industrial del sector o adyacente que busque escala, "
+                      "capacidades o acceso a mercado.", importance="low"),
+        insight_block("Private Equity", "Fondo con tesis de buy & build y capacidad de acompañar el crecimiento.",
+                      importance="low"),
+        insight_block("Family Office", "Inversor de largo plazo orientado a compañías rentables y estables.",
+                      importance="low"),
+        text_block("Perfil internacional y capacidades deseadas: [red comercial, I+D, capacidad financiera — a definir].", "bullet"),
+    ]); o += 1
+
+    # 5.5 Indicative Deal Structure
+    s55 = new_section("Transaction Overview · 5.5 Indicative Deal Structure", o, [
+        text_block("5.5 Estructura indicativa de la operación", "subhead"),
+        text_block("Venta total o parcial: [porcentaje objetivo — a definir].", "bullet"),
+        text_block("Reinversión (rollover) de los vendedores: [importe o % — a definir].", "bullet"),
+        text_block("Earn-out: [si aplica, importe y métricas — a definir].", "bullet"),
+        text_block("Exclusividad: [periodo y condiciones — a definir].", "bullet"),
+        text_block("Otros aspectos relevantes: [garantías, condiciones suspensivas, tratamiento de la deuda — a definir].", "bullet"),
+    ]); o += 1
+
+    # 5.6 Transaction Process
+    s56 = new_section("Transaction Overview · 5.6 Transaction Process", o,
+                      _process_timeline_blocks(bundle)); o += 1
+
+    return [s51, s52, s53, s54, s55, s56]
+
+
+def _equity_story_blocks(bundle: Dict) -> list:
+    """Equity story sell-side: por qué esta compañía es una buena adquisición (dato real + editable)."""
+    kp = bundle.get("kpis", {}) or {}
+    out = [text_block("Por qué esta compañía (equity story)", "subhead")]
+    cagr = kp.get("revenue_cagr"); m = kp.get("ebitda_margin"); rpe = kp.get("revenue_per_employee")
+    if cagr is not None and cagr > 0:
+        out.append(text_block(f"Crecimiento sostenido: CAGR de ingresos del {_pct(cagr, 0)}.", "bullet"))
+    if m is not None:
+        out.append(text_block(f"Rentabilidad probada: margen EBITDA del {_pct(m)}.", "bullet"))
+    if rpe:
+        out.append(text_block(f"Productividad elevada: {_es(f'{rpe:,.0f}')} € de ingresos por empleado.", "bullet"))
+    out.append(text_block("Posición consolidada en su sector y base de clientes con recurrencia.", "bullet"))
+    out.append(text_block("Plataforma con recorrido de crecimiento orgánico e inorgánico (buy & build).", "bullet"))
+    out.append(text_block("[A completar por el usuario: relato de la oportunidad — por qué ahora y por qué "
+                          "esta compañía es única para el comprador adecuado.]", "body"))
+    return out
+
+
+def _internal_sources_annex() -> tuple:
+    """Anexo INTERNO (no para el inversor): fuente y cálculo de cada métrica/ratio del documento.
+    Devuelve dos listas de bloques (financieros de la compañía · sector, mercado y valoración),
+    cada una con su aviso de uso interno."""
+    def _warn():
+        b = insight_block("USO INTERNO — no entregar al inversor",
+                          "Página de trabajo del asesor. Documenta el origen y el cálculo de cada dato. "
+                          "Eliminar antes de compartir el documento con el inversor.", importance="high")
+        return b
+
+    fin_rows = [
+        ["Ingresos (cifra de negocios)", "Iberinform · Cuenta de PyG", "Importe neto de la cifra de negocios del ejercicio"],
+        ["EBITDA", "Iberinform · PyG", "Resultado de explotación + amortizaciones"],
+        ["Margen EBITDA", "Derivado", "EBITDA / Ingresos"],
+        ["Margen bruto", "Derivado", "(Ingresos − Aprovisionamientos) / Ingresos"],
+        ["Margen neto", "Derivado", "Resultado del ejercicio / Ingresos"],
+        ["Crecimiento de ingresos (YoY)", "Derivado", "(Ingresos_t / Ingresos_t-1) − 1"],
+        ["CAGR de ingresos", "Derivado", "(Ingresos_final / Ingresos_inicial)^(1/n) − 1"],
+        ["Empleados", "Iberinform", "Plantilla del ejercicio"],
+        ["Ingresos por empleado", "Derivado", "Ingresos / Empleados"],
+        ["Patrimonio neto · Activo total", "Iberinform · Balance", "Partidas de balance del ejercicio"],
+        ["Autonomía financiera (solvencia)", "Derivado", "Patrimonio neto / Activo total"],
+        ["Fondo de maniobra", "Derivado", "Activo corriente − Pasivo corriente"],
+        ["Deuda financiera neta (PFN)", "Derivado", "Deuda financiera (L/P + C/P) − Tesorería"],
+        ["Deuda neta / EBITDA", "Derivado", "PFN / EBITDA"],
+        ["ROE", "Derivado", "Resultado del ejercicio / Patrimonio neto"],
+        ["Ciclo de conversión de caja", "Derivado", "DSO + DIO − DPO (días)"],
+        ["Rule of 40", "Derivado", "Crecimiento ingresos % + Margen EBITDA %"],
+        ["Tabla de ratios", "Iberinform (Datos_RATIOS) + cálculo", "Ratios entregados + derivados de balance/PyG"],
+        ["Plan de negocio (proyecciones)", "Derivado", "Último ejercicio real × tasa (CAGR acotado ±3 p.p. por escenario)"],
+    ]
+    sec_rows = [
+        ["Comparables (peers)", "master_companies (mismo CNAE sección)", "Empresas del sector con datos financieros"],
+        ["Percentiles (margen, ing./empleado, salud balance)", "Derivado", "Rank de la métrica de la compañía frente a los peers"],
+        ["Quality Score (0–100)", "Derivado", "0,50·P(margen) + 0,35·P(ing./empleado) + 0,15·P(salud balance)"],
+        ["Benchmark Q1 · Mediana · Q3", "master_companies", "Cuartiles de la distribución del sector"],
+        ["HHI / fragmentación", "Motor de fragmentación (E7)", "Índice Herfindahl-Hirschman sobre cuotas del sector"],
+        ["Múltiplo EV/EBITDA", "Derivado", "4x + (Quality/100)·(8x − 4x) × factor de comprador"],
+        ["Enterprise Value (EV)", "Derivado", "Múltiplo × EBITDA base"],
+        ["Equity Value", "Derivado", "EV − Deuda financiera neta"],
+        ["TAM (proxy)", "Economic Intelligence / DIRCE", "Empresas activas del sector × facturación media"],
+        ["Contexto de mercado (exportaciones, contratos…)", "Economic Intelligence (DataComex, PLACSP, DIRCE)", "Agregados sectoriales del CNAE"],
+    ]
+    a = [_warn(), text_block("Anexo interno · Fuente y cálculo de los ratios (compañía)", "subhead"),
+         table_block("", ["Métrica", "Fuente", "Cálculo"], fin_rows),
+         text_block("Todos los importes financieros proceden de las cuentas de la compañía objetivo "
+                    "(Iberinform); los marcados como «Derivado» se calculan a partir de esas partidas.", "legal")]
+    b = [_warn(), text_block("Anexo interno · Fuente y cálculo (sector, mercado y valoración)", "subhead"),
+         table_block("", ["Métrica", "Fuente", "Cálculo"], sec_rows),
+         text_block("Los elementos comparativos (percentiles, benchmark, HHI) posicionan a la compañía "
+                    "dentro de su sector; la valoración aplica el múltiplo calibrado por calidad sobre el "
+                    "EBITDA propio de la compañía.", "legal")]
+    return a, b
+
+
+def _tam_sam_som_blocks(bundle: Dict, econ: Dict) -> list:
+    """Estructura del mercado con marco TAM / SAM / SOM (círculos concéntricos, estilo pitch).
+    Siembra el TAM con un proxy sectorial real (empresas activas × facturación media) cuando
+    existe; SAM y SOM quedan como campos editables por el usuario."""
+    ident = bundle.get("identity") or {}
+    name = ident.get("name") or "La compañía"
+    tam_val = None
+    try:
+        ac = (econ.get("active_companies_national") or {}).get("value")
+        rv = (econ.get("revenue") or {}).get("value")
+        if ac and rv:
+            tam_val = ac * rv
+    except Exception:
+        tam_val = None
+    tam_lbl = ("TAM ≈ " + _es(f"{tam_val/1e6:,.0f}") + " M€") if tam_val else "TAM = [€ ...]"
+    items = [
+        {"label": tam_lbl, "sublabel": "mercado total (proxy sectorial)", "frac": 1.0, "dashed": True},
+        {"label": "SAM = [€ ...]", "sublabel": "mercado servible", "frac": 0.46},
+        {"label": "SOM = [€ ...]", "sublabel": "mercado objetivo", "frac": 0.18},
+    ]
+    out = [text_block("Estructura del mercado (TAM · SAM · SOM)", "subhead")]
+    ch = chart_block("", "nested_circles", {"items": items},
+                     {"pair": True, "pair_width": "440px", "pair_align": "flex-start"})
+    ch["data_lineage"] = {"source": "Economic Intelligence (proxy TAM) + campos editables", "date": now_iso()}
+    out.append(ch)
+    _tamtxt = (f"un mercado total (TAM) de referencia de {_es(f'{tam_val/1e6:,.0f}')} M€ (empresas activas del "
+               f"sector × facturación media)" if tam_val else "un mercado total (TAM) a cuantificar")
+    out.append(insight_block(
+        "Marco de mercado",
+        f"El diagrama sitúa a {name} en su mercado: TAM (total), SAM (segmento al que puede servir con su "
+        f"propuesta actual) y SOM (cuota realista a capturar en el horizonte del plan). El motor estima "
+        f"{_tamtxt}; el usuario define el SAM y el SOM con los criterios del proceso (geografía, segmento, "
+        f"capacidad).", importance="medium"))
+    out.append(text_block("[A completar por el usuario: importe de SAM y SOM, criterios de segmentación y "
+                          "supuestos de cuota de mercado.]", "body"))
+    return out
+
+
+async def _team_structure_blocks(bundle: Dict, cif_norm: str) -> list:
+    """Estructura del equipo: roster real (administradores/cargos) + composición de plantilla
+    (si consta) + áreas funcionales editables."""
+    ident = bundle.get("identity") or {}
+    name = ident.get("name") or "La compañía"
+    out = [text_block("Estructura del equipo", "subhead")]
+    officers = await db.norm_officers.find({"cif_normalized": cif_norm}, {"_id": 0}).to_list(20)
+    officers = [o for o in officers if o.get("person_name")]
+    if officers:
+        rows = [[_smart_case(o.get("person_name")), _smart_case(o.get("person_role") or "Administrador")]
+                for o in officers[:10]]
+        tb = table_block("Órgano de administración y cargos", ["Persona", "Cargo"], rows)
+        tb["data_lineage"] = {"source": "master-v1 (norm_officers)", "date": now_iso()}
+        out.append(tb)
+    # Composición de plantilla (si consta)
+    wf = ident.get("workforce") or {}
+    plantilla = wf.get("total") or (bundle.get("statements") or {}).get("employees")
+    comp_bits = []
+    for k, lbl in [("men", "hombres"), ("women", "mujeres"), ("permanent", "fijos"), ("temporary", "temporales")]:
+        if wf.get(k) is not None:
+            comp_bits.append(f"{_es(f'{int(wf[k]):,}')} {lbl}")
+    if plantilla:
+        base = f"La plantilla asciende a {_es(f'{int(plantilla):,}')} profesionales"
+        if comp_bits:
+            base += " (" + ", ".join(comp_bits) + ")"
+        out.append(text_block(base + ".", "bullet"))
+    # Áreas funcionales (editable)
+    out.append(text_block("Áreas funcionales", "subhead"))
+    for a in ["Dirección General", "Financiera y Administración", "Comercial y Marketing",
+              "Operaciones", "Tecnología / Producto"]:
+        out.append(text_block(f"{a}: [responsable y dimensionamiento — a completar por el usuario].", "bullet"))
+    out.append(text_block("[A completar por el usuario: organigrama por áreas, headcount por función y "
+                          "plan de contratación asociado a la operación.]", "body"))
+    return out
+
+
+async def _captable_table_blocks(bundle: Dict, master_id: str) -> list:
+    """Cap table (tabla accionistas + donut + post-operación) para el investment memo."""
+    try:
+        mdoc = await db.master_companies.find_one({"master_id": master_id}, {"_id": 0, "ownership": 1})
+        own = (mdoc or {}).get("ownership") or {}
+    except Exception:
+        own = {}
+    sh = [s for s in (own.get("shareholders") or []) if s.get("name")]
+    parents = [p for p in (own.get("parents") or []) if p.get("name")]
+    out = [text_block("Estructura de propiedad (cap table)", "subhead")]
+    rows, segs = [], []
+    for s in sh:
+        pct = s.get("pct")
+        rows.append([_smart_case(s["name"]), (_es(f"{pct:,.1f}") + " %") if pct is not None else "n/d"])
+        if pct:
+            segs.append({"label": _clip_name(s["name"], 22), "value": pct})
+    if parents:
+        for p in parents:
+            if _smart_case(p["name"]) not in [r[0] for r in rows]:
+                rows.append([_smart_case(p["name"]), "matriz"])
+    if rows:
+        tb = table_block("Accionariado actual", ["Accionista", "Participación"], rows)
+        tb["data_lineage"] = {"source": "master-v1 (ownership)", "date": now_iso()}
+        out.append(tb)
+    _post = insight_block("Estructura post-operación",
+                          "[A completar por el usuario: cap table resultante tras la entrada del inversor "
+                          "(% de fundadores, inversor entrante y pool de empleados).]", importance="low")
+    if len(segs) >= 1 and sum(x["value"] for x in segs) > 0:
+        cd = chart_block("Distribución del capital", "donut", {"segments": segs},
+                         {"pair": True, "pair_width": "420px", "pair_align": "flex-start"})
+        cd["data_lineage"] = {"source": "master-v1 (ownership)", "date": now_iso()}
+        out.append(cd)
+        out.append(_post)  # emparejado a la derecha del donut → compacto
+    else:
+        if not rows:
+            out.append(text_block("[A completar por el usuario: accionariado actual y % de cada socio.]", "body"))
+        out.append(_post)
+    return out
+
+
+def _traction_blocks(bundle: Dict) -> list:
+    """Tracción e hitos: evolución real (ingresos) + hitos (editables, con datos reales de apoyo)."""
+    ident = bundle.get("identity") or {}
+    name = ident.get("name") or "La compañía"
+    kp = bundle.get("kpis", {}) or {}
+    pts = sorted([p for p in ((bundle.get("evolution") or {}).get("points") or []) if p.get("year")],
+                 key=lambda x: x["year"])
+    out = [text_block("Tracción e hitos", "subhead")]
+    bars = [{"label": str(p["year"]), "value": p.get("revenue")} for p in pts if p.get("revenue") is not None]
+    if len(bars) >= 2:
+        cb = chart_block("Evolución de ingresos", "bar", {"bars": bars, "fmt": "millions"},
+                         {"pair": True, "pair_width": _CHART_COL, "pair_align": "flex-start", "max_width": "100%"})
+        cb["data_lineage"] = {"source": _FIN, "calculation": "evolution.revenue", "date": now_iso()}
+        out.append(cb)
+        cagr = kp.get("revenue_cagr")
+        parts = [f"{name} ha demostrado tracción con ingresos"]
+        if cagr is not None:
+            parts.append(f"creciendo a un CAGR del {_pct(cagr, 0)}")
+        _r0 = _es(f"{bars[0]['value']/1e6:,.1f}"); _r1 = _es(f"{bars[-1]['value']/1e6:,.1f}")
+        _y0 = bars[0]["label"]; _y1 = bars[-1]["label"]
+        parts.append(f"pasando de {_r0} a {_r1} M€ entre {_y0} y {_y1}")
+        out.append(insight_block("Prueba de progreso", ", ".join(parts) + ".", importance="high"))
+    out.append(text_block("Hitos", "subhead"))
+    out.append(text_block("Trayectoria y consolidación del negocio desde su constitución.", "bullet"))
+    if kp.get("ebitda_margin") is not None:
+        out.append(text_block(f"Rentabilidad probada con margen EBITDA del {_pct(kp['ebitda_margin'])}.", "bullet"))
+    out.append(text_block("[A completar por el usuario: hitos comerciales, de producto, contrataciones clave, "
+                          "premios o rondas anteriores, con su fecha.]", "body"))
+    return out
+
+
+async def _transaction_comps_blocks(bundle: Dict) -> list:
+    """Múltiplos y transacciones comparables: referencia de sector (EV/EBITDA, EV/Revenue) +
+    múltiplo observado de mercado (M&A Radar) si existe + EV implícito. Honesto: etiqueta
+    'referencia inferida' vs 'observado'."""
+    ident = bundle.get("identity") or {}
+    section = ident.get("cnae_section")
+    cnae = ident.get("cnae_code")
+    kp = bundle.get("kpis", {}) or {}
+    eb = kp.get("ebitda"); rev = kp.get("revenue")
+    try:
+        from services.skills_valuation import _resolve_multiples
+        mult = _resolve_multiples(section)
+    except Exception:
+        mult = {"ev_ebitda": (6.0, 10.0), "ev_revenue": (0.8, 1.6)}
+    ee = mult["ev_ebitda"]; er = mult["ev_revenue"]
+
+    def impl(metric, lo, hi):
+        if not metric:
+            return "n/d"
+        return _es(f"{metric*lo/1e6:,.1f}") + " – " + _es(f"{metric*hi/1e6:,.1f}") + " M€"
+
+    rows = [
+        ["EV/EBITDA — referencia del sector", f"{ee[0]:.1f}x – {ee[1]:.1f}x", impl(eb, *ee)],
+        ["EV/Revenue — referencia del sector", f"{er[0]:.1f}x – {er[1]:.1f}x", impl(rev, *er)],
+    ]
+    observed = None
+    try:
+        from services.engines.financial import market_multiples as MM
+        real = await MM.real_multiple_for_company(cnae)
+        if real:
+            for k in ("ev_ebitda_median", "ev_ebitda_aggregate", "ev_ebitda", "multiple"):
+                if real.get(k):
+                    observed = real[k]; break
+    except Exception:
+        observed = None
+    if observed:
+        rows.append(["EV/EBITDA — observado (M&A Radar)", f"{observed:.1f}x", impl(eb, observed, observed)])
+
+    out = [text_block("Múltiplos y transacciones comparables", "subhead"),
+           table_block("", ["Referencia", "Múltiplo", "EV implícito"], rows)]
+    # Contexto M&A Radar (transacciones reales por categoría), si hay datos
+    try:
+        from services.category_valuations import get_cached_valuations
+        cached = await get_cached_valuations()
+        cats = [c for c in (cached.get("categories") or []) if c.get("ev_ebitda_aggregate")][:4]
+        if cats:
+            crows = [[_clip_name(c.get("category"), 34), f"{c['ev_ebitda_aggregate']:.1f}x",
+                      str(c.get("deals_with_financials", 0))] for c in cats]
+            out.append(text_block("Múltiplos observados en operaciones recientes (M&A Radar)", "subhead"))
+            out.append(table_block("", ["Categoría", "EV/EBITDA", "Operaciones"], crows))
+    except Exception:
+        pass
+    basis = "inferida" if not observed else "inferida + un múltiplo observado del M&A Radar"
+    out.append(text_block(
+        f"Los múltiplos de referencia del sector son una base {basis} (rango orientativo), no una tasación. "
+        "[A completar por el usuario: transacciones precedentes concretas y comparables cotizadas relevantes "
+        "para la operación.]", style="legal"))
+    return out
+
+
+def _exit_returns_blocks(bundle: Dict) -> list:
+    """Retorno para el inversor y estrategia de salida (plantilla editable con apoyo del sector)."""
+    out = [text_block("Retorno para el inversor y estrategia de salida", "subhead"),
+           text_block("Vías de salida (exit)", "subhead"),
+           text_block("Venta a un comprador estratégico (trade sale) del sector o adyacente.", "bullet"),
+           text_block("Entrada de un socio financiero / secundario (private equity).", "bullet"),
+           text_block("Recompra por los fundadores / management buy-out (MBO).", "bullet"),
+           text_block("Posibles compradores", "subhead"),
+           text_block("Consolidadores e industriales del sector y fondos con tesis de buy & build. "
+                      "[A completar por el usuario con nombres concretos.]", "bullet"),
+           text_block("Retorno esperado", "subhead"),
+           text_block("[A completar por el usuario: horizonte de inversión, múltiplo esperado sobre capital "
+                      "(MOIC) y TIR objetivo bajo escenarios conservador/base/optimista, con los supuestos de "
+                      "crecimiento y múltiplo de salida.]", "body")]
+    return out
+
+
+def _gtm_blocks(bundle: Dict) -> list:
+    """Go-to-market y unit economics (plantilla editable + dato real de productividad)."""
+    kp = bundle.get("kpis", {}) or {}
+    out = [text_block("Go-to-market y unit economics", "subhead"),
+           text_block("Estrategia comercial", "subhead"),
+           text_block("Canales de adquisición y proceso de venta (directo, partners, inbound…).", "bullet"),
+           text_block("Segmentos y perfil de cliente objetivo.", "bullet"),
+           text_block("Unit economics", "subhead")]
+    rpe = kp.get("revenue_per_employee")
+    if rpe:
+        out.append(text_block(f"Productividad actual: {_es(f'{rpe:,.0f}')} € de ingresos por empleado (dato real).", "bullet"))
+    out.append(text_block("[A completar por el usuario: CAC, LTV, ratio LTV/CAC, periodo de recuperación "
+                          "(payback) del CAC y embudo de conversión.]", "body"))
+    return out
+
+
+def _moat_blocks(bundle: Dict, benchmark: Dict) -> list:
+    """Ventaja competitiva / foso defensivo (plantilla editable + apoyo del posicionamiento)."""
+    kp = bundle.get("kpis", {}) or {}
+    out = [text_block("Ventaja competitiva y foso defensivo", "subhead")]
+    m = kp.get("ebitda_margin")
+    try:
+        q = benchmark.get("ebitda_margin", {})
+        if m is not None and q and q.get("median") is not None and m > q["median"]:
+            out.append(insight_block("Rentabilidad superior al sector",
+                f"El margen EBITDA ({_pct(m)}) supera la mediana del sector ({_pct(q['median'])}), señal de "
+                f"poder de fijación de precios o eficiencia estructural.", importance="high"))
+    except Exception:
+        pass
+    for t in ["Marca y reputación en el sector.",
+              "Relaciones y contratos con clientes (costes de cambio).",
+              "Know-how, tecnología o propiedad intelectual.",
+              "Escala y eficiencia operativa."]:
+        out.append(text_block(t + " [validar/ampliar por el usuario].", "bullet"))
+    out.append(text_block("[A completar por el usuario: por qué la ventaja es sostenible y difícil de replicar.]", "body"))
+    return out
+
+
+def _roadmap_blocks(bundle: Dict) -> list:
+    """Roadmap de producto / desarrollo (plantilla editable Now·Next·Later)."""
+    return [
+        text_block("Roadmap de producto y desarrollo", "subhead"),
+        text_block("Ahora (0–12 meses)", "subhead"),
+        text_block("[A completar por el usuario: iniciativas en curso y próximos lanzamientos.]", "body"),
+        text_block("Siguiente (12–24 meses)", "subhead"),
+        text_block("[A completar por el usuario: nuevas líneas, integraciones o mercados.]", "body"),
+        text_block("Más adelante (24 meses+)", "subhead"),
+        text_block("[A completar por el usuario: visión de producto a largo plazo.]", "body"),
+    ]
+
+
+def _cases_blocks(bundle: Dict) -> list:
+    """Casos de cliente y prueba social (plantilla editable)."""
+    return [
+        text_block("Casos de cliente y prueba social", "subhead"),
+        text_block("Clientes de referencia y logos.", "bullet"),
+        text_block("Casos de éxito con resultados cuantificados.", "bullet"),
+        text_block("Testimonios y menciones.", "bullet"),
+        text_block("[A completar por el usuario: 2–3 casos con reto, solución y resultado, y logos con permiso.]", "body"),
+    ]
+
+
+def _process_timeline_blocks(bundle: Dict) -> list:
+    """Calendario del proceso de la operación (plantilla editable)."""
+    return [
+        text_block("Calendario del proceso", "subhead"),
+        text_block("Fase 1 — Contacto y NDA.", "bullet"),
+        text_block("Fase 2 — Acceso a información y Q&A / data room.", "bullet"),
+        text_block("Fase 3 — Ofertas no vinculantes (NBO).", "bullet"),
+        text_block("Fase 4 — Due diligence y oferta vinculante.", "bullet"),
+        text_block("Fase 5 — Negociación, SPA y cierre.", "bullet"),
+        text_block("[A completar por el usuario: fechas objetivo de cada fase y responsables del proceso.]", "body"),
+    ]
+
+
 async def compose_investment_memo(company_id: str = None, cif: str = None,
                                   brand_id: str = "brand_bud", user: str = None) -> Dict:
-    """Compose an Investment Memo. Fase 2: modern schema + real engines + real valuation."""
+    """Investment Memorandum (buy-side) con la misma calidad que el infomemo: tesis, descripción,
+    análisis financiero con gráficos, posición financiera, posicionamiento sectorial, valoración,
+    riesgos y catalizadores, y recomendación. Datos reales + marca; layout de slides."""
     from docstudio.financial_engine import analyze_sector_benchmark
     from services.cnae_catalog import CNAE_DIVISIONS
 
@@ -1469,70 +2265,362 @@ async def compose_investment_memo(company_id: str = None, cif: str = None,
     name = ident.get("name", "Empresa")
     cnae = ident.get("cnae_code", "")
     cnae_label = CNAE_DIVISIONS.get(cnae, {}).get("label", "")
+    cif_norm = bundle.get("cif_normalized", "—")
     kpis = bundle.get("kpis", {})
+    assessment = bundle.get("assessment", {}) or {}
     benchmark = await analyze_sector_benchmark(cnae) if cnae else {}
 
-    doc = new_document(
-        title=f"Investment Memo — {name}",
-        template_id="tpl_investment_memo", brand_id=brand_id, created_by=user,
-    )
+    econ = await _get_economic_profile(cnae) if cnae else {}
+    _peers = await _load_peers(bundle)
 
-    s1 = new_section("Portada", 1, [
-        cover_block(title=name, subtitle=f"Investment Memo — CNAE {cnae}: {cnae_label}"),
+    doc = new_document(title=f"Investment Memorandum — {name}",
+                       template_id="tpl_investment_memo", brand_id=brand_id, created_by=user)
+
+    # Portada
+    s1 = new_section("Portada", 1, [cover_block(title=name,
+                                               subtitle=f"Investment Memorandum · {cnae_label}")])
+    s1["blocks"][0]["data"]["date"] = _month_year_es()
+    s1["blocks"][0]["data"]["advisor"] = _advisor_label(brand_id)
+
+    # Disclaimer / confidencialidad
+    s_disc = new_section("Aviso legal y confidencialidad", 2, [
+        text_block("Aviso legal y confidencialidad", "subhead"),
+        text_block(
+            f"Este Investment Memorandum ha sido preparado por {_advisor_label(brand_id)} con carácter "
+            f"estrictamente confidencial y para uso exclusivo del destinatario en el marco de la evaluación "
+            f"de una potencial operación sobre {name}. La información procede de fuentes propias y de terceros "
+            f"(Iberinform, registros mercantiles y fuentes públicas) y se ha elaborado de buena fe; no "
+            f"constituye asesoramiento de inversión, fiscal o legal, ni una fairness opinion, y no sustituye "
+            f"una due diligence. Las proyecciones y valoraciones son orientativas. Queda prohibida su "
+            f"reproducción o distribución sin autorización expresa.", style="legal"),
     ])
 
-    # Company KPIs from the real Financial Engine + curated ratios/multi-year detail
-    s3_blocks = _company_kpi_blocks(bundle)
-    vb = _valuation_block(bundle)
-    if vb:
-        s3_blocks.append(vb)
-    for _fb in FE.financial_detail_blocks(bundle):
-        s3_blocks.append(_fb)
-    s3 = new_section("Métricas Financieras", 3, s3_blocks)
+    # IA narrativa (fact-lock) — usada en Executive Summary / Tesis
+    ai = await generate_summary({
+        "company_name": name, "cnae_label": cnae_label, "revenue": kpis.get("revenue"),
+        "ebitda_margin": kpis.get("ebitda_margin"), "cagr": kpis.get("revenue_cagr"),
+        "valuation": bundle.get("valuation"), "assessment": assessment,
+    }, doc_type="investment_memo", document_id=doc["document_id"]) or {}
 
-    # Sector positioning table (modern benchmark) + our own percentiles
-    pos_rows = []
-    for metric, label in [("revenue", "Revenue"), ("ebitda", "EBITDA"), ("ebitda_margin", "Margen EBITDA")]:
+    # Valoración rica (estilo arroba) — calculada una vez, repartida en tres slides
+    _val = _valuation_scenarios_blocks(bundle, _peers)
+
+    # ═══════════ EXECUTIVE SUMMARY ═══════════
+    s_exec_blocks = list(_hero_kpi_blocks(bundle))
+    thesis = ai.get("executive_summary") or _investment_thesis_text(name, bundle)
+    s_exec_blocks.append(text_block(thesis, style="executive_summary"))
+    if _val.get("ev_mid"):
+        _evtxt = _es(f"{_val['ev_mid']:,.0f}")
+        _q = _val.get("quality")
+        _bmtxt = _es(f"{_val.get('base_mult', 0):,.1f}")
+        s_exec_blocks.append(insight_block(
+            "Síntesis de la oportunidad",
+            f"Quality Score de {(_q or 0):.0f}/100 y un Enterprise Value orientativo de {_evtxt} € en el "
+            f"escenario medio ({_bmtxt}x EBITDA). El detalle metodológico se "
+            f"desarrolla en la sección de valoración.", importance="high"))
+    s_exec = new_section("Executive Summary", 3, s_exec_blocks)
+
+    # ═══════════ 1. INVESTMENT HIGHLIGHTS ═══════════
+    s_high_blocks = [text_block("Aspectos clave de la inversión", "subhead")]
+    for c in _positive_signal_cards(bundle)[:5]:
+        s_high_blocks.append(c)
+    for stg in (assessment.get("strengths") or [])[:2]:
+        s_high_blocks.append(insight_block("Fortaleza", stg, importance="medium"))
+    s_high = new_section("Investment Highlights", 10, s_high_blocks)
+
+    # ═══════════ 2. TESIS DE INVERSIÓN ═══════════
+    s_tesis_blocks = [text_block("Tesis de inversión", "subhead"),
+                      text_block(thesis, style="executive_summary")]
+    for f in (ai.get("key_findings") or [])[:3]:
+        s_tesis_blocks.append(insight_block("Punto clave", f, importance="high"))
+    if not (ai.get("key_findings")):
+        s_tesis_blocks.append(insight_block(
+            "Ángulos de creación de valor",
+            "Crecimiento orgánico apoyado en la posición sectorial, mejora de margen hacia el primer cuartil "
+            "del sector y crecimiento inorgánico selectivo (buy & build) en un mercado fragmentado. "
+            "[El analista puede matizar la tesis con la información del proceso.]", importance="medium"))
+    s_tesis = new_section("Tesis de Inversión", 11, s_tesis_blocks)
+
+    # ═══════════ TRANSACTION OVERVIEW (Deal Snapshot + capítulo 5.1–5.6) ═══════════
+    s_snapshot = new_section("Deal Snapshot", 12, [
+        text_block("Resumen de la operación en un vistazo", "subhead"),
+        _deal_snapshot(bundle),
+    ])
+    _tx_sections = _transaction_overview_sections(bundle, benchmark, start_order=30)
+
+    # ═══════════ 4. COMPAÑÍA ═══════════
+    sem_prof, sem_summary = await _semantic_profile(bundle["master_id"])
+    _desc = await _company_description_blocks(bundle["master_id"], {**ident, "cif": cif_norm},
+                                             prof=sem_prof, summary_txt=sem_summary)
+    s_comp = new_section("Compañía", 13, _desc)
+
+    # ═══════════ 5. MERCADO Y POSICIONAMIENTO COMPETITIVO ═══════════
+    _mc = await _market_competition_blocks(bundle, _peers, econ)
+    _sec = await _sector_charts(bundle, _peers)
+    s_mkt = new_section("Mercado y Posicionamiento Competitivo", 14,
+                        _mc.get("context", []) or [text_block(
+                            "[A completar por el usuario: tamaño y dinámica del mercado objetivo.]", "body")])
+    s_mkt2_blocks = list(_mc.get("competition", []))
+    # Benchmark sectorial (Q1/mediana/Q3) + mapa sectorial
+    bm_rows = []
+    for metric, label in [("revenue", "Revenue"), ("ebitda", "EBITDA"),
+                          ("ebitda_margin", "Margen EBITDA"), ("employees", "Empleados")]:
         q = benchmark.get(metric, {})
-        if q and q.get("median"):
-            med = f"{q['median']*100:.1f}%" if metric == "ebitda_margin" else f"{q['median']:,.0f}"
-            pos_rows.append([label, f"Mediana sector: {med}", f"Peers: {benchmark.get('peers', 0)}"])
-    s4_blocks = [table_block("Comparación vs sector", ["Métrica", "Benchmark", "Peers"], pos_rows)] if pos_rows else []
-    _sector_pos = await FE.sector_positioning_block(db, bundle)
-    if _sector_pos:
-        s4_blocks.append(_sector_pos)
-    s4 = new_section("Posicionamiento Sectorial", 4, s4_blocks) if s4_blocks else None
+        if q and q.get("median") is not None:
+            def _fv(v, mm=metric):
+                return _es(f"{v*100:.1f}") + " %" if mm == "ebitda_margin" else _es(f"{v:,.0f}")
+            bm_rows.append([label, _fv(q.get("q1", 0)), _fv(q["median"]), _fv(q.get("q3", 0)),
+                            str(benchmark.get("peers", 0))])
+    if bm_rows:
+        s_mkt2_blocks.append(table_block("Benchmark sectorial", ["Métrica", "Q1", "Mediana", "Q3", "Peers"], bm_rows))
+    s_mkt2 = new_section("Posicionamiento Sectorial", 15, s_mkt2_blocks) if s_mkt2_blocks else None
+    # Gráficos de sector (donut + mapa) en diapositiva propia a 2 columnas (evita el desborde)
+    _mkt_charts = [_sec[_k] for _k in ("donut", "scatter") if _sec.get(_k)]
+    s_mkt3 = new_section("Posicionamiento Sectorial · Mapa del sector", 15, _mkt_charts) if _mkt_charts else None
 
-    # Active signals (real)
-    sig_blocks = _signal_insight_blocks(bundle)
-    s6 = new_section("Señales Activas", 6, sig_blocks) if sig_blocks else None
+    # ═══════════ 6. PRODUCTOS Y SERVICIOS ═══════════
+    prof = sem_prof or {}
+    ps = [p.get("value") for p in (prof.get("products_services") or []) if isinstance(p, dict) and p.get("value")]
+    caps = [c.get("value") for c in (prof.get("capabilities") or []) if isinstance(c, dict) and c.get("value")]
+    s_prod_blocks = [text_block("Productos y servicios", "subhead")]
+    _seen = set()
+    for it in (ps + caps):
+        k = (it or "").strip().lower()
+        if it and k not in _seen:
+            _seen.add(k); s_prod_blocks.append(text_block(_smart_case(it.strip()), "bullet"))
+    if len(s_prod_blocks) == 1:
+        obj = ident.get("objeto_social")
+        if obj:
+            s_prod_blocks.append(text_block(f"Actividad (objeto social): {_smart_case(obj.strip())}", style="conclusion"))
+        s_prod_blocks.append(text_block(
+            "[A completar por el usuario: catálogo de productos/servicios, peso de cada línea sobre ingresos, "
+            "márgenes por línea y propuesta de valor diferencial.]", "body"))
+    else:
+        s_prod_blocks.append(text_block(
+            "[El usuario puede añadir el peso de cada línea sobre ingresos y el margen por línea.]", "body"))
+    s_prod = new_section("Productos y Servicios", 16, s_prod_blocks)
 
-    # AI-generated investment thesis (Claude)
-    ai_context = {
-        "company_name": name, "cnae": cnae, "cnae_label": cnae_label,
-        "revenue": kpis.get("revenue"), "ebitda_margin": kpis.get("ebitda_margin"),
-        "revenue_yoy": kpis.get("revenue_growth_yoy"), "cagr": kpis.get("revenue_cagr"),
-        "valuation": bundle.get("valuation"), "assessment": bundle.get("assessment"),
-        "sector_peers": benchmark.get("peers", 0),
-        "active_signals": [s.get("signal_type") for s in bundle.get("signals", [])],
-    }
-    ai_result = await generate_summary(ai_context, doc_type="company_profile", document_id=doc["document_id"])
+    # ═══════════ 7. CLIENTES Y RECURRENCIA ═══════════
+    s_cli = new_section("Clientes y Recurrencia", 17, [
+        text_block("Clientes y recurrencia", "subhead"),
+        text_block("Base de clientes y modelo de relación (a documentar con datos del proceso).", "bullet"),
+        text_block("[A completar por el usuario: número de clientes activos, concentración (top-5 / top-10 "
+                   "sobre ingresos), tasa de recurrencia o contratos recurrentes, antigüedad media y "
+                   "churn, y pipeline comercial.]", "body"),
+        insight_block("Por qué importa",
+                      "La recurrencia y la baja concentración de clientes reducen el riesgo del negocio y "
+                      "sostienen múltiplos más altos; es una de las palancas de valor que el comprador "
+                      "examinará en due diligence.", importance="medium"),
+    ])
 
-    s2 = new_section("Tesis de Inversión", 2, [])
-    if ai_result.get("executive_summary"):
-        b = text_block(ai_result["executive_summary"], style="executive_summary")
-        b["data_lineage"] = {"source": "ai", "model": "claude", "task": "investment_thesis", "date": now_iso()}
-        s2["blocks"].append(b)
-    for f in ai_result.get("key_findings", [])[:3]:
-        s2["blocks"].append(insight_block("Punto clave", f, importance="high"))
+    # ═══════════ 8. EQUIPO DIRECTIVO ═══════════
+    _org = await _team_org_blocks(bundle, bundle["master_id"], cif_norm, _peers)
+    s_team_blocks = list(_org.get("leadership", [])) + list(_org.get("orgchart", []))
+    if not any(b.get("block_type") == "orgchart" for b in s_team_blocks):
+        s_team_blocks.append(text_block(
+            "[A completar por el usuario: organigrama del equipo directivo, roles clave, trayectoria y "
+            "plan de continuidad tras la operación.]", "body"))
+    s_team = new_section("Equipo Directivo", 18, s_team_blocks)
 
-    s5 = new_section("Conclusión y Recomendación", 5, [])
-    if ai_result.get("conclusion"):
-        s5["blocks"].append(text_block(ai_result["conclusion"], style="conclusion"))
+    # ═══════════ 9. INFORMACIÓN FINANCIERA (histórico + calidad del beneficio) ═══════════
+    s_fin_blocks = list(_hero_kpi_blocks(bundle))
+    s_fin_blocks.extend(_evolution_charts(bundle))
+    for _fb in (FE.margin_percentile_kpi_block(bundle), FE.ratios_table_block(bundle)):
+        if _fb:
+            s_fin_blocks.append(_fb)
+    s_fin = new_section("Información Financiera", 19, s_fin_blocks)
+    s_kpis = new_section("KPIs Financieros", 20, _financial_kpis_blocks(bundle))
+    _plan = _projection_tables(bundle)
+    s_plan = new_section("Plan de Negocio", 21, _plan) if _plan else None
 
-    doc["sections"] = [s for s in [s1, s2, s3, s4, s6, s5] if s]
+    # ═══════════ 10. VALORACIÓN ORIENTATIVA ═══════════
+    s_val = s_val3 = None
+    if _val:
+        # Diapositiva única: Quality Score + percentiles + escenarios (tabla + gráfico EV).
+        # Se compacta (nota breve en vez del párrafo largo) para que quepa entera en la slide.
+        _kpis_val = [b for b in _val["score"] if b.get("block_type") == "kpi"]
+        _scn = _val["scenarios"]  # [subhead, nota_larga, tabla, gráfico(pair), insight]
+        _bm = _es(f"{_val.get('base_mult', 0):,.1f}")
+        _short_note = text_block(
+            f"EBITDA base reportado · múltiplo sugerido {_bm}x (rango 4x–8x) · comprador financiero (1,00x). "
+            f"Ajustable por el asesor (EBITDA base, múltiplo y tipo de comprador).", style="body")
+        _merged = [text_block("Valoración orientativa por múltiplo", "subhead")] + _kpis_val
+        _merged.append(_short_note)
+        _merged += _scn[2:]  # tabla + gráfico EV + lectura
+        s_val = new_section("Valoración Orientativa", 22, _merged)
+        s_val3 = new_section("Valoración · Benchmark y Metodología", 24, _val["benchmark"])
+    else:
+        s_val = new_section("Valoración Orientativa", 22, [
+            text_block("Valoración orientativa", "subhead"),
+            text_block("[No hay EBITDA o comparables suficientes para una valoración por múltiplos. "
+                       "El usuario puede aportar el EBITDA ajustado y el múltiplo de referencia.]", "body")])
+
+    # ═══════════ 11. RIESGOS IDENTIFICADOS Y MITIGANTES ═══════════
+    s_risk_blocks = [text_block("Riesgos identificados y mitigantes", "subhead")]
+    _risks = (assessment.get("risks", []) + assessment.get("weaknesses", []))[:5]
+    if _risks:
+        for r in _risks:
+            s_risk_blocks.append(insight_block("Riesgo", r, importance="high"))
+            s_risk_blocks.append(insight_block("Mitigante", "[A completar por el usuario: medida de "
+                                               "mitigación / plan de acción.]", importance="low"))
+    else:
+        for r, m in [("Concentración de clientes o proveedores",
+                      "Diversificación de la cartera y contratos plurianuales."),
+                     ("Dependencia de personas clave",
+                      "Plan de retención, documentación de procesos y sucesión."),
+                     ("Exposición al ciclo del sector",
+                      "Diversificación de líneas y flexibilidad de la estructura de costes.")]:
+            s_risk_blocks.append(insight_block("Riesgo", r + " [validar en el proceso].", importance="high"))
+            s_risk_blocks.append(insight_block("Mitigante", m + " [a completar por el usuario].", importance="low"))
+    s_risk = new_section("Riesgos y Mitigantes", 25, s_risk_blocks)
+
+    # ═══════════ 12. PALANCAS DE CREACIÓN DE VALOR (100 días · 3 años · 5 años) ═══════════
+    _mar_gap = ""
+    try:
+        _q = benchmark.get("ebitda_margin", {})
+        if _q and _q.get("q3") is not None and _mar is not None and _mar < _q["q3"]:
+            _mar_gap = (f" El margen EBITDA actual ({_pct(_mar)}) está por debajo del tercer cuartil del sector "
+                        f"({_pct(_q['q3'])}), lo que sugiere recorrido de mejora operativa.")
+    except Exception:
+        _mar_gap = ""
+    s_lev = new_section("Palancas de Creación de Valor", 26, [
+        text_block("Plan de creación de valor", "subhead"),
+        text_block("Primeros 100 días", "subhead"),
+        text_block("Gobierno y reporting: cuadro de mando, KPIs y cadencia de seguimiento.", "bullet"),
+        text_block("Quick wins de margen: precios, compras y eficiencia operativa." + _mar_gap, "bullet"),
+        text_block("Retención del equipo clave e incentivos alineados.", "bullet"),
+        text_block("Horizonte 3 años", "subhead"),
+        text_block("Crecimiento orgánico (nuevos clientes, cross-selling, expansión geográfica).", "bullet"),
+        text_block("Mejora de margen hacia el primer cuartil del sector.", "bullet"),
+        text_block("Inversión en digitalización y sistemas.", "bullet"),
+        text_block("Horizonte 5 años", "subhead"),
+        text_block("Buy & build: adquisiciones selectivas en un mercado fragmentado.", "bullet"),
+        text_block("Salto de escala y preparación para la salida (trade sale / secundario).", "bullet"),
+        text_block("[A completar por el usuario: cuantificación de cada palanca e impacto esperado en EBITDA.]", "body"),
+    ])
+
+    # ═══════════ 13. SINERGIAS POTENCIALES PARA COMPRADORES ESTRATÉGICOS ═══════════
+    s_syn_blocks = [text_block("Sinergias para compradores estratégicos", "subhead")]
+    frag = {}
+    try:
+        from services.engines.investment.fragmentation import compute_fragmentation
+        _sec_code = (bundle.get("identity") or {}).get("cnae_section")
+        if _sec_code:
+            frag = await compute_fragmentation("cnae_section", _sec_code, limit_companies=800) or {}
+    except Exception:
+        frag = {}
+    if frag.get("hhi") is not None or frag.get("standalone_targets_count"):
+        _fr = []
+        if frag.get("hhi") is not None:
+            _hhitxt = _es(f"{frag['hhi']:,.0f}")
+            _fr.append(f"mercado {_hhi_label_es(frag.get('concentration_label'))} (HHI {_hhitxt})")
+        if frag.get("standalone_targets_count"):
+            _sttxt = _es(f"{frag['standalone_targets_count']:,.0f}")
+            _fr.append(f"{_sttxt} objetivos independientes candidatos a consolidación")
+        s_syn_blocks.append(insight_block("Contexto de consolidación",
+                                          "Estructura del sector: " + ", ".join(_fr) + ".", importance="medium"))
+    for t, d in [("Ingresos", "cross-selling a la base de clientes del comprador, acceso a nuevos canales y geografías."),
+                 ("Costes", "compras conjuntas, consolidación de estructura y economías de escala."),
+                 ("Capacidades", "integración de tecnología, talento y know-how sectorial.")]:
+        s_syn_blocks.append(insight_block(f"Sinergias de {t.lower()}", f"{t}: {d}", importance="low"))
+    s_syn_blocks.append(text_block("[A completar por el usuario: cuantificación de sinergias por tipo de comprador estratégico.]", "body"))
+    s_syn = new_section("Sinergias Potenciales", 27, s_syn_blocks)
+
+    # ═══════════ 14. ANEXOS ═══════════
+    s_annex = new_section("Anexos", 28, [
+        text_block("Anexos", "subhead"),
+        text_block("Fuentes de información", "subhead"),
+        text_block("Iberinform (estados financieros, balance, ratios y datos societarios); registros "
+                   "mercantiles (BORME); comparables de sector de la base de datos propia; y datos "
+                   "económicos sectoriales (DIRCE / Economic Intelligence).", "body"),
+        text_block("Definiciones", "subhead"),
+        text_block("EBITDA: resultado operativo antes de amortizaciones. Quality Score: percentil ponderado "
+                   "de calidad frente al sector. Enterprise Value (EV): valor de la compañía; Equity Value = "
+                   "EV − deuda financiera neta. CAGR: tasa de crecimiento anual compuesta.", "body"),
+        text_block("Documentación pendiente de aportar", "subhead"),
+        text_block("[A completar por el usuario: cuentas anuales auditadas, contratos relevantes, detalle de "
+                   "clientes y proveedores, plantilla y organigrama, litigios y contingencias, y plan de "
+                   "negocio del vendedor.]", "body"),
+    ])
+
+    # Estructura del mercado (TAM/SAM/SOM) · Estructura del equipo
+    s_tam = new_section("Estructura del Mercado · TAM/SAM/SOM", 145, _tam_sam_som_blocks(bundle, econ))
+    s_teamstruct = new_section("Estructura del Equipo", 185, await _team_structure_blocks(bundle, cif_norm))
+
+    # Modelo de negocio y problema que resuelve (dentro de Compañía)
+    s_bizmodel = new_section("Modelo de Negocio y Problema que Resuelve", 135,
+                             _business_model_blocks(bundle, sem_prof))
+
+    # Nuevas secciones para un deck de inversión completo
+    s_traction = new_section("Tracción e Hitos", 105, _traction_blocks(bundle))
+    s_captable = new_section("Estructura de Propiedad · Cap Table", 128,
+                             await _captable_table_blocks(bundle, bundle["master_id"]))
+    s_moat = new_section("Ventaja Competitiva y Foso", 141, _moat_blocks(bundle, benchmark))
+    s_gtm = new_section("Go-to-Market y Unit Economics", 165, _gtm_blocks(bundle))
+    s_roadmap = new_section("Roadmap de Producto", 167, _roadmap_blocks(bundle))
+    s_cases = new_section("Casos de Cliente y Prueba Social", 172, _cases_blocks(bundle))
+    s_comps = new_section("Múltiplos y Transacciones Comparables", 235, await _transaction_comps_blocks(bundle))
+    s_exit = new_section("Retorno para el Inversor y Salida", 245, _exit_returns_blocks(bundle))
+
+    # Anexo interno (no para el inversor): fuente y cálculo de cada ratio
+    _int_a, _int_b = _internal_sources_annex()
+    s_intern1 = new_section("Anexo Interno · Ratios de la compañía", 300, _int_a)
+    s_intern2 = new_section("Anexo Interno · Sector y valoración", 301, _int_b)
+
+    # ── Índice + separadores de sección (negro, estilo del cuaderno) ──
+    def _sep(num, title):
+        s = new_section(title, 0, [])
+        s["slide_kind"] = "separator"; s["section_number"] = num
+        return s
+
+    parts = [
+        ("00", "Executive Summary", [s_exec]),
+        ("01", "Tesis de Inversión", [s_high, s_traction, s_tesis]),
+        ("02", "Compañía, Mercado y Negocio",
+         [s_comp, s_bizmodel, s_mkt, s_tam, s_mkt2, s_mkt3, s_moat, s_prod, s_roadmap,
+          s_cli, s_cases, s_gtm, s_team, s_teamstruct]),
+        ("03", "Información Financiera", [s_fin, s_kpis, s_plan]),
+        ("04", "Valoración", [s_val, s_comps, s_val3, s_exit]),
+        ("05", "Transaction Overview", [s_snapshot, s_captable] + _tx_sections),
+        ("06", "Riesgos, Valor y Anexos", [s_risk, s_lev, s_syn, s_annex, s_intern1, s_intern2]),
+    ]
+    _idx_rows = [
+        ["ES", "Executive Summary"],
+        ["01", "Investment Highlights · tracción e hitos"],
+        ["02", "Tesis de inversión"],
+        ["03", "Compañía y modelo de negocio"],
+        ["04", "Mercado, posicionamiento y ventaja competitiva"],
+        ["05", "Productos, servicios y roadmap"],
+        ["06", "Clientes, casos y go-to-market"],
+        ["07", "Equipo directivo y estructura"],
+        ["08", "Información financiera (histórico · KPIs · plan)"],
+        ["09", "Valoración, comparables y retorno/salida"],
+        ["10", "Transaction Overview · Deal Snapshot"],
+        ["", "5.1 Summary · 5.2 Opportunity · 5.3 Seller · 5.4 Buyer · 5.5 Structure · 5.6 Process"],
+        ["11", "Riesgos identificados y mitigantes"],
+        ["12", "Palancas de creación de valor (100 días · 3 · 5 años)"],
+        ["13", "Sinergias para compradores estratégicos"],
+        ["14", "Anexos"],
+        ["·", "Anexo interno · fuentes y cálculo (no para el inversor)"],
+    ]
+    s_index = new_section("Índice", 4, [
+        text_block("Contenido del memorando", "subhead"),
+        table_block("", ["Sección", "Contenido"], _idx_rows),
+    ])
+
+    _close = cover_block(title="Gracias", subtitle="Documento estrictamente confidencial")
+    _close["data"]["advisor"] = _advisor_label(brand_id)
+    s_close = new_section("Contacto", 99, [_close]); s_close["slide_kind"] = "closing"
+
+    ordered = [s1, s_disc, s_index]
+    for num, title, secs in parts:
+        ordered.append(_sep(num, title))
+        ordered.extend([s for s in secs if s])
+    ordered.append(s_close)
+
+    doc["sections"] = [s for s in ordered if s]
     doc["metadata"] = {
-        "master_id": bundle["master_id"], "type": "investment_memo",
+        "master_id": bundle["master_id"], "cif": cif_norm, "type": "investment_memo",
         "financial_engine_used": True, "fact_locked": True, "schema": "modern",
     }
     doc["status"] = "generated"
@@ -1541,9 +2629,101 @@ async def compose_investment_memo(company_id: str = None, cif: str = None,
     return doc
 
 
+def _nda_blocks() -> list:
+    """Acuerdo de Confidencialidad recíproco (NDA) — plantilla adaptada del estándar de bud
+    advisors, lista para firmar. La Parte Receptora (potencial inversor/comprador) se rellena
+    al firmar; la contraparte es el asesor (bud advisors). Texto editable por el asesor."""
+    out = [text_block("Acuerdo recíproco de confidencialidad", "subhead")]
+    out.append(text_block("En __________________, a ______ de ____________________ de 20____.", "legal"))
+    out.append(text_block("De una parte, la «Parte Receptora»: D./Dª. ____________________________, "
+                          "con NIF ____________, actuando en su propio nombre o en representación de "
+                          "____________________________ (el potencial inversor/comprador).", "legal"))
+    out.append(text_block("De otra parte, D. Daniel Casal González-Outón, con DNI 52.364.372-L, en "
+                          "representación de bud advisors, S.L., con CIF B-70821400 y domicilio social en "
+                          "Paseo de la Castellana 178, 6I, 28046 Madrid.", "legal"))
+    out.append(text_block("Declaran las partes:", "legal"))
+    for d in [
+        "Que han decidido transmitirse mutuamente cierta información confidencial (la «Información "
+        "Confidencial»), relacionada con el análisis de una potencial operación corporativa sobre la "
+        "compañía objeto de este proceso (la «Operación»).",
+        "Que cualquiera de ellas, por la naturaleza de este contrato, podrá constituirse como parte "
+        "receptora o parte divulgadora.",
+        "Que se reconocen mutuamente la personalidad con la que comparecen y manifiestan su libre "
+        "voluntad para obligarse en los términos de las siguientes:"]:
+        out.append(text_block(d, "legal"))
+    out.append(text_block("Cláusulas", "subhead"))
+    clausulas = [
+        "PRIMERA. Las partes se obligan a no divulgar a terceros la «Información Confidencial» que "
+        "reciban de la otra, y a darle el mismo tratamiento que a la información confidencial de su "
+        "propiedad. Asimismo, se obligan a no divulgar el hecho de haberse iniciado conversaciones en "
+        "relación con la potencial Operación. La «Información Confidencial» comprende toda la información "
+        "divulgada por cualquiera de las partes, en forma oral, visual, escrita, grabada o en cualquier "
+        "otra forma tangible.",
+        "SEGUNDA. La parte receptora mantendrá confidencial la «Información Confidencial» y no la "
+        "entregará a terceros distintos de sus abogados y asesores con necesidad de conocerla para los "
+        "fines de la Cláusula Sexta, quienes deberán obligarse igualmente a mantenerla confidencial.",
+        "TERCERA. La parte receptora no divulgará la «Información Confidencial» a terceros sin el previo "
+        "consentimiento por escrito de la parte divulgadora.",
+        "CUARTA. La parte receptora tomará las precauciones necesarias y apropiadas para mantener la "
+        "confidencialidad, incluyendo informar a sus empleados que la manejen de su carácter confidencial.",
+        "QUINTA. La «Información Confidencial» es y seguirá siendo propiedad de la parte divulgadora; se "
+        "usará únicamente para los fines de la Cláusula Sexta y este instrumento no otorga derecho de "
+        "propiedad intelectual ni licencia alguna sobre ella.",
+        "SEXTA. La parte receptora utilizará la «Información Confidencial» únicamente para el análisis y "
+        "eventual ejecución de la Operación.",
+        "SÉPTIMA. El incumplimiento parcial o total de estas obligaciones hará responsable a la parte "
+        "receptora de los daños y perjuicios que ocasione a la parte divulgadora.",
+        "OCTAVA. Las partes se comprometen a no contratar personal de la otra parte durante veinticuatro "
+        "(24) meses desde la firma del presente acuerdo.",
+        "NOVENA. No existirá obligación de confidencialidad sobre información que: (i) fuese ya conocida por "
+        "la parte receptora libre de obligación de confidencialidad; (ii) sea desarrollada de forma "
+        "independiente o recibida legalmente de otra fuente con derecho a divulgarla; (iii) sea o llegue a "
+        "ser de dominio público sin incumplimiento de este convenio; o (iv) se reciba de un tercero sin "
+        "quebrantar una obligación de confidencialidad.",
+        "DÉCIMA. Las obligaciones de este acuerdo permanecerán vigentes durante treinta y seis (36) meses "
+        "desde su firma.",
+        "DÉCIMO PRIMERA. Este convenio constituye el acuerdo total entre las partes respecto a dicha "
+        "información y sustituye cualquier entendimiento previo, oral o escrito.",
+        "DÉCIMO SEGUNDA. Ninguna de las partes podrá ceder sus derechos y obligaciones derivados del "
+        "presente contrato.",
+        "DÉCIMO TERCERA. Este convenio solo podrá modificarse por consentimiento de las partes otorgado "
+        "por escrito.",
+        "DÉCIMO CUARTA. Para la interpretación y cumplimiento del presente contrato, las partes se someten "
+        "a la jurisdicción de los juzgados y tribunales de Madrid, renunciando a cualquier otro fuero que "
+        "pudiera corresponderles.",
+    ]
+    for c in clausulas:
+        out.append(text_block(c, "legal"))
+    out.append(text_block("En prueba de conformidad, las partes firman el presente acuerdo:", "legal"))
+    out.append(text_block("28", style="spacer"))
+    out.append(text_block("_______________________________     ", style="body"))
+    out.append(text_block("La Parte Receptora — Nombre y NIF", style="legal"))
+    out.append(text_block("18", style="spacer"))
+    out.append(text_block("_______________________________     ", style="body"))
+    out.append(text_block("D. Daniel Casal González-Outón — Managing Partner, bud advisors, S.L.", style="legal"))
+    return out
+
+
+def _size_band(rev, emp) -> str:
+    """Banda de tamaño anónima (no revela cifra exacta como identificador)."""
+    if rev is not None:
+        if rev < 10e6:
+            return "pequeña empresa"
+        if rev < 50e6:
+            return "empresa mediana"
+        if rev < 300e6:
+            return "gran empresa"
+        return "gran corporación"
+    if emp:
+        return "empresa mediana" if emp < 250 else "gran empresa"
+    return "compañía"
+
+
 async def compose_teaser(company_id: str = None, cif: str = None,
                          brand_id: str = "brand_bud", user: str = None) -> Dict:
-    """Compose a Teaser (blind profile) for a company. Fase 2: modern schema + real engines."""
+    """Teaser CIEGO (perfil anónimo) para primer contacto con compradores: muestra sector,
+    región, tamaño y magnitudes financieras + aspectos destacados de inversión, SIN revelar
+    identidad (nombre/CIF/web/municipio). Mismo layout de slides y marca que el infomemo."""
     from services.cnae_catalog import CNAE_DIVISIONS
 
     bundle = await DA.company_intelligence(company_id or cif)
@@ -1551,42 +2731,91 @@ async def compose_teaser(company_id: str = None, cif: str = None,
         return {"error": "Company not found"}
 
     ident = bundle["identity"]
-    name = ident.get("name", "Empresa")
+    kpis = bundle.get("kpis", {}) or {}
     cnae = ident.get("cnae_code", "")
-    cnae_label = CNAE_DIVISIONS.get(cnae, {}).get("label", "")
+    cnae_label = CNAE_DIVISIONS.get(cnae, {}).get("label", "") or (ident.get("cnae_description") or "su sector")
+    provincia = ident.get("provincia")
+    rev = kpis.get("revenue")
+    emp = (bundle.get("statements") or {}).get("employees")
+    band = _size_band(rev, emp)
 
-    doc = new_document(
-        title=f"Teaser — {name}",
-        template_id="tpl_teaser", brand_id=brand_id, created_by=user,
-    )
+    doc = new_document(title="Teaser — Proyecto Confidencial", template_id="tpl_teaser",
+                       brand_id=brand_id, created_by=user)
 
-    s1 = new_section("Portada", 1, [
-        cover_block(title="Oportunidad de Inversión", subtitle=f"Sector: {cnae_label} — Proyecto confidencial"),
-    ])
+    # 1. Portada (negra) — sin nombre; nombre en clave.
+    s1 = new_section("Portada", 1, [cover_block(title="Oportunidad de Inversión",
+                                                subtitle=f"Proyecto Confidencial · {cnae_label}")])
+    s1["blocks"][0]["data"]["date"] = _month_year_es()
+    s1["blocks"][0]["data"]["advisor"] = _advisor_label(brand_id)
 
-    # Key metrics from the real Financial Engine
-    s2 = new_section("Métricas Clave", 2, _company_kpi_blocks(bundle))
+    # 2. La Oportunidad — perfil anónimo + KPIs financieros + lectura reglada.
+    # (El título de sección ya lo pinta el renderizador A4; no repetir subtítulo.)
+    s2_blocks = []
+    perfil = [f"{band.capitalize()} del sector {cnae_label} (CNAE {cnae})."]
+    if provincia:
+        perfil.append(f"Con sede en la provincia de {provincia}.")
+    perfil.append("Se estudia la entrada de un socio mediante la adquisición total o parcial del capital.")
+    for p in perfil:
+        s2_blocks.append(text_block(p, "bullet"))
+    s2_blocks.extend(_hero_kpi_blocks(bundle))
+    s2 = new_section("La Oportunidad", 2, s2_blocks)
 
-    # AI teaser narrative (Claude, fact-locked)
-    kpis = bundle.get("kpis", {})
-    ai_context = {
-        "sector": cnae_label, "revenue": kpis.get("revenue"),
-        "ebitda_margin": kpis.get("ebitda_margin"),
-        "growth": kpis.get("revenue_growth_yoy"),
-        "signals": [s.get("signal_type") for s in bundle.get("signals", [])],
-    }
-    ai_result = await generate_summary(ai_context, doc_type="company_profile", document_id=doc["document_id"])
+    # 3. Aspectos destacados — highlights de inversión + evolución financiera (anónima).
+    s3_blocks = []
+    s3_blocks.extend(_positive_signal_cards(bundle)[:4])
+    # Gráficos de evolución en DOS COLUMNAS (igual que las tarjetas de Aspectos destacados):
+    # solo los bloques 'chart', consecutivos y sin fila emparejada, para que el renderizador
+    # los agrupe 2 por fila.
+    ev_charts = [b for b in _evolution_charts(bundle) if b.get("block_type") == "chart"]
+    for c in ev_charts:
+        c["data"]["config"] = {}
+    s3_blocks.extend(ev_charts)
+    s3 = new_section("Aspectos Destacados", 3, s3_blocks)
 
-    s3 = new_section("Descripción de la Oportunidad", 3, [])
-    if ai_result.get("executive_summary"):
-        b = text_block(ai_result["executive_summary"], style="executive_summary")
-        b["data_lineage"] = {"source": "ai", "model": "claude", "task": "teaser_narrative", "date": now_iso()}
-        s3["blocks"].append(b)
+    # 4. Motivo de la Operación — objetivos (a marcar por el asesor) + racional estratégico.
+    s4_blocks = [text_block("Objetivos de la operación", "subhead")]
+    for obj in ["Venta del 100 % / mayoría / minoría", "Entrada de socio financiero",
+                "Entrada de socio industrial", "Ampliación de capital",
+                "Búsqueda de comprador estratégico", "Roll-up sectorial", "MBO / MBI", "Otros"]:
+        s4_blocks.append(text_block(obj, "bullet"))
+    s4_blocks.append(text_block("[Marcar el/los objetivos aplicables a esta operación.]", "body"))
+    s4_blocks.append(text_block("Racional estratégico", "subhead"))
+    # Racional reglado (3–5 líneas) anónimo, apoyado en cifras reales cuando existen.
+    cagr = kpis.get("revenue_cagr"); mar = kpis.get("ebitda_margin")
+    frases = ["La compañía ha consolidado una posición sólida en su nicho de mercado"]
+    if cagr and cagr > 0:
+        frases[0] += f", con un crecimiento sostenido (CAGR de ingresos del {_pct(cagr, 0)})"
+    if mar is not None:
+        frases.append(f"y una rentabilidad probada (margen EBITDA del {_pct(mar)})")
+    frases.append("sobre un modelo de negocio escalable")
+    racional = (". ".join([" ".join(frases)]) + ". "
+                "Los accionistas consideran que la incorporación de un socio estratégico permitirá "
+                "acelerar el crecimiento, ejecutar adquisiciones selectivas y maximizar la creación "
+                "de valor en la siguiente etapa. [Editable por el asesor según el caso.]")
+    rb = text_block(racional, style="executive_summary")
+    rb["data_lineage"] = {"source": "plantilla editable (racional de la operación)", "date": now_iso()}
+    s4_blocks.append(rb)
+    s_deal = new_section("Motivo de la Operación", 4, s4_blocks)
 
-    doc["sections"] = [s1, s2, s3]
+    # 4a bis. Deal Snapshot — estándar bud advisors (mismo bloque en One Pager, Teaser e Infomemo).
+    s_snapshot = new_section("Deal Snapshot", 4, [
+        text_block("La operación en un vistazo", "subhead"), _deal_snapshot(bundle)])
+
+    # 4b. NDA — acuerdo de confidencialidad recíproco, listo para firmar.
+    s_nda = new_section("Acuerdo de Confidencialidad", 5, _nda_blocks())
+
+    # 5. Cierre (negro) — siguiente paso / confidencialidad.
+    _close = cover_block(title="¿Interesado?",
+                         subtitle="Firme el NDA para acceder al cuaderno de venta completo")
+    _close["data"]["advisor"] = _advisor_label(brand_id)
+    s_close = new_section("Contacto", 9, [_close])
+    s_close["slide_kind"] = "closing"
+
+    # "¿Interesado?" (llamada a la acción) va ANTES del NDA; el NDA cierra el documento para firmar.
+    doc["sections"] = [s1, s2, s3, s_snapshot, s_deal, s_close, s_nda]
     doc["metadata"] = {
         "master_id": bundle["master_id"], "cif": bundle["cif_normalized"], "type": "teaser",
-        "financial_engine_used": True, "fact_locked": True, "schema": "modern",
+        "financial_engine_used": True, "fact_locked": True, "schema": "modern", "blind": True,
     }
     doc["status"] = "generated"
     doc["updated_at"] = now_iso()
@@ -1801,8 +3030,20 @@ async def compose_information_memorandum(company_id: str = None, cif: str = None
         b = text_block(hint, style="body")
         b["data_lineage"] = {"source": "manual", "placeholder": True, "date": now_iso()}
         return b
-    s_prod = new_section("Productos y Servicios", 4, [_ph("[Completar: líneas de negocio y propuesta de valor.]")])
-    s_cli = new_section("Clientes y Cartera", 4, [_ph("[Completar: descripción de la cartera, recurrencia y sectores de cliente.]")])
+    s_prod = new_section("Modelo de Negocio, Productos y Servicios", 4,
+                         _business_model_blocks(bundle, sem_prof))
+    s_cli = new_section("Clientes y Cartera", 4, [
+        _ph("[Completar: descripción de la cartera, recurrencia y sectores de cliente.]"),
+        insight_block("Por qué importa",
+                      "La recurrencia y la baja concentración de clientes reducen el riesgo del negocio "
+                      "y sostienen múltiplos más altos.", importance="medium")])
+
+    # Módulos añadidos (dato real + editables) para elevar el cuaderno
+    s_kpis = new_section("KPIs Financieros", 4, _financial_kpis_blocks(bundle))
+    s_tam = new_section("Estructura del Mercado · TAM/SAM/SOM", 6, _tam_sam_som_blocks(bundle, econ))
+    s_moat = new_section("Ventaja Competitiva y Foso", 6, _moat_blocks(bundle, benchmark))
+    s_teamstruct = new_section("Estructura del Equipo", 6, await _team_structure_blocks(bundle, cif_norm))
+    s_timeline = new_section("Calendario del Proceso", 12, _process_timeline_blocks(bundle))
 
     # Equipo y Organización — Mixto: base real de administradores + plantilla, editable
     emp = (bundle.get("statements") or {}).get("employees")
@@ -1883,10 +3124,10 @@ async def compose_information_memorandum(company_id: str = None, cif: str = None
 
     parts = [
         ("01", "Resumen y Compañía", [s2, s3, s_cap, s_history]),
-        ("02", "Negocio y Operativa", [s_prod, s_cli, s_team, s_team2]),
-        ("03", "Mercado y Competencia", [s6_market, s_competition, s5, s5_charts]),
-        ("04", "Rendimiento Financiero y Plan de Negocio", [s4, s_finpos, s_ebitda, s_proj]),
-        ("05", "La Operación", [s_why, s7_risks]),
+        ("02", "Negocio y Operativa", [s_prod, s_cli, s_moat, s_team, s_team2, s_teamstruct]),
+        ("03", "Mercado y Competencia", [s6_market, s_tam, s_competition, s5, s5_charts]),
+        ("04", "Rendimiento Financiero y Plan de Negocio", [s4, s_kpis, s_finpos, s_ebitda, s_proj]),
+        ("05", "La Operación", [s_why, s_timeline, s7_risks]),
     ]
     _idx_rows = [[num, title] for num, title, _ in parts]
     s_index = new_section("Índice", 1, [

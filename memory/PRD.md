@@ -33,6 +33,14 @@
 | ADMIN | Usuarios, Roles, Seguridad, Auditoría |
 
 ## Latest changes (Julio 2026)
+- **Parche v19 (Document Studio composers) en Preview ✅ (2026-07-31)**
+  - Aplicado `arroba_docstudio_v19_patch.zip`: reemplaza SOLO 4 ficheros `backend/docstudio/{composer,html_render,charts,__init__}.py` sobre v18. Sin cambios de frontend ni dependencias. `.env`/credenciales/datos (24.992 empresas) intactos. Backend arranca limpio, health OK.
+  - **Investment Memorandum** reestructurado (SERVIER B28184687): 50 secciones/slides. Verificado: charts radar + gauge + nested_circles + donut/bar/line/scatter; capítulo Transaction Overview con Deal Snapshot + 5.1 Summary·5.2 Opportunity·5.3 Seller·5.4 Buyer·5.5 Structure·5.6 Process; Cap Table; Anexo Interno (ratios/sector); termómetro HHI (gauge SVG en amarillo de marca `#F3D200`); **0 subtítulos duplicados**. PDF 50 págs 960×540 (16:9 apaisado), PPTX 50 slides (1 img/slide).
+  - **Cuaderno de venta (Information Memorandum)**: 32 secciones. Módulos de dato real (TAM/SAM/SOM nested, KPIs, foso, estructura de equipo, EBITDA bridge waterfall, posición financiera); equity story retirada; 0 subtítulos duplicados.
+  - **Teaser**: 7 secciones, ciego ("Proyecto Confidencial"), incluye bloque `deal_snapshot`.
+  - Nuevos chart kinds SVG confirmados renderizando: `radar`, `nested_circles`, `gauge`. Sin regresiones en motores M&A (fragmentation/view, watchlist, iberinform/stats 200) ni auth negativa (401).
+  - Nota: Investment One Pager (.pptx A4 vertical ciego) NO incluido en este parche (se generaría aparte con composer/renderer nativo si el usuario lo pide).
+
 - **Deploy v18 (snapshot completo) en Preview ✅ (2026-07-26)**
   - Aplicado `arroba_agency_tool_v18.zip` (consolida v17 + parches v17.1 PDF, v17.2 PPTX, v17.3 editor de marca, v17.4 pestañas editables). Reemplazo total de `backend/`+`frontend/` preservando `.env` y `/app/memory/test_credentials.md`. Deps: pip -r requirements.txt, yarn install, `playwright install --with-deps chromium` (Chromium v1208). Sin re-ingesta ni purga: 24.992 empresas reales intactas (ambos esquemas), 66.050 señales.
   - `export_to_pptx` ya es `async` en v18 (coincide con el `await` en routes.py) → el bug async/sync del traspaso quedó consolidado, sin parche manual.

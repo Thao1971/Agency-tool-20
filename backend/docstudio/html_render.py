@@ -143,12 +143,34 @@ def _block_html(b: Dict, c, hf, bf, in_slide: bool = False) -> str:
                 f'border-radius:8px;padding:14px 16px;margin:0;box-sizing:border-box;">'
                 f'<div style="font:600 13px {hf};color:{col("text_primary","#111")};margin-bottom:4px;">{_esc(d.get("title"))}</div>'
                 f'<div style="font:400 {sz} {bf};color:{col("text_secondary","#444")};line-height:1.5;">{_esc(d.get("summary"))}</div></div>')
+    if bt == "deal_snapshot":
+        # Bloque estándar de bud advisors — misma identidad en One Pager, Teaser e Infomemo.
+        accent = col("accent", "#F3D200")
+        ink = col("text_primary", "#111")
+        muted = col("text_secondary", "#555")
+        items = d.get("items", [])
+        title = d.get("title", "Deal Snapshot")
+        cells = ""
+        for i, it in enumerate(items):
+            cells += (
+                f'<div style="border:1px solid #E2E4E8;border-radius:8px;padding:11px 13px;box-sizing:border-box;background:#FFFFFF;">'
+                f'<div style="display:flex;align-items:center;gap:7px;margin-bottom:5px;">'
+                f'<span style="display:inline-flex;align-items:center;justify-content:center;width:19px;height:19px;'
+                f'border-radius:50%;background:{accent};color:#111;font:700 11px {bf};flex:none;">{i+1}</span>'
+                f'<span style="font:700 11px {hf};color:{ink};letter-spacing:.4px;text-transform:uppercase;">{_esc(it.get("label"))}</span>'
+                f'</div>'
+                f'<div style="font:400 12.5px {bf};color:{muted};line-height:1.35;">{_esc(it.get("text"))}</div>'
+                f'</div>')
+        head = (f'<div style="display:flex;align-items:center;gap:9px;margin:2px 0 9px;">'
+                f'<span style="font:700 13px {hf};color:{ink};letter-spacing:1px;text-transform:uppercase;">{_esc(title)}</span>'
+                f'<span style="flex:1;height:2px;background:{accent};"></span></div>')
+        return (head + f'<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:9px;">{cells}</div>')
     if bt == "chart":
         title = f'<div style="font:600 13px {bf};color:{col("text_secondary","#444")};margin:8px 0 4px;">{_esc(d.get("title"))}</div>' if d.get("title") else ""
         ctype = d.get("chart_type", "bar")
         cfg = d.get("config") or {}
         # Tipos de la librería SVG (barras con ref, donut, scatter, línea).
-        if ctype in ("donut", "pie", "scatter", "line", "grouped_bar", "grouped", "waterfall", "bridge") or (d.get("dataset") or {}).get("bars"):
+        if ctype in ("donut", "pie", "scatter", "line", "grouped_bar", "grouped", "waterfall", "bridge", "radar", "nested_circles", "tam_sam_som", "nested", "gauge") or (d.get("dataset") or {}).get("bars"):
             from docstudio import charts as _charts
             svg = _charts.render_chart(ctype, d, col("accent", "#BA7517"), bf)
             if svg:
@@ -224,11 +246,23 @@ def _section_blocks_html(blocks: List[Dict], c, hf, bf, in_slide: bool) -> str:
             run = []
             while i < n and blocks[i].get("block_type") == "insight":
                 run.append(blocks[i]); i += 1
-            if len(run) >= 2:
-                items = "".join(f'<div style="width:calc(50% - 6px);box-sizing:border-box;">{_block_html(x, c, hf, bf, in_slide)}</div>' for x in run)
-                out += f'<div style="display:flex;flex-wrap:wrap;gap:12px;margin:4px 0;">{items}</div>'
-            else:
-                out += _block_html(run[0], c, hf, bf, in_slide)
+            # Los insights con data.full_width se renderizan a línea completa (no en 2 columnas);
+            # el resto se agrupan de dos en dos.
+            buff = []
+            def _flush(bl):
+                if not bl:
+                    return ""
+                if len(bl) >= 2:
+                    items = "".join(f'<div style="width:calc(50% - 6px);box-sizing:border-box;">{_block_html(x, c, hf, bf, in_slide)}</div>' for x in bl)
+                    return f'<div style="display:flex;flex-wrap:wrap;gap:12px;margin:4px 0;">{items}</div>'
+                return _block_html(bl[0], c, hf, bf, in_slide)
+            for x in run:
+                if (x.get("data") or {}).get("full_width"):
+                    out += _flush(buff); buff = []
+                    out += f'<div style="margin:4px 0;">{_block_html(x, c, hf, bf, in_slide)}</div>'
+                else:
+                    buff.append(x)
+            out += _flush(buff)
             continue
         out += _block_html(blocks[i], c, hf, bf, in_slide)
         i += 1
@@ -379,7 +413,8 @@ def _cover_html(d: Dict, brand, cov, hf, bf, big: bool = False) -> str:
     tsize = "42px" if big else "26px"
     ssize = "18px" if big else "14px"
     advisor = (f'<div style="font:400 {("13px" if big else "11px")} {bf};color:{cov.get("subtitle_text","#bbb")};'
-               f'{"position:absolute;bottom:34px;left:60px;" if big else "margin-top:14px;"}opacity:.85;">{_esc(d.get("advisor"))}</div>'
+               f'margin-top:{"34px" if big else "22px"};opacity:.85;line-height:1.9;letter-spacing:.4px;">'
+               f'{_esc(d.get("advisor"))}</div>'
                if d.get("advisor") else "")
     accent = cov.get("brand_text", "#F3D200")
     bar_w = "80px" if big else "56px"
@@ -400,20 +435,59 @@ def _page_shell(body: str, bg: str) -> str:
             f'</head><body style="margin:0;background:{bg};padding:26px 30px;">{body}</body></html>')
 
 
+def _norm_title(s) -> str:
+    """Normaliza un título para comparar: minúsculas, sin acentos, sin numeración/puntuación,
+    quedándose con la parte anterior a un separador ' · ' o ' — '."""
+    import unicodedata, re
+    s = str(s or "")
+    for sep in (" · ", " — ", " - "):
+        if sep in s:
+            s = s.split(sep)[0]
+    s = unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode()
+    s = re.sub(r"^\s*\d+(\.\d+)*\s*", "", s)          # quita "5.1 ", "04 ", etc.
+    s = re.sub(r"[^a-z0-9 ]", " ", s.lower())
+    return re.sub(r"\s+", " ", s).strip()
+
+
+def _dedupe_leading_subhead(blocks: List[Dict], title: str) -> List[Dict]:
+    """Elimina el PRIMER bloque de texto tipo 'subhead' si repite el título de la sección
+    (evita el titular duplicado bajo la cabecera). Se aplica a todos los documentos."""
+    if not blocks or not title:
+        return blocks
+    b0 = blocks[0]
+    if b0.get("block_type") == "text" and (b0.get("data") or {}).get("style") == "subhead":
+        nt, nsub = _norm_title(title), _norm_title((b0.get("data") or {}).get("content"))
+        if nsub and (nsub == nt or nt.startswith(nsub) or nsub.startswith(nt)):
+            return blocks[1:]
+    return blocks
+
+
 def _render_flow(doc: Dict, brand, t, c, cov, hf, bf) -> str:
-    def col(k, d="#000"):
-        return c.get(k, d)
-    body = ""
+    """Documento en VERTICAL A4 (p. ej. el Teaser). Usa los mismos bloques y estilo que el
+    infomemo (marca, tarjetas, gráficos) pero apilados en una columna A4, con paleta legible
+    sobre fondo blanco. La portada/cierre conservan el fondo de marca (negro en bud)."""
+    cpal = _content_palette(c)
+    def pcol(k, d="#000"):
+        return cpal.get(k, d)
+    A4_W = 794  # A4 a 96 dpi
+    parts = []
     for section in doc.get("sections", []):
         blocks = section.get("blocks", [])
         cover = next((b for b in blocks if b.get("block_type") == "cover"), None)
+        is_black = bool(cover) or section.get("slide_kind") in ("separator", "closing")
         if cover:
-            body += _cover_html(cover.get("data", {}), brand, cov, hf, bf)
+            # Portada/cierre a ancho completo con el fondo de marca.
+            parts.append(f'<div style="max-width:{A4_W}px;margin:0 auto 18px;">'
+                         f'{_cover_html(cover.get("data", {}), brand, cov, hf, bf, big=True)}</div>')
             continue
-        body += (f'<div style="font:600 12px {bf};color:{col("text_muted","#888")};'
-                 f'text-transform:uppercase;letter-spacing:1px;margin:26px 0 10px;">{_esc(section.get("title"))}</div>')
-        body += _section_blocks_html(blocks, c, hf, bf, in_slide=False)
-    return _page_shell(f'<div style="max-width:720px;margin:0 auto;">{body}</div>', col("bg_primary", "#fff"))
+        head = (f'<div style="font:700 18px {hf};color:{pcol("text_primary","#111")};'
+                f'border-bottom:2px solid {pcol("accent","#c00")};padding-bottom:6px;'
+                f'margin:24px 0 12px;">{_esc(section.get("title"))}</div>')
+        blocks = _dedupe_leading_subhead(blocks, section.get("title"))
+        parts.append(f'<div style="max-width:{A4_W}px;margin:0 auto;">{head}'
+                     f'{_section_blocks_html(blocks, cpal, hf, bf, in_slide=False)}</div>')
+    body = "".join(parts)
+    return _page_shell(f'<div style="max-width:{A4_W}px;margin:0 auto;">{body}</div>', "#ffffff")
 
 
 def _content_palette(c: Dict) -> Dict:
@@ -465,7 +539,7 @@ def _render_slides(doc: Dict, brand, t, c, cov, hf, bf, start_no: int = 1, total
             head = (f'<div style="font:600 24px {hf};color:{pcol("text_primary","#111")};'
                     f'border-bottom:1px solid {pcol("accent","#c00")};padding-bottom:10px;margin-bottom:16px;letter-spacing:.2px;">{_esc(section.get("title"))}</div>')
             tag = f'<div style="position:absolute;top:18px;right:34px;">{corner_logo}</div>'
-            body = _section_blocks_html(blocks, cpal, hf, bf, in_slide=True)
+            body = _section_blocks_html(_dedupe_leading_subhead(blocks, section.get("title")), cpal, hf, bf, in_slide=True)
             footer = (f'<div style="position:absolute;bottom:0;left:0;right:0;height:28px;display:flex;align-items:center;'
                       f'justify-content:space-between;padding:0 46px;border-top:1px solid rgba(0,0,0,0.08);'
                       f'font:400 9px {bf};color:{pcol("text_muted","#999")};">'

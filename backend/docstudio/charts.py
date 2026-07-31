@@ -336,10 +336,174 @@ def waterfall_chart(items: List[Dict], bf: str, fmt=None, width: int = 620, heig
     return "".join(parts)
 
 
+# ── RADAR ─────────────────────────────────────────────────────────────
+def radar_chart(axes: List[str], series: List[Dict], bf: str, accent: str = "#378ADD",
+                max_value: float = 100.0, width: int = 460, height: int = 300) -> str:
+    """axes: ['Quality Score','Margen EBITDA',...]. series: [{name, color?, values:[...]}].
+    Valores en escala 0..max_value (por defecto percentiles 0-100). Polígono por serie,
+    rejilla concéntrica y etiquetas de eje. Pensado para 'Empresa vs Mediana categoría'."""
+    axes = [a for a in (axes or []) if a]
+    series = [s for s in (series or []) if s.get("values")]
+    n = len(axes)
+    if n < 3 or not series:
+        return ""
+    cx, cy = width / 2, height / 2 + 6
+    r = min(width, height) / 2 - 46
+    import math as _m
+    def _pt(i, frac):
+        ang = -_m.pi / 2 + 2 * _m.pi * i / n
+        return (cx + r * frac * _m.cos(ang), cy + r * frac * _m.sin(ang))
+    parts = [f'<svg viewBox="0 0 {width} {height}" width="100%" xmlns="http://www.w3.org/2000/svg" font-family="{bf}">']
+    # rejilla concéntrica (4 anillos)
+    for ring in range(1, 5):
+        frac = ring / 4
+        poly = " ".join(f"{_pt(i, frac)[0]:.1f},{_pt(i, frac)[1]:.1f}" for i in range(n))
+        parts.append(f'<polygon points="{poly}" fill="none" stroke="#E2E4E8" stroke-width="1"/>')
+    # radios + etiquetas de eje
+    for i, ax in enumerate(axes):
+        ex, ey = _pt(i, 1.0)
+        parts.append(f'<line x1="{cx:.1f}" y1="{cy:.1f}" x2="{ex:.1f}" y2="{ey:.1f}" stroke="#E2E4E8" stroke-width="1"/>')
+        lx, ly = _pt(i, 1.16)
+        anchor = "middle"
+        if lx < cx - 6: anchor = "end"
+        elif lx > cx + 6: anchor = "start"
+        parts.append(f'<text x="{lx:.1f}" y="{ly+3:.1f}" text-anchor="{anchor}" font-size="9.5" fill="#5a5a5a">{_esc(ax)}</text>')
+    # series
+    for si, s in enumerate(series):
+        color = s.get("color") or (accent if si == 0 else PALETTE[(si + 1) % len(PALETTE)])
+        vals = s.get("values") or []
+        poly = []
+        for i in range(n):
+            v = vals[i] if i < len(vals) and vals[i] is not None else 0
+            frac = min(max(float(v) / max_value, 0), 1)
+            px, py = _pt(i, frac)
+            poly.append(f"{px:.1f},{py:.1f}")
+        dash = 'stroke-dasharray="5 3"' if si > 0 else ''
+        parts.append(f'<polygon points="{" ".join(poly)}" fill="{color}" fill-opacity="{0.16 if si==0 else 0.05}" '
+                     f'stroke="{color}" stroke-width="2" {dash}/>')
+        for p in poly:
+            x, y = p.split(",")
+            parts.append(f'<circle cx="{x}" cy="{y}" r="2.6" fill="{color}"/>')
+    # leyenda
+    lx = 14; ly = height - 8
+    for si, s in enumerate(series):
+        color = s.get("color") or (accent if si == 0 else PALETTE[(si + 1) % len(PALETTE)])
+        parts.append(f'<circle cx="{lx+5:.0f}" cy="{ly-4:.0f}" r="5" fill="{color}"/>')
+        parts.append(f'<text x="{lx+15:.0f}" y="{ly:.0f}" font-size="11" fill="#3a3a3a">{_esc(s.get("name",""))}</text>')
+        lx += 15 + len(str(s.get("name",""))) * 6.6 + 18
+    parts.append('</svg>')
+    return "".join(parts)
+
+
+# ── CÍRCULOS CONCÉNTRICOS (TAM/SAM/SOM) ───────────────────────────────
+def nested_circles_chart(items: List[Dict], bf: str, accent: str = "#BA7517",
+                         core: str = "#111111", width: int = 460, height: int = 340) -> str:
+    """items (de mayor a menor): [{label, sublabel?, frac(0-1), dashed?}].
+    Dibuja círculos concéntricos apoyados en la base (estilo TAM/SAM/SOM) con los colores de
+    la MARCA: anillos en el color de acento y núcleo interior sólido. El radio es proporcional
+    a `frac`; las etiquetas se apilan dentro de cada anillo."""
+    items = [i for i in (items or []) if i.get("frac")]
+    if not items:
+        return ""
+    items = sorted(items, key=lambda i: -i["frac"])
+    max_r = min(width, height) / 2 - 8
+    cx = width / 2
+    base_y = height - 6           # todos los círculos comparten la base inferior
+    parts = [f'<svg viewBox="0 0 {width} {height}" width="100%" xmlns="http://www.w3.org/2000/svg" font-family="{bf}">']
+    for idx, it in enumerate(items):
+        r = max_r * min(max(it["frac"], 0.05), 1)
+        cy = base_y - r
+        is_inner = (idx == len(items) - 1)
+        if is_inner:                # el más pequeño: disco sólido (núcleo de marca)
+            parts.append(f'<circle cx="{cx:.0f}" cy="{cy:.0f}" r="{r:.0f}" fill="{core}"/>')
+            tcol = "#ffffff"
+            ly = cy + 2
+        else:                       # anillos en color de acento (marca)
+            dash = 'stroke-dasharray="6 5"' if it.get("dashed") else ''
+            parts.append(f'<circle cx="{cx:.0f}" cy="{cy:.0f}" r="{r:.0f}" fill="none" stroke="{accent}" stroke-width="2.5" {dash}/>')
+            tcol = "#3a3a3a"
+            ly = cy - r + 26
+        parts.append(f'<text x="{cx:.0f}" y="{ly:.0f}" text-anchor="middle" font-size="15" font-weight="700" fill="{tcol}">{_esc(it.get("label",""))}</text>')
+        if it.get("sublabel"):
+            parts.append(f'<text x="{cx:.0f}" y="{ly+16:.0f}" text-anchor="middle" font-size="11" fill="{tcol}">{_esc(it["sublabel"])}</text>')
+    parts.append('</svg>')
+    return "".join(parts)
+
+
+# ── GAUGE / TERMÓMETRO HORIZONTAL (p. ej. HHI 0–10.000) ────────────────
+def _mix(hex_color: str, other: str, t: float) -> str:
+    """Mezcla lineal de dos colores hex (t=0 -> hex_color, t=1 -> other)."""
+    def rgb(h):
+        h = h.lstrip("#")
+        return tuple(int(h[i:i+2], 16) for i in (0, 2, 4))
+    try:
+        a, b = rgb(hex_color), rgb(other)
+    except Exception:
+        return hex_color
+    m = tuple(round(a[i] + (b[i] - a[i]) * t) for i in range(3))
+    return "#%02X%02X%02X" % m
+
+
+def gauge_chart(value: float, vmin: float, vmax: float, zones: List[Dict], bf: str,
+                accent: str = "#F3D200", ink: str = "#1A1A1A",
+                value_label: str = "", ticks: Optional[List[float]] = None,
+                width: int = 640, height: int = 122) -> str:
+    """Barra horizontal con zonas en color de MARCA (rampa del acento hacia el tono oscuro,
+    a mayor valor mayor intensidad) y un marcador en `value`. zones: [{to, label}]."""
+    if value is None:
+        return ""
+    span = (vmax - vmin) or 1
+    pad_l, pad_r, track_y, track_h = 22, 22, 46, 16
+    tw = width - pad_l - pad_r
+    n = max(len(zones), 1)
+
+    def _fx(v):
+        return pad_l + tw * (min(max(v, vmin), vmax) - vmin) / span
+
+    parts = [f'<svg viewBox="0 0 {width} {height}" width="100%" xmlns="http://www.w3.org/2000/svg" font-family="{bf}">']
+    prev = vmin
+    for i, z in enumerate(zones):
+        x0, x1 = _fx(prev), _fx(z["to"])
+        # Rampa de marca: acento claro -> acento -> acento oscuro/tinta
+        t = i / max(n - 1, 1)
+        base = _mix("#FFFFFF", accent, 0.55) if t == 0 else (accent if t < 0.999 else _mix(accent, ink, 0.55))
+        parts.append(f'<rect x="{x0:.1f}" y="{track_y}" width="{max(0,x1-x0):.1f}" height="{track_h}" fill="{base}"/>')
+        if z.get("label"):
+            parts.append(f'<text x="{(x0+x1)/2:.1f}" y="{track_y+track_h+12:.0f}" text-anchor="middle" '
+                         f'font-size="7.5" fill="#6b6b6b">{_esc(z["label"])}</text>')
+        prev = z["to"]
+    # ticks (valores de escala)
+    for t in (ticks or [vmin, vmax]):
+        tx = _fx(t)
+        parts.append(f'<line x1="{tx:.1f}" y1="{track_y+track_h}" x2="{tx:.1f}" y2="{track_y+track_h+3}" stroke="#9a9a9a" stroke-width="1"/>')
+        parts.append(f'<text x="{tx:.1f}" y="{track_y+track_h+26:.0f}" text-anchor="middle" font-size="7.5" fill="#9a9a9a">{_es_num(t)}</text>')
+    # marcador (triángulo + línea + etiqueta)
+    mx = _fx(value)
+    parts.append(f'<line x1="{mx:.1f}" y1="{track_y-6}" x2="{mx:.1f}" y2="{track_y+track_h+2}" stroke="{ink}" stroke-width="2"/>')
+    parts.append(f'<path d="M{mx-6:.1f},{track_y-6} L{mx+6:.1f},{track_y-6} L{mx:.1f},{track_y+2} Z" fill="{ink}"/>')
+    if value_label:
+        anchor = "middle"
+        lx = mx
+        if mx < pad_l + 40: anchor, lx = "start", pad_l
+        elif mx > width - pad_r - 40: anchor, lx = "end", width - pad_r
+        parts.append(f'<text x="{lx:.1f}" y="{track_y-12:.0f}" text-anchor="{anchor}" font-size="12.5" font-weight="700" fill="{ink}">{_esc(value_label)}</text>')
+    parts.append('</svg>')
+    return "".join(parts)
+
+
 def render_chart(chart_type: str, data: Dict, accent: str, bf: str) -> str:
     """Dispatch por tipo. `data` es el dict del bloque chart (data)."""
     ct = (chart_type or "bar").lower()
     ds = data.get("dataset") or data
+    if ct == "gauge":
+        return gauge_chart(ds.get("value"), ds.get("min", 0), ds.get("max", 10000),
+                           ds.get("zones") or [], bf, accent=accent, ink=ds.get("ink", "#1A1A1A"),
+                           value_label=ds.get("value_label", ""), ticks=ds.get("ticks"))
+    if ct in ("nested_circles", "tam_sam_som", "nested"):
+        return nested_circles_chart(ds.get("items") or [], bf, accent, core=ds.get("core", "#111111"))
+    if ct == "radar":
+        return radar_chart(ds.get("axes") or [], ds.get("series") or [], bf, accent,
+                           max_value=ds.get("max_value", 100.0))
     if ct == "donut" or ct == "pie":
         return donut_chart(ds.get("segments") or [], bf)
     if ct == "scatter":
