@@ -2724,7 +2724,7 @@ async def compose_teaser(company_id: str = None, cif: str = None,
     """Teaser CIEGO (perfil anónimo) para primer contacto con compradores: muestra sector,
     región, tamaño y magnitudes financieras + aspectos destacados de inversión, SIN revelar
     identidad (nombre/CIF/web/municipio). Mismo layout de slides y marca que el infomemo."""
-    from services.cnae_catalog import CNAE_DIVISIONS
+    from services.cnae_catalog import CNAE_DIVISIONS, resolve_cnae_label
 
     bundle = await DA.company_intelligence(company_id or cif)
     if not bundle.get("found"):
@@ -2733,7 +2733,7 @@ async def compose_teaser(company_id: str = None, cif: str = None,
     ident = bundle["identity"]
     kpis = bundle.get("kpis", {}) or {}
     cnae = ident.get("cnae_code", "")
-    cnae_label = CNAE_DIVISIONS.get(cnae, {}).get("label", "") or (ident.get("cnae_description") or "su sector")
+    cnae_label = resolve_cnae_label(cnae) or (ident.get("cnae_description") or "su sector")
     provincia = ident.get("provincia")
     rev = kpis.get("revenue")
     emp = (bundle.get("statements") or {}).get("employees")
@@ -2830,7 +2830,7 @@ async def compose_one_pager(company_id: str = None, cif: str = None,
     ("¿por qué merece la pena?"), seguida de KPIs clave, aspectos destacados y el Deal Snapshot
     estándar de bud advisors. Sin identidad (nombre/CIF/web/municipio) y SIN valoración (esa vive
     en el Infomemo / Informe de Valoración). Render dedicado A4 (HTML→Chromium) para HTML/PDF/PPTX."""
-    from services.cnae_catalog import CNAE_DIVISIONS
+    from services.cnae_catalog import CNAE_DIVISIONS, resolve_cnae_label
 
     bundle = await DA.company_intelligence(company_id or cif)
     if not bundle.get("found"):
@@ -2839,7 +2839,7 @@ async def compose_one_pager(company_id: str = None, cif: str = None,
     ident = bundle["identity"]
     kpis = bundle.get("kpis", {}) or {}
     cnae = ident.get("cnae_code", "")
-    cnae_label = CNAE_DIVISIONS.get(cnae, {}).get("label", "") or (ident.get("cnae_description") or "su sector")
+    cnae_label = resolve_cnae_label(cnae) or (ident.get("cnae_description") or "su sector")
     provincia = ident.get("provincia")
     rev = kpis.get("revenue")
     emp = (bundle.get("statements") or {}).get("employees")

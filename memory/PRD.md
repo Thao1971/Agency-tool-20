@@ -33,6 +33,11 @@
 | ADMIN | Usuarios, Roles, Seguridad, Auditoría |
 
 ## Latest changes (Julio 2026)
+- **Etiquetas CNAE en español en One Pager y Teaser ✅ (2026-07-31)**
+  - Causa raíz: ambos composers pasaban el código CNAE de 4 dígitos (p.ej. "2120") a `CNAE_DIVISIONS` (indexado por 2 dígitos) → no encontraba nada y caía a `ident.cnae_description` (dato crudo en inglés, p.ej. "Manufacture of pharmaceutical specialties").
+  - Fix: nuevo helper `services/cnae_catalog.resolve_cnae_label(code)` que resuelve cualquier código (grupo 4d → división 2d → sección) a etiqueta en español con cascada de fallbacks; nunca devuelve inglés. `compose_one_pager` y `compose_teaser` ahora usan `resolve_cnae_label(cnae) or (cnae_description or "su sector")`.
+  - Verificado (SERVIER B28184687): subtítulo y perfil de One Pager y Teaser ahora "Fabricación de especialidades farmacéuticas" (español), sin fugas de inglés ("Manufacture"/"pharmaceutical") ni de identidad. Helper probado con 2120/21/2110/62/6201/C/J/86/8610 → todas en español.
+
 - **Investment One Pager (A4 vertical, ciego) integrado en Document Studio ✅ (2026-07-31)**
   - Nuevo documento generable: perfil de una sola página A4 vertical, completamente CIEGO (sin nombre/CIF/web/municipio), pensado para leerse en <3 min. La **Tesis de Inversión es el bloque protagonista** ("¿por qué merece la pena?"), redactada por Claude (fact-locked, contexto ciego → dice "La compañía"; fallback determinista si la IA falla). Después: KPIs clave (facturación, EBITDA, empleados, CAGR), 3-4 aspectos destacados y el Deal Snapshot estándar. **SIN valoración** (esa vive en Infomemo/Valoración/Recomendación). Cabecera "CONFIDENTIAL · Investment Opportunity · Executive One Pager"; CTA "Firme el NDA para acceder al Information Memorandum completo".
   - **Renderer dedicado** `docstudio/onepager_render.py` (A4 portrait 794×1123, marca real: colores/tipografía/logo vía `resolve_doc_brand`). Un solo composer alimenta HTML, PDF y PPTX (consistencia entre formatos):
