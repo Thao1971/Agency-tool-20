@@ -79,8 +79,50 @@ async def orchestrate(request: Dict) -> Dict:
     req = dict(request)
     req["buyer_profile"] = {"type": profile_type}
     if not (req.get("company_id") or req.get("cif") or req.get("opportunity_id")) and active.get("id"):
+        req["company_id"] = active["id"]
         req["opportunity_id"] = active["id"]
-        req.setdefault("company_id", active["id"])
+        if active.get("cif"):
+            req["cif"] = active["cif"]
+
+    # Entity linking desde texto libre (Boundary First: reutiliza el resolver canónico de Company
+    # Intelligence; el Copilot NUNCA busca en master_companies). Solo si no hay id explícito ni
+    # entidad activa en la sesión. Nunca se ejecuta el comité con una entidad ambigua.
+    _intent = INTENT.classify(request.get("question") or "", request.get("screen"))
+    if _intent["level"] != "L4" and not (
+            req.get("company_id") or req.get("cif") or req.get("opportunity_id")):
+        from services.copilot import entity_link as LINK
+        linked = await LINK.link(request.get("question"))
+        if linked["status"] == "resolved":
+            e = linked["entity"]
+            req["company_id"] = e["master_id"]
+            req["cif"] = e.get("cif")
+            req["opportunity_id"] = e["master_id"]
+        elif linked["status"] == "ambiguous":
+            mention = linked.get("mention") or "esa compañía"
+            names = ", ".join(c["name"] for c in linked["candidates"][:3])
+            msg = (f"He encontrado varias compañías que podrían corresponder a «{mention}»: {names}. "
+                   f"¿A cuál te refieres?")
+            actions = [{"id": f"pick_{i}", "kind": "select_entity",
+                        "label": f"{c['name']}" + (f" — {c['cif']}" if c.get("cif") else ""),
+                        "params": {"company_id": c["master_id"], "name": c["name"]}}
+                       for i, c in enumerate(linked["candidates"][:5])]
+            out = {"orchestrator_version": ORCHESTRATOR_VERSION, "level": "L0",
+                   "cim_state": "conversation", "sources": ["company-intelligence"],
+                   "disambiguation": True, "session_id": session_id,
+                   "answer": {"headline": "¿A cuál te refieres?", "message": msg, "detail": msg},
+                   "actions": actions,
+                   "personalization_applied": {"buyer_profile": profile_type,
+                                               "buyer_profile_source": bp_source}}
+            await SESSION.update(session_id,
+                                 context_patch={"pending_disambiguation": linked["candidates"]},
+                                 turn={"user_text": request.get("question"), "level": "L0",
+                                       "entity": None, "summary": "Desambiguación de entidad"})
+            await METRICS.record_turn({"tenant_id": tenant_id, "user_id": user_id,
+                                       "session_id": session_id, "level": "L0",
+                                       "kind": "disambiguation", "degraded": False,
+                                       "response_ms": round((time.time() - t0) * 1000, 1),
+                                       "buyer_profile": profile_type})
+            return out
 
     # Sesgo de ranking aprendido (solo surfacing) + dimensiones de las oportunidades para aplicarlo.
     rank_bias = await FEEDBACK.compute_bias(tenant_id, user_id)
@@ -230,8 +272,9 @@ async def _route(request: Dict, _sink: Dict = None) -> Dict:
     bundle = resolved["bundle"]
     name = (bundle.get("identity") or {}).get("name") or "la compañía"
     if _sink is not None:
-        _sink["entity"] = {"id": request.get("opportunity_id") or request.get("company_id")
-                           or request.get("cif"), "name": name}
+        _sink["entity"] = {"id": request.get("company_id") or request.get("opportunity_id")
+                           or request.get("cif"), "name": name,
+                           "cif": bundle.get("cif_normalized") or request.get("cif")}
 
     # L3 — comité completo
     if level == "L3":

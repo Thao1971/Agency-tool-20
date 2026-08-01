@@ -11,6 +11,7 @@ import api from '@/lib/api';
 const ACTION_ICON = {
   navigate: ArrowRight, analyze: Brain, open_deliberation: Eye,
   generate_document: FileText, add_to_watchlist: Star, search: Search, explain_order: Info,
+  select_entity: ArrowRight,
 };
 
 function EntityCard({ card }) {
@@ -61,6 +62,7 @@ export default function CopilotPage() {
   const [busy, setBusy] = useState(false);
   const [sessionId, setSessionId] = useState(null);
   const scrollRef = useRef(null);
+  const lastQuestionRef = useRef('');
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -69,6 +71,11 @@ export default function CopilotPage() {
 
   const runAction = (a, msg) => {
     switch (a.kind) {
+      case 'select_entity':
+        runAsk(lastQuestionRef.current || `Analiza ${a.params?.name}`,
+               { company_id: a.params?.company_id },
+               `Me refiero a ${a.params?.name}`);
+        break;
       case 'navigate':
         if (a.target && a.target.startsWith('/')) navigate(a.target);
         else toast.info(`Ir a: ${a.label}`);
@@ -101,10 +108,16 @@ export default function CopilotPage() {
     const text = input.trim();
     if (!text || busy) return;
     setInput('');
-    setMessages((m) => [...m, { role: 'user', content: text }]);
+    lastQuestionRef.current = text;
+    runAsk(text);
+  };
+
+  const runAsk = async (question, extra = {}, displayText = null) => {
+    if (busy) return;
+    setMessages((m) => [...m, { role: 'user', content: displayText || question }]);
     setBusy(true);
     try {
-      const { data } = await api.post('/copilot-ui/ask', { question: text, session_id: sessionId });
+      const { data } = await api.post('/copilot-ui/ask', { question, session_id: sessionId, ...extra });
       if (data.session_id) setSessionId(data.session_id);
       setMessages((m) => [...m, {
         role: 'assistant',

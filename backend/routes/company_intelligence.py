@@ -182,23 +182,9 @@ async def resolve(req: CompanyResolveRequest, _key=Depends(require_service_key))
     if not (req.cif or req.name):
         raise HTTPException(status_code=422, detail="provide 'cif' or 'name'")
 
-    matches: List[CompanyResolveMatch] = []
-    if req.cif:
-        cifn = normalize_cif(req.cif)
-        if cifn:
-            doc = await db.master_companies.find_one({"cif_normalized": cifn}, _PROJ)
-            if doc:
-                matches.append(_match(doc, "cif_exact", 1.0))
-    elif req.name:
-        nk = name_key(req.name)
-        if nk:
-            async for d in db.master_companies.find({"name_key": nk}, _PROJ).limit(req.limit):
-                matches.append(_match(d, "name_exact", 1.0))
-            if not matches:
-                async for d in db.master_companies.find(
-                    {"name_key": {"$regex": nk.replace(" ", ".*"), "$options": "i"}}, _PROJ
-                ).limit(req.limit):
-                    matches.append(_match(d, "name_partial", 0.6))
+    from services.company_resolver import resolve_company_query
+    result = await resolve_company_query(cif=req.cif, name=req.name, limit=req.limit)
+    matches = [CompanyResolveMatch(**m) for m in result["matches"]]
 
     return CompanyResolveResponse(query={"cif": req.cif, "name": req.name},
                            count=len(matches), matches=matches).model_dump()

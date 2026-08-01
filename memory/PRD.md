@@ -33,6 +33,15 @@
 | ADMIN | Usuarios, Roles, Seguridad, Auditoría |
 
 ## Latest changes (Agosto 2026)
+- **Copilot: resolución de entidad desde texto libre + continuidad conversacional (Boundary First) ✅ (2026-08-01)**
+  - Ahora el Copilot ENTIENDE de qué empresa habla el usuario sin exigir CIF: `"¿Comprarías Servier?"` → resuelve → datos reales → Investment Decision → respuesta natural. Antes daba "cobertura 0%".
+  - **Boundary First (sin duplicar lógica ni acoplar Copilot a Mongo)**: nuevo `services/company_resolver.py::resolve_company_query(cif|name)` = capacidad canónica única contra `master_companies` (devuelve `master_id`+cif+legal_name+match_score). Refactoricé `routes/company_intelligence.py::resolve` para delegar en ella (mismo código, un solo origen). Nuevo `services/copilot/entity_link.py` REUTILIZA ese resolver: texto → extracción CIF (regex validada) / nombres (`INTENT.extract_entities`) → resolver canónico → `master_id`.
+  - **Orquestador**: antes de rutar, si no hay id explícito ni entidad activa → linkea. `resolved` (1 match claro) → inyecta `company_id=master_id` y continúa. `ambiguous` (varios) → **short-circuit de desambiguación** (mensaje natural + mini-cards `select_entity` con master_id); **NUNCA ejecuta el comité con entidad ambigua**. `none` → comportamiento previo. La entidad activa (id=master_id, cif, name) se persiste en `working_context.active_entity`.
+  - **Bug corregido**: la reutilización de entidad usaba `req.setdefault("company_id", ...)` pero `AskIn` trae `company_id=None` (clave existente) → no se sobrescribía y `resolve_evidence` (lee company_id, no opportunity_id) recibía None → bundle vacío en turnos 2+. Cambiado a asignación explícita `req["company_id"]=active["id"]`.
+  - **Frontend** `CopilotPage.jsx`: acción `select_entity` (elegir candidato re-pregunta con `company_id`), refactor `send`→`runAsk(question, extra, displayText)`.
+  - **Verificado E2E**: "¿Comprarías Servier?" → resuelve LABORATORIOS SERVIER (cov 0.8) → PROCEED/79 (79 por perfil por defecto; 76 con `private_equity`); turnos 2/3 ("¿qué riesgos tiene?", "¿cuánto pagarías?") reutilizan la entidad (subject=LABORATORIOS SERVIER) sin re-nombrar. Caso ambiguo ("¿Comprarías Banco?") → mini-cards de candidatos, `decision=None` (comité no ejecutado); seleccionar candidato (company_id=master_id) → PROCEED/85. Invariante OK: **score/banda nunca visibles en el chat** (solo tras "Ver deliberación"). Multi-entidad preparada (todo por `master_id`). 14 tests Copilot verdes, frontend compila. UI verificada por screenshot. Claude Voice NO activado (según decisión).
+
+
 - **ARROBA Copilot COMPLETO v2 (chat interno + CNAE español + guardián fact-lock) ✅ (2026-08-01)**
   - Aplicado `arroba_copilot_full_v2.zip` (aditivo). Sobrescrituras cuidadas para preservar mis desarrollos:
     - `docstudio/composer.py`: overwrite del vendor (CNAE en español vía `resolve_cnae_label` en los 18 composers) + **re-inyecté mi `compose_one_pager`** (que el vendor no incluye) al final del fichero.
