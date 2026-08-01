@@ -198,6 +198,7 @@ async def ensure_indexes():
     try:
         from database import db
         await db.company_classifications.create_index("company_id")
+        await db.company_classifications.create_index([("axis", 1), ("taxonomy_id", 1)])
         await db.company_fingerprint.create_index("company_id", unique=True)
         _INDEXED = True
     except Exception:

@@ -11,6 +11,8 @@ from services.taxonomy import registry as REG
 from services.taxonomy import classify as CLS
 from services.taxonomy import batch as BATCH
 from services.taxonomy import audit as AUDIT
+from services.taxonomy import similarity as SIM
+from services.taxonomy import search as SEARCH
 
 router = APIRouter(prefix="/api/v1/company-taxonomy", tags=["company-taxonomy"])
 
@@ -68,3 +70,27 @@ async def classify_batch(limit: Optional[int] = None, _key=Depends(require_servi
 async def audit_report(sample_n: int = 150, _key=Depends(require_service_key)):
     """Informe de auditoría de la clasificación (distribución, cobertura, muestra)."""
     return await AUDIT.audit_report(sample_n=sample_n)
+
+
+@router.get("/peers/{company_id}")
+async def peers(company_id: str, k: int = 10, same_primary_only: bool = False,
+                _key=Depends(require_service_key)):
+    """Peer Universe Resolver: comparables reales por taxonomía+dimensiones+tamaño+geo+fingerprint."""
+    return await SIM.peers(company_id, k=k, same_primary_only=same_primary_only)
+
+
+@router.get("/search")
+async def search(node_id: Optional[str] = None, dimension_id: Optional[str] = None,
+                 q: Optional[str] = None, primary_only: bool = False, limit: int = 50,
+                 _key=Depends(require_service_key)):
+    """Búsqueda por taxonomía (doble modo). `q` resuelve una etiqueta de texto a nodo/dimensión."""
+    if q and not (node_id or dimension_id):
+        hit = SEARCH.resolve_label(q)
+        if not hit:
+            return {"count": 0, "company_ids": [], "note": f"No reconozco '{q}' en la taxonomía."}
+        if hit["kind"] in SEARCH._IS_NODE:
+            node_id = hit["id"]
+        else:
+            dimension_id = hit["id"]
+    return await SEARCH.search_by_taxonomy(node_id=node_id, dimension_id=dimension_id,
+                                           primary_only=primary_only, limit=limit)

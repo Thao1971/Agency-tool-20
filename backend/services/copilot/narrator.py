@@ -262,6 +262,27 @@ def _n_capability(out: Dict, ctx: Dict) -> Dict:
         if bias:
             msg += " He tenido en cuenta tus preferencias recientes al ordenarlas."
         return {"headline": msg, "message": msg}
+    if cap == "peers":
+        peers = data.get("peers") or []
+        if not peers:
+            msg = data.get("note") or "No he encontrado comparables con la información disponible."
+            return {"headline": msg, "message": msg}
+        names = [p.get("legal_name") or p.get("company_id") for p in peers[:5]]
+        why = ", ".join((peers[0].get("why") or [])[:3])
+        msg = ("Los comparables más cercanos son " + _join(names) +
+               (f". Los aproximo por {why}." if why else "."))
+        return {"headline": f"Comparables: {_join(names[:3])}.", "message": msg}
+    if cap == "taxo_search":
+        ids = data.get("company_ids") or []
+        label = data.get("label") or "ese sector"
+        if not ids:
+            msg = data.get("note") or f"No encuentro empresas en {label} ahora mismo."
+            return {"headline": msg, "message": msg}
+        sample = data.get("sample") or []
+        show = [s.get("legal_name") or s.get("company_id") for s in sample[:5]] or [str(x) for x in ids[:5]]
+        msg = (f"Hay {data.get('count', len(ids))} empresas en {label}. Te muestro las primeras: "
+               + _join(show) + ".")
+        return {"headline": f"Empresas en {label}.", "message": msg}
     # portfolio u otros
     base = (out.get("answer") or {}).get("headline") or "Análisis de cartera listo."
     return {"headline": base, "message": base}

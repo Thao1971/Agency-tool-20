@@ -86,9 +86,11 @@ async def orchestrate(request: Dict) -> Dict:
 
     # Entity linking desde texto libre (Boundary First: reutiliza el resolver canónico de Company
     # Intelligence; el Copilot NUNCA busca en master_companies). Solo si no hay id explícito ni
-    # entidad activa en la sesión. Nunca se ejecuta el comité con una entidad ambigua.
+    # entidad activa. Se aplica a intents de una sola empresa (L0–L3) y a L4 'peers' (necesita
+    # sujeto); NO a taxo_search/compare/portfolio/recommend. Nunca ejecuta el comité con entidad ambigua.
     _intent = INTENT.classify(request.get("question") or "", request.get("screen"))
-    if _intent["level"] != "L4" and not (
+    _needs_entity = _intent["level"] != "L4" or _intent.get("capability") == "peers"
+    if _needs_entity and not (
             req.get("company_id") or req.get("cif") or req.get("opportunity_id")):
         from services.copilot import entity_link as LINK
         linked = await LINK.link(request.get("question"))
@@ -243,10 +245,33 @@ async def _route(request: Dict, _sink: Dict = None) -> Dict:
     intent = request.get("force_intent") or INTENT.classify(text, screen)
     level = intent["level"]
 
-    # L4 — capacidades (compare / portfolio / recommend)
+    # L4 — capacidades (compare / portfolio / recommend / peers / taxo_search)
     if level == "L4":
         cap = intent["capability"]
         bp = request.get("buyer_profile") or {"type": profile["type"]}
+        # Taxonomía ARROBA: comparables (peers) y búsqueda por sector/vertical. Import perezoso.
+        if cap in ("peers", "taxo_search"):
+            cid = request.get("company_id") or request.get("cif") or request.get("opportunity_id")
+            try:
+                if cap == "peers":
+                    from services.taxonomy import similarity as _SIM
+                    data = await _SIM.peers(cid, k=int(request.get("k") or 8)) if cid else \
+                        {"peers": [], "note": "Dime sobre qué compañía busco comparables."}
+                else:
+                    from services.taxonomy import search as _SR
+                    hit = _SR.resolve_label(text)
+                    if not hit:
+                        data = {"count": 0, "company_ids": [], "note": "No reconozco ese sector/vertical."}
+                    else:
+                        node = hit["id"] if hit["kind"] in _SR._IS_NODE else None
+                        dim = None if node else hit["id"]
+                        data = await _SR.search_by_taxonomy(node_id=node, dimension_id=dim, limit=10)
+                        data["label"] = hit["label"]
+            except Exception:
+                data = {"peers": [], "company_ids": [], "note": "La taxonomía no está disponible ahora."}
+            return _result("L4", "recommender",
+                           {"headline": f"Capacidad: {cap}", "detail": "", "data": data},
+                           sources=["arroba-company-taxonomy-v1"], capability=cap)
         if cap == "compare":
             r = await cap_compare.compare(request.get("opportunities") or [], bp)
         elif cap == "portfolio":

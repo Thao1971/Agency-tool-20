@@ -33,6 +33,12 @@ EVOLUTION = ("ha mejorado", "ha empeorado", "ha cambiado", "respecto al anterior
              "que la anterior", "evolucion", "como va respecto", "sigue igual")
 
 L4 = [
+    # Peers/comparables (taxonomía ARROBA) — antes que 'compare' para que "comparables" no caiga en compare.
+    (("comparable", "comparables", "similar", "similares", "parecid", "peers", "empresas como",
+      "companias como", "compañias como"), "peers"),
+    # Búsqueda por sector/vertical de la taxonomía ARROBA.
+    (("empresas del sector", "companias del sector", "compañias del sector", "empresas del vertical",
+      "empresas de la industria"), "taxo_search"),
     (("comparar", "compara", "versus", " vs ", "frente a", "mejor entre", "cual es mejor"), "compare"),
     (("cartera", "portfolio", "portafolio"), "portfolio"),
     (("recomiendame", "recomienda oportunidades", "busca objetivos", "encuentra objetivos",
