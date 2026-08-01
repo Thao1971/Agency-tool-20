@@ -96,6 +96,43 @@ Professional tone. Data-driven. Spanish language. No speculation beyond the data
     return result
 
 
+async def generate_copilot_message(context: Dict, provider: str = "claude",
+                                   document_id: str = None) -> Dict:
+    """Reescribe un BORRADOR determinista del Copilot en prosa natural, ejecutiva y ágil (ES).
+    FACT-LOCK estricto: solo puede reformular el borrador y la evidencia dada; NO puede añadir,
+    estimar ni inventar dato alguno. Reutiliza los proveedores existentes (claude/openai/nvidia)."""
+    draft = context.get("draft") or ""
+    persona = context.get("persona") or "Eres un copiloto senior de M&A conversando con un profesional."
+    hist = context.get("history") or []
+    hist_block = ""
+    if hist:
+        lines = "\n".join(f"- Usuario: {h.get('user')}\n  Copilot: {h.get('copilot')}" for h in hist[-6:])
+        hist_block = ("\n\nCONVERSACIÓN RECIENTE (para dar continuidad; no la repitas literalmente ni "
+                      f"añadas datos nuevos):\n{lines}")
+    prompt = f"""{persona}
+Reescribe el BORRADOR en una respuesta natural, ejecutiva, técnicamente rigurosa y ágil, en español.
+Responde primero a la pregunta; breve no es seco; prioriza lo material; distingue hecho, interpretación
+e incertidumbre. Mantén la continuidad con la conversación reciente si la hay (no repitas lo que el
+usuario ya sabe).{hist_block}
+
+REGLA FUNDAMENTAL (FACT-LOCK): NO añadas, estimes ni inventes ningún dato. Usa EXCLUSIVAMENTE lo que
+aparece en BORRADOR y EVIDENCIA. Si algo no está, no lo afirmes. No cambies cifras, score ni banda.
+
+Perfil del usuario: {context.get('profile')}. Verbosidad: {context.get('verbosity')}.
+
+BORRADOR:
+{draft}
+
+EVIDENCIA (solo contexto; no salgas de aquí):
+{_truncate_data(context.get('evidence') or {})}
+
+Devuelve SOLO JSON válido: {{"message": "la respuesta reescrita en español"}}"""
+    result = await _call_provider(provider, "copilot_voice", prompt, document_id)
+    if isinstance(result, dict) and result.get("raw_text") and not result.get("message"):
+        result["message"] = result["raw_text"]
+    return result
+
+
 async def _call_provider(provider: str, task: str, prompt: str, document_id: str = None) -> Dict:
     """Call the AI provider and audit the result."""
     now = now_iso()
@@ -201,7 +238,7 @@ async def _call_nvidia(prompt: str) -> Dict:
     api_key = os.environ.get("NVIDIA_API_KEY")
     if not api_key:
         return {"error": "NVIDIA_API_KEY no configurada", "_model": model}
-    timeout = float(os.environ.get("NVIDIA_TIMEOUT", "120"))
+    timeout = float(os.environ.get("NVIDIA_TIMEOUT", "50"))
     try:
         import httpx
         async with httpx.AsyncClient(timeout=timeout) as client:

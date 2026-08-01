@@ -32,6 +32,14 @@
 | DATA | Companies Master, Agency Results, Iberinform, INE, Economic Intelligence, BME, BORME, CNMV, Contratación Pública, DataComex, OEPM |
 | ADMIN | Usuarios, Roles, Seguridad, Auditoría |
 
+## Latest changes (Agosto 2026)
+- **ARROBA Copilot v1 integrado (cerebro conversacional, API service-key) ✅ (2026-08-01)**
+  - Aplicado `arroba_copilot_v1.zip` (aditivo). Nuevo: `services/copilot/**` (orquestador L0–L4, memoria usuario/sesión/entidad, voz, persona, narrador, NBA/mini-cards, feedback→sesgo, gobernanza, métricas, seguridad multi-tenant, proactividad, intención) + `routes/copilot.py`. Sobrescrituras: `services/engines/investment_decision/**` (solo `committee/capabilities.py` cambió — manifiesto de capacidades), `routes/investment_decision.py` (idéntico), `docstudio/model_provider.py` (añade `generate_copilot_message` voz Copilot). Docs canónicas copiadas a `/app/memory/ARROBA_COPILOT_*.md`.
+  - `server.py`: `+copilot_router` (import+include) y `ensure_indexes()` del copilot en startup (no bloqueante). Re-apliqué mi ajuste `NVIDIA_TIMEOUT` configurable (default 50) + logging `repr` que el zip había revertido.
+  - Endpoints `/api/v1/copilot` (X-API-Key): health (copilot-orchestrator-v1, L0–L4), capabilities, actions/contract, ask, classify, session/close, memory/get|set, entity/history, feedback, feedback/bias, metrics/summary, governance/whats-known|export|forget|audit.
+  - Verificado: **17 ficheros de test en verde** (14 Copilot + 3 IDE = los 62 tests) — los timeouts iniciales eran solo por llamadas reales a Claude (lentas), no bugs; pasan deterministas con IA off. Endpoints vivos: health/capabilities/actions 200, auth negativa 401. `/ask` SERVIER (B28184687, PE) → orquestador L3, comité de 10, **decisión PROCEED/score 76 fact-lock** (idéntico al IDE), mini-cards (open_deliberation/gen_teaser/add_watchlist), voz determinista (COPILOT_VOICE_PROVIDER no seteado). Sin regresiones (IDE/catálogo/docstudio/fragmentation 200).
+  - Nota: `mongomock_motor` instalado (solo para tests). Copilot es API-only (lo consume ARROBA externamente); no hay UI en este agency tool. Voz IA opcional vía `COPILOT_VOICE_PROVIDER=claude|openai|nvidia`.
+
 ## Latest changes (Julio 2026)
 - **Etiquetas CNAE en español en One Pager y Teaser ✅ (2026-07-31)**
   - Causa raíz: ambos composers pasaban el código CNAE de 4 dígitos (p.ej. "2120") a `CNAE_DIVISIONS` (indexado por 2 dígitos) → no encontraba nada y caía a `ident.cnae_description` (dato crudo en inglés, p.ej. "Manufacture of pharmaceutical specialties").

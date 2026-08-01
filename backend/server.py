@@ -63,6 +63,7 @@ from routes.semantic_intelligence import router as semantic_intelligence_router
 from routes.recommendation_intelligence import router as recommendation_intelligence_router
 from routes.buyer_mandates import router as buyer_mandates_router
 from routes.investment_decision import router as investment_decision_router
+from routes.copilot import router as copilot_router
 from routes.watchlist import router as watchlist_router
 from routes.strategy_intelligence import router as strategy_intelligence_router
 from routes.transaction_intelligence import router as transaction_intelligence_router
@@ -168,6 +169,7 @@ app.include_router(semantic_intelligence_router)
 app.include_router(recommendation_intelligence_router)
 app.include_router(buyer_mandates_router)
 app.include_router(investment_decision_router)
+app.include_router(copilot_router)
 app.include_router(watchlist_router)
 app.include_router(strategy_intelligence_router)
 app.include_router(transaction_intelligence_router)
@@ -589,6 +591,13 @@ async def startup():
         await ensure_service_key()
     except Exception as e:
         logger.warning(f"Service key bootstrap failed (non-blocking): {e}")
+
+    # ARROBA Copilot indexes (non-blocking)
+    try:
+        from services.copilot import indexes as _cop_idx
+        await _cop_idx.ensure_indexes()
+    except Exception as e:
+        logger.warning(f"Copilot indexes bootstrap failed (non-blocking): {e}")
 
     # Seed Signal Engine threshold config (thr-v1) + signals indexes
     try:
