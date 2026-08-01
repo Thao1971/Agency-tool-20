@@ -7,10 +7,24 @@ rellenar huecos ni cambiar el score del comité. Pulido por IA opcional (COPILOT
 REESCRIBE el borrador. Ver memory/ARROBA_COPILOT_VOICE_NATURAL_EXECUTIVE.md.
 """
 
+import json
 import os
+import re
 from typing import Dict, List
 
 NARRATOR_VERSION = "copilot-voice-v1"
+
+
+def _introduces_new_numbers(ai_msg: str, allowed_text: str) -> bool:
+    """Guardián fact-lock en runtime: True si el texto de la IA contiene un número (≥2 dígitos) cuyos
+    dígitos NO aparecen en el borrador/evidencia permitidos. Lenient (compara por subcadena de dígitos)
+    para no rechazar reformateos legítimos, pero atrapa cifras inventadas."""
+    allowed = re.sub(r"\D", "", allowed_text or "")
+    for tok in re.findall(r"\d[\d.,]*", ai_msg or ""):
+        d = re.sub(r"\D", "", tok)
+        if len(d) >= 2 and d not in allowed:
+            return True
+    return False
 
 # Recomendación del comité (banda interna) → frase natural. El usuario habla con UNA voz (el Copilot);
 # la banda/score son internos y NO se muestran en el chat (van en `disclosure` → "ver deliberación").
@@ -273,6 +287,11 @@ async def _maybe_ai(draft: Dict, out: Dict, ctx: Dict) -> Dict:
         r = await MP.generate_copilot_message(context, provider=provider)
         msg = (r or {}).get("message")
         if msg and "error" not in (r or {}):
+            # Guardián fact-lock: si la IA introduce una cifra que no estaba, se descarta su versión.
+            allowed_text = (draft.get("message") or "") + " " + json.dumps(
+                context.get("evidence") or {}, ensure_ascii=False, default=str)
+            if _introduces_new_numbers(msg, allowed_text):
+                return draft
             return {**draft, "headline": msg.split(". ")[0] + ".", "message": msg}
     except Exception:
         pass

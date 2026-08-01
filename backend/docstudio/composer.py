@@ -19,6 +19,7 @@ from docstudio import (
 from docstudio.model_provider import generate_summary
 from docstudio import data_access as DA
 from docstudio import financial_enrich as FE
+from services.cnae_catalog import resolve_cnae_label
 
 
 async def _enriched_financial_blocks(bundle: Dict) -> list:
@@ -1356,7 +1357,7 @@ async def compose_sector_report(cnae_code: str, brand_id: str = "brand_bud",
     """Compose a full sector report from platform data."""
     from services.cnae_catalog import CNAE_DIVISIONS, get_section_for_division
 
-    cnae_label = CNAE_DIVISIONS.get(cnae_code, {}).get("label", cnae_code)
+    cnae_label = resolve_cnae_label(cnae_code, fallback=cnae_code)
     section_code = get_section_for_division(cnae_code)
 
     # Gather data from all sources
@@ -1511,7 +1512,7 @@ async def compose_company_profile(company_id: str = None, cif: str = None,
     # Company KPIs from the real Financial Engine
     company_kpis = _company_kpi_blocks(bundle)
     if cnae:
-        company_kpis.append(kpi_block("Sector", CNAE_DIVISIONS.get(cnae, {}).get("label", cnae), f"CNAE {cnae}"))
+        company_kpis.append(kpi_block("Sector", resolve_cnae_label(cnae, fallback=cnae), f"CNAE {cnae}"))
     if ident.get("provincia"):
         company_kpis.append(kpi_block("Provincia", ident["provincia"], ""))
     s3 = new_section("Datos Generales", 3, company_kpis)
@@ -1519,7 +1520,7 @@ async def compose_company_profile(company_id: str = None, cif: str = None,
     # General info table
     info_rows = [["CIF", cif_norm], ["Razón social", name]]
     if cnae:
-        info_rows.append(["Sector CNAE", f"{cnae} — {CNAE_DIVISIONS.get(cnae, {}).get('label', '')}"])
+        info_rows.append(["Sector CNAE", f"{cnae} — {resolve_cnae_label(cnae, fallback='')}"])
     if ident.get("provincia"):
         info_rows.append(["Provincia", ident["provincia"]])
     s3["blocks"].append(table_block("Información general", ["Campo", "Valor"], info_rows))
@@ -1601,7 +1602,7 @@ async def compose_benchmark_report(cnae_code: str, brand_id: str = "brand_bud",
     from services.cnae_catalog import CNAE_DIVISIONS
     from docstudio.financial_engine import analyze_sector_benchmark
 
-    cnae_label = CNAE_DIVISIONS.get(cnae_code, {}).get("label", cnae_code)
+    cnae_label = resolve_cnae_label(cnae_code, fallback=cnae_code)
     econ = await _get_economic_profile(cnae_code)
     benchmark = await analyze_sector_benchmark(cnae_code)
 
@@ -2264,7 +2265,7 @@ async def compose_investment_memo(company_id: str = None, cif: str = None,
     ident = bundle["identity"]
     name = ident.get("name", "Empresa")
     cnae = ident.get("cnae_code", "")
-    cnae_label = CNAE_DIVISIONS.get(cnae, {}).get("label", "")
+    cnae_label = resolve_cnae_label(cnae, fallback="")
     cif_norm = bundle.get("cif_normalized", "—")
     kpis = bundle.get("kpis", {})
     assessment = bundle.get("assessment", {}) or {}
@@ -2724,7 +2725,7 @@ async def compose_teaser(company_id: str = None, cif: str = None,
     """Teaser CIEGO (perfil anónimo) para primer contacto con compradores: muestra sector,
     región, tamaño y magnitudes financieras + aspectos destacados de inversión, SIN revelar
     identidad (nombre/CIF/web/municipio). Mismo layout de slides y marca que el infomemo."""
-    from services.cnae_catalog import CNAE_DIVISIONS, resolve_cnae_label
+    from services.cnae_catalog import CNAE_DIVISIONS
 
     bundle = await DA.company_intelligence(company_id or cif)
     if not bundle.get("found"):
@@ -2733,7 +2734,7 @@ async def compose_teaser(company_id: str = None, cif: str = None,
     ident = bundle["identity"]
     kpis = bundle.get("kpis", {}) or {}
     cnae = ident.get("cnae_code", "")
-    cnae_label = resolve_cnae_label(cnae) or (ident.get("cnae_description") or "su sector")
+    cnae_label = resolve_cnae_label(cnae, fallback=(ident.get("cnae_description") or "su sector"))
     provincia = ident.get("provincia")
     rev = kpis.get("revenue")
     emp = (bundle.get("statements") or {}).get("employees")
@@ -2823,113 +2824,6 @@ async def compose_teaser(company_id: str = None, cif: str = None,
     return doc
 
 
-async def compose_one_pager(company_id: str = None, cif: str = None,
-                            brand_id: str = "brand_bud", user: str = None) -> Dict:
-    """Investment One Pager — A4 vertical, CIEGO (perfil anónimo). Una sola página pensada para
-    leerse en <3 min y despertar interés: la TESIS DE INVERSIÓN es el bloque protagonista
-    ("¿por qué merece la pena?"), seguida de KPIs clave, aspectos destacados y el Deal Snapshot
-    estándar de bud advisors. Sin identidad (nombre/CIF/web/municipio) y SIN valoración (esa vive
-    en el Infomemo / Informe de Valoración). Render dedicado A4 (HTML→Chromium) para HTML/PDF/PPTX."""
-    from services.cnae_catalog import CNAE_DIVISIONS, resolve_cnae_label
-
-    bundle = await DA.company_intelligence(company_id or cif)
-    if not bundle.get("found"):
-        return {"error": "Company not found"}
-
-    ident = bundle["identity"]
-    kpis = bundle.get("kpis", {}) or {}
-    cnae = ident.get("cnae_code", "")
-    cnae_label = resolve_cnae_label(cnae) or (ident.get("cnae_description") or "su sector")
-    provincia = ident.get("provincia")
-    rev = kpis.get("revenue")
-    emp = (bundle.get("statements") or {}).get("employees")
-    band = _size_band(rev, emp)
-
-    # Perfil anónimo (misma lógica ciega que el teaser).
-    perfil = f"{band.capitalize()} del sector {cnae_label} (CNAE {cnae})."
-    if provincia:
-        perfil += f" Con sede en la provincia de {provincia}."
-    perfil += " Se estudia la entrada de un socio mediante la adquisición total o parcial del capital."
-
-    # TESIS DE INVERSIÓN (protagonista). IA fact-locked con contexto CIEGO (sin nombre); si falla,
-    # fallback determinista igualmente ciego. La IA solo redacta, no introduce cifras nuevas.
-    blind_ctx = {
-        "perfil": perfil, "sector": cnae_label, "cnae": cnae, "provincia": provincia,
-        "banda_tamano": band,
-        "kpis": {k: kpis.get(k) for k in ("revenue", "revenue_cagr", "revenue_growth_yoy",
-                                           "ebitda", "ebitda_margin", "revenue_per_employee", "solvency")
-                 if kpis.get(k) is not None},
-        "instruccion_ciega": ("Documento CIEGO: NO menciones el nombre, CIF, web ni municipio de la "
-                              "empresa. Refiérete siempre a 'la compañía'. Redacta una tesis de "
-                              "inversión de 3-4 frases que responda '¿por qué merece la pena esta "
-                              "oportunidad?', apoyándote solo en las cifras dadas. NO incluyas valoración."),
-    }
-    thesis = _investment_thesis_text("La compañía", bundle)
-    try:
-        ai = await generate_summary(blind_ctx, doc_type="company_profile", document_id=None) or {}
-        cand = (ai.get("executive_summary") or "").strip()
-        low = cand.lower()
-        name_l = (ident.get("name") or "").lower()
-        # Solo si la IA respetó la regla ciega (no filtró el nombre) y devolvió algo sustancial.
-        if cand and len(cand) > 60 and (not name_l or name_l not in low) and "valorac" not in low:
-            thesis = cand
-    except Exception as e:
-        logging.getLogger(__name__).warning("One pager thesis AI failed: %s", e)
-
-    # KPIs (de _hero_kpi_blocks: title/value/unit/commentary) → strip compacto.
-    kpi_items = []
-    for b in _hero_kpi_blocks(bundle):
-        d = b.get("data", {})
-        kpi_items.append({"label": d.get("title"), "value": d.get("value"),
-                          "unit": d.get("unit"), "note": d.get("commentary")})
-    # CAGR como 4º KPI si hay hueco y existe.
-    if kpis.get("revenue_cagr") is not None and len(kpi_items) < 4:
-        kpi_items.append({"label": "CAGR de ingresos", "value": _pct(kpis["revenue_cagr"], 1),
-                          "unit": "", "note": "crecimiento estructural"})
-
-    # Aspectos destacados (de _positive_signal_cards: title/summary).
-    highlights = []
-    for b in _positive_signal_cards(bundle)[:4]:
-        d = b.get("data", {})
-        highlights.append({"title": d.get("title"), "summary": d.get("summary")})
-
-    # Deal Snapshot estándar (items).
-    ds = _deal_snapshot(bundle).get("data", {}).get("items", [])
-
-    doc = new_document(title="Investment One Pager — Proyecto Confidencial",
-                       template_id="tpl_one_pager", brand_id=brand_id, created_by=user)
-    doc["orientation"] = "portrait"
-    doc["onepager"] = {
-        "header": "CONFIDENTIAL · Investment Opportunity · Executive One Pager",
-        "title": "Oportunidad de Inversión",
-        "subtitle": f"Proyecto Confidencial · {cnae_label}",
-        "profile": perfil,
-        "thesis_title": "¿Por qué merece la pena esta oportunidad?",
-        "thesis": thesis,
-        "kpis": kpi_items[:4],
-        "highlights": highlights,
-        "deal_snapshot": ds,
-        "advisor": _advisor_label(brand_id),
-        "date": _month_year_es(),
-        "cta": "Firme el NDA para acceder al Information Memorandum completo",
-        "confidentiality": ("Documento confidencial y ciego. Perfil anónimo elaborado por el asesor a "
-                            "efectos de primer contacto; no constituye oferta ni recomendación de inversión."),
-    }
-    # Secciones mínimas para que el documento se liste/edite con gracia (el render usa 'onepager').
-    doc["sections"] = [new_section("Investment One Pager", 1, [
-        text_block(thesis, "executive_summary"),
-    ])]
-    doc["metadata"] = {
-        "master_id": bundle["master_id"], "cif": bundle["cif_normalized"], "type": "one_pager",
-        "financial_engine_used": True, "fact_locked": True, "schema": "modern", "blind": True,
-    }
-    doc["status"] = "generated"
-    doc["updated_at"] = now_iso()
-    await db.docstudio_documents.insert_one(doc)
-    return doc
-
-
-
 async def compose_information_memorandum(company_id: str = None, cif: str = None,
                                          brand_id: str = "brand_bud", user: str = None) -> Dict:
     """Full Information Memorandum. Fase 2: modern schema + real engines + REAL valuation.
@@ -2949,7 +2843,7 @@ async def compose_information_memorandum(company_id: str = None, cif: str = None
     ident = bundle["identity"]
     name = ident.get("name", "Empresa")
     cnae = ident.get("cnae_code", "")
-    cnae_label = CNAE_DIVISIONS.get(cnae, {}).get("label", "")
+    cnae_label = resolve_cnae_label(cnae, fallback="")
     cif_norm = bundle.get("cif_normalized", "—")
     kpis = bundle.get("kpis", {})
     assessment = bundle.get("assessment", {}) or {}
@@ -3278,7 +3172,7 @@ async def compose_company_snapshot(company_id: str = None, cif: str = None,
     ident = bundle["identity"]
     name = ident.get("name", "Empresa")
     cnae = ident.get("cnae_code", "")
-    cnae_label = CNAE_DIVISIONS.get(cnae, {}).get("label", "")
+    cnae_label = resolve_cnae_label(cnae, fallback="")
     kpis = bundle.get("kpis", {})
     benchmark = await analyze_sector_benchmark(cnae) if cnae else {}
 
@@ -3373,7 +3267,7 @@ async def compose_benchmark_advanced(cnae_code: str, company_id: str = None,
     from docstudio.financial_engine import analyze_sector_benchmark, compute_sector_positioning
     from services.cnae_catalog import CNAE_DIVISIONS
 
-    cnae_label = CNAE_DIVISIONS.get(cnae_code, {}).get("label", cnae_code)
+    cnae_label = resolve_cnae_label(cnae_code, fallback=cnae_code)
     await _get_economic_profile(cnae_code)  # available for AI context
     benchmark = await analyze_sector_benchmark(cnae_code)
 
@@ -3633,7 +3527,7 @@ async def compose_ranking_document(cnae_section: str = None, cnae_code: str = No
     sec_labels = {s["code"]: s["label"] for s in CNAE_SECTIONS}
     scope = None
     if cnae_code:
-        scope = f"CNAE {cnae_code} — {CNAE_DIVISIONS.get(cnae_code, {}).get('label', '')}"
+        scope = f"CNAE {cnae_code} — {resolve_cnae_label(cnae_code, fallback='')}"
     elif cnae_section:
         scope = f"Sección {cnae_section} — {sec_labels.get(cnae_section, '')}"
     if provincia:
@@ -3674,7 +3568,7 @@ async def compose_fragmentation_document(cnae_section: str = None, cnae_code: st
         return {"error": "Indica cnae_section o cnae_code"}
     frag = await compute_fragmentation(field, value)
     sec_labels = {s["code"]: s["label"] for s in CNAE_SECTIONS}
-    label = CNAE_DIVISIONS.get(cnae_code, {}).get("label", "") if cnae_code else sec_labels.get(cnae_section, "")
+    label = resolve_cnae_label(cnae_code or cnae_section, fallback="")
     scope = f"{value} — {label}"
 
     doc = new_document(title=f"Fragmentación sectorial — {scope}", template_id="tpl_fragmentation",
@@ -3723,7 +3617,7 @@ async def compose_rollup_document(cnae_section: str = None, cnae_code: str = Non
         return {"error": "Indica cnae_section o cnae_code"}
     thesis = await compute_rollup_thesis(field, value)
     sec_labels = {s["code"]: s["label"] for s in CNAE_SECTIONS}
-    label = CNAE_DIVISIONS.get(cnae_code, {}).get("label", "") if cnae_code else sec_labels.get(cnae_section, "")
+    label = resolve_cnae_label(cnae_code or cnae_section, fallback="")
     scope = f"{value} — {label}"
     viable = thesis.get("rollup_viable")
     plat = thesis.get("platform_candidate") or {}
@@ -3783,7 +3677,7 @@ async def compose_succession_document(company_id: str = None, cif: str = None,
 
     doc = new_document(title=f"Perfil de Sucesión — {name}", template_id="tpl_succession",
                        brand_id=brand_id, created_by=user)
-    s1 = new_section("Portada", 1, [cover_block(title="Perfil de Sucesión", subtitle=f"{name} — CNAE {cnae}: {CNAE_DIVISIONS.get(cnae, {}).get('label', '')}")])
+    s1 = new_section("Portada", 1, [cover_block(title="Perfil de Sucesión", subtitle=f"{name} — CNAE {cnae}: {resolve_cnae_label(cnae, fallback='')}")])
 
     if not profile:
         doc["sections"] = [s1, new_section("Sin perfil", 2, [text_block(
@@ -3833,7 +3727,7 @@ async def compose_valuation_approx(company_id: str = None, cif: str = None,
     doc = new_document(title=f"Aproximación de Valor — {name}", template_id="tpl_valuation_approx",
                        brand_id=brand_id, created_by=user)
     s1 = new_section("Portada", 1, [cover_block(title="Aproximación de Valor",
-                     subtitle=f"{name} — CNAE {cnae}: {CNAE_DIVISIONS.get(cnae, {}).get('label', '')}")])
+                     subtitle=f"{name} — CNAE {cnae}: {resolve_cnae_label(cnae, fallback='')}")])
     s2_blocks = _company_kpi_blocks(bundle)[:3]
     vb = _valuation_block(bundle)
     if vb:
@@ -3885,7 +3779,7 @@ async def compose_valuation_advanced(company_id: str = None, cif: str = None,
     doc = new_document(title=f"Valoración Avanzada — {name}", template_id="tpl_valuation_advanced",
                        brand_id=brand_id, created_by=user)
     s1 = new_section("Portada", 1, [cover_block(title="Valoración Avanzada",
-                     subtitle=f"{name} — CNAE {cnae}: {CNAE_DIVISIONS.get(cnae, {}).get('label', '')}")])
+                     subtitle=f"{name} — CNAE {cnae}: {resolve_cnae_label(cnae, fallback='')}")])
 
     s2_blocks = _company_kpi_blocks(bundle)[:3]
     vb = _valuation_block(bundle)
@@ -3951,7 +3845,7 @@ async def compose_strategic_analysis(company_id: str = None, cif: str = None,
     doc = new_document(title=f"Análisis Estratégico — {name}", template_id="tpl_strategic",
                        brand_id=brand_id, created_by=user)
     s1 = new_section("Portada", 1, [cover_block(title="Análisis Estratégico de Empresa",
-                     subtitle=f"{name} — CNAE {cnae}: {CNAE_DIVISIONS.get(cnae, {}).get('label', '')}")])
+                     subtitle=f"{name} — CNAE {cnae}: {resolve_cnae_label(cnae, fallback='')}")])
     s2_blocks = _company_kpi_blocks(bundle)
     for _fb in FE.financial_detail_blocks(bundle):
         s2_blocks.append(_fb)
@@ -4011,7 +3905,7 @@ async def compose_comparative_analysis(company_id: str = None, cif: str = None,
     doc = new_document(title=f"Análisis Comparativo — {name}", template_id="tpl_comparative",
                        brand_id=brand_id, created_by=user)
     s1 = new_section("Portada", 1, [cover_block(title="Análisis Comparativo",
-                     subtitle=f"{name} — CNAE {cnae}: {CNAE_DIVISIONS.get(cnae, {}).get('label', '')}")])
+                     subtitle=f"{name} — CNAE {cnae}: {resolve_cnae_label(cnae, fallback='')}")])
     s2 = new_section("La empresa", 2, _company_kpi_blocks(bundle))
 
     # Tabla lado a lado: empresa (primera fila destacada) + comparables
@@ -4186,7 +4080,7 @@ async def compose_from_template(template_id: str, company_id: str = None, cif: s
             cnae_code = cnae_code or bundle["identity"].get("cnae_code")
             kpis = bundle.get("kpis", {})
 
-    cnae_label = CNAE_DIVISIONS.get(cnae_code, {}).get("label", "") if cnae_code else ""
+    cnae_label = resolve_cnae_label(cnae_code, fallback="")
     benchmark = await analyze_sector_benchmark(cnae_code) if cnae_code else {}
     econ = await _get_economic_profile(cnae_code) if cnae_code else {}
 
@@ -4357,4 +4251,110 @@ def generate_template_preview(template: Dict, brand: Dict) -> Dict:
             blocks,
         ))
 
+    return doc
+
+
+async def compose_one_pager(company_id: str = None, cif: str = None,
+                            brand_id: str = "brand_bud", user: str = None) -> Dict:
+    """Investment One Pager — A4 vertical, CIEGO (perfil anónimo). Una sola página pensada para
+    leerse en <3 min y despertar interés: la TESIS DE INVERSIÓN es el bloque protagonista
+    ("¿por qué merece la pena?"), seguida de KPIs clave, aspectos destacados y el Deal Snapshot
+    estándar de bud advisors. Sin identidad (nombre/CIF/web/municipio) y SIN valoración (esa vive
+    en el Infomemo / Informe de Valoración). Render dedicado A4 (HTML→Chromium) para HTML/PDF/PPTX."""
+    from services.cnae_catalog import CNAE_DIVISIONS, resolve_cnae_label
+
+    bundle = await DA.company_intelligence(company_id or cif)
+    if not bundle.get("found"):
+        return {"error": "Company not found"}
+
+    ident = bundle["identity"]
+    kpis = bundle.get("kpis", {}) or {}
+    cnae = ident.get("cnae_code", "")
+    cnae_label = resolve_cnae_label(cnae) or (ident.get("cnae_description") or "su sector")
+    provincia = ident.get("provincia")
+    rev = kpis.get("revenue")
+    emp = (bundle.get("statements") or {}).get("employees")
+    band = _size_band(rev, emp)
+
+    # Perfil anónimo (misma lógica ciega que el teaser).
+    perfil = f"{band.capitalize()} del sector {cnae_label} (CNAE {cnae})."
+    if provincia:
+        perfil += f" Con sede en la provincia de {provincia}."
+    perfil += " Se estudia la entrada de un socio mediante la adquisición total o parcial del capital."
+
+    # TESIS DE INVERSIÓN (protagonista). IA fact-locked con contexto CIEGO (sin nombre); si falla,
+    # fallback determinista igualmente ciego. La IA solo redacta, no introduce cifras nuevas.
+    blind_ctx = {
+        "perfil": perfil, "sector": cnae_label, "cnae": cnae, "provincia": provincia,
+        "banda_tamano": band,
+        "kpis": {k: kpis.get(k) for k in ("revenue", "revenue_cagr", "revenue_growth_yoy",
+                                           "ebitda", "ebitda_margin", "revenue_per_employee", "solvency")
+                 if kpis.get(k) is not None},
+        "instruccion_ciega": ("Documento CIEGO: NO menciones el nombre, CIF, web ni municipio de la "
+                              "empresa. Refiérete siempre a 'la compañía'. Redacta una tesis de "
+                              "inversión de 3-4 frases que responda '¿por qué merece la pena esta "
+                              "oportunidad?', apoyándote solo en las cifras dadas. NO incluyas valoración."),
+    }
+    thesis = _investment_thesis_text("La compañía", bundle)
+    try:
+        ai = await generate_summary(blind_ctx, doc_type="company_profile", document_id=None) or {}
+        cand = (ai.get("executive_summary") or "").strip()
+        low = cand.lower()
+        name_l = (ident.get("name") or "").lower()
+        # Solo si la IA respetó la regla ciega (no filtró el nombre) y devolvió algo sustancial.
+        if cand and len(cand) > 60 and (not name_l or name_l not in low) and "valorac" not in low:
+            thesis = cand
+    except Exception as e:
+        logging.getLogger(__name__).warning("One pager thesis AI failed: %s", e)
+
+    # KPIs (de _hero_kpi_blocks: title/value/unit/commentary) → strip compacto.
+    kpi_items = []
+    for b in _hero_kpi_blocks(bundle):
+        d = b.get("data", {})
+        kpi_items.append({"label": d.get("title"), "value": d.get("value"),
+                          "unit": d.get("unit"), "note": d.get("commentary")})
+    # CAGR como 4º KPI si hay hueco y existe.
+    if kpis.get("revenue_cagr") is not None and len(kpi_items) < 4:
+        kpi_items.append({"label": "CAGR de ingresos", "value": _pct(kpis["revenue_cagr"], 1),
+                          "unit": "", "note": "crecimiento estructural"})
+
+    # Aspectos destacados (de _positive_signal_cards: title/summary).
+    highlights = []
+    for b in _positive_signal_cards(bundle)[:4]:
+        d = b.get("data", {})
+        highlights.append({"title": d.get("title"), "summary": d.get("summary")})
+
+    # Deal Snapshot estándar (items).
+    ds = _deal_snapshot(bundle).get("data", {}).get("items", [])
+
+    doc = new_document(title="Investment One Pager — Proyecto Confidencial",
+                       template_id="tpl_one_pager", brand_id=brand_id, created_by=user)
+    doc["orientation"] = "portrait"
+    doc["onepager"] = {
+        "header": "CONFIDENTIAL · Investment Opportunity · Executive One Pager",
+        "title": "Oportunidad de Inversión",
+        "subtitle": f"Proyecto Confidencial · {cnae_label}",
+        "profile": perfil,
+        "thesis_title": "¿Por qué merece la pena esta oportunidad?",
+        "thesis": thesis,
+        "kpis": kpi_items[:4],
+        "highlights": highlights,
+        "deal_snapshot": ds,
+        "advisor": _advisor_label(brand_id),
+        "date": _month_year_es(),
+        "cta": "Firme el NDA para acceder al Information Memorandum completo",
+        "confidentiality": ("Documento confidencial y ciego. Perfil anónimo elaborado por el asesor a "
+                            "efectos de primer contacto; no constituye oferta ni recomendación de inversión."),
+    }
+    # Secciones mínimas para que el documento se liste/edite con gracia (el render usa 'onepager').
+    doc["sections"] = [new_section("Investment One Pager", 1, [
+        text_block(thesis, "executive_summary"),
+    ])]
+    doc["metadata"] = {
+        "master_id": bundle["master_id"], "cif": bundle["cif_normalized"], "type": "one_pager",
+        "financial_engine_used": True, "fact_locked": True, "schema": "modern", "blind": True,
+    }
+    doc["status"] = "generated"
+    doc["updated_at"] = now_iso()
+    await db.docstudio_documents.insert_one(doc)
     return doc

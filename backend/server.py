@@ -64,6 +64,7 @@ from routes.recommendation_intelligence import router as recommendation_intellig
 from routes.buyer_mandates import router as buyer_mandates_router
 from routes.investment_decision import router as investment_decision_router
 from routes.copilot import router as copilot_router
+from routes.copilot_ui import router as copilot_ui_router
 from routes.watchlist import router as watchlist_router
 from routes.strategy_intelligence import router as strategy_intelligence_router
 from routes.transaction_intelligence import router as transaction_intelligence_router
@@ -170,6 +171,7 @@ app.include_router(recommendation_intelligence_router)
 app.include_router(buyer_mandates_router)
 app.include_router(investment_decision_router)
 app.include_router(copilot_router)
+app.include_router(copilot_ui_router)
 app.include_router(watchlist_router)
 app.include_router(strategy_intelligence_router)
 app.include_router(transaction_intelligence_router)

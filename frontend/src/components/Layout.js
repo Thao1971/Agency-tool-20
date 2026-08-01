@@ -8,7 +8,7 @@ import {
   TrendingUp, Globe, BarChart3, Zap, ArrowRightLeft, Database,
   Landmark, Shield, Heart, Workflow, ListChecks, ScrollText,
   Users, Lock, History, Flag, Plug, Gauge, Sparkles,
-  Eye, PieChart, Combine, Network, GitCompareArrows, Upload
+  Eye, PieChart, Combine, Network, GitCompareArrows, Upload, Brain
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -24,6 +24,7 @@ const navSections = [
     label: 'INICIO',
     items: [
       { path: '/', label: 'Dashboard', icon: LayoutDashboard },
+      { path: '/copilot', label: 'Copilot M&A', icon: Brain },
       { path: '/ai-chat', label: 'AI Chat', icon: Sparkles },
     ],
   },

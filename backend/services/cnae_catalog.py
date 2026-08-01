@@ -444,37 +444,31 @@ def resolve_cnae_to_section(cnae_code: str) -> str | None:
     return None
 
 
-def resolve_cnae_label(cnae_code: str) -> str | None:
-    """Resolve any CNAE code (group 4-digit / division 2-digit / section letter) to its
-    Spanish label. Falls back up the hierarchy (group → division → section) so we NEVER
-    return a raw English description. Returns None only if the code is unknown."""
-    if not cnae_code:
-        return None
-    code = str(cnae_code).strip().upper()
-    # Section letter
-    if len(code) == 1 and code.isalpha():
-        for sec in CNAE_SECTIONS:
-            if sec["code"] == code:
-                return sec["label"]
-        return None
-    digits = "".join(ch for ch in code if ch.isdigit())
-    # 4-digit group (exact, then division fallback)
-    if len(digits) >= 4:
-        grp = digits[:4]
-        if grp in CNAE_GROUPS:
-            return CNAE_GROUPS[grp]["label"]
-        digits = digits[:2]  # fall back to division
-    # 2-digit division
-    if len(digits) >= 2:
-        div = digits[:2].zfill(2)
-        if div in CNAE_DIVISIONS:
-            return CNAE_DIVISIONS[div]["label"]
-        sec_letter = get_section_for_division(div)
-        if sec_letter:
-            for sec in CNAE_SECTIONS:
-                if sec["code"] == sec_letter:
-                    return sec["label"]
-    return None
+_SECTION_LABELS = {s["code"]: s["label"] for s in CNAE_SECTIONS}
+
+
+def section_label(section_code: str) -> str | None:
+    """Etiqueta (ES) de una sección CNAE (A–U)."""
+    return _SECTION_LABELS.get((section_code or "").strip().upper())
+
+
+def resolve_cnae_label(code, fallback: str = None) -> str:
+    """Etiqueta CNAE en ESPAÑOL para cualquier nivel (grupo 4d / división 2d / sección letra).
+    Devuelve la etiqueta más específica disponible; si no resuelve, `fallback` (o el propio código).
+    Robusto ante None, códigos con separadores y prefijos de códigos más largos."""
+    if not code:
+        return fallback or ""
+    c = str(code).strip()
+    digits = "".join(ch for ch in c if ch.isdigit())
+    # Grupo (4 dígitos) → división (2 dígitos)
+    if len(digits) >= 4 and digits[:4] in CNAE_GROUPS:
+        return CNAE_GROUPS[digits[:4]].get("label") or fallback or c
+    if len(digits) >= 2 and digits[:2] in CNAE_DIVISIONS:
+        return CNAE_DIVISIONS[digits[:2]].get("label") or fallback or c
+    # Sección (letra)
+    if len(c) == 1 and c.isalpha():
+        return section_label(c) or fallback or c
+    return fallback or c
 
 
 def cpv_to_cnae_division(cpv_code: str) -> str | None:

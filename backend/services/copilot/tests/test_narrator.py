@@ -111,9 +111,40 @@ def test_fact_has_no_attribution():
     assert "attribution" not in nat and "área de" not in nat["message"]
 
 
+def test_fact_lock_guard_pure():
+    allowed = "El EBITDA de ACME es de 10.000.000 €. {\"ebitda_margin\": 0.18}"
+    assert N._introduces_new_numbers("El margen es del 15%", allowed) is True     # 15 no estaba
+    assert N._introduces_new_numbers("Ronda los 10 millones, con 18% de margen", allowed) is False
+
+
+def test_ai_polish_rejected_if_hallucinates_number():
+    import docstudio.model_provider as MP
+    orig = MP.generate_copilot_message
+    os.environ["COPILOT_VOICE_PROVIDER"] = "claude"
+    out = {"level": "L0", "fact": {"label": "EBITDA", "value": "10.000.000 €", "available": True},
+           "answer": {}}
+    ctx = {"name": "ACME", "verbosity": "executive"}
+    try:
+        async def _hallucinate(context, provider="claude", document_id=None):
+            return {"message": "El EBITDA de ACME es de 10.000.000 €, con un margen del 15%."}
+        MP.generate_copilot_message = _hallucinate
+        nat = _run(N.narrate(out, ctx))
+        assert "15%" not in nat["message"]                     # rechazado → determinista
+
+        async def _faithful(context, provider="claude", document_id=None):
+            return {"message": "El EBITDA de ACME ronda los 10.000.000 €."}
+        MP.generate_copilot_message = _faithful
+        nat2 = _run(N.narrate(out, ctx))
+        assert "ronda" in nat2["message"]                      # aceptado (sin cifras nuevas)
+    finally:
+        MP.generate_copilot_message = orig
+        os.environ.pop("COPILOT_VOICE_PROVIDER", None)
+
+
 if __name__ == "__main__":
     for fn in (test_risk_without_evidence_is_natural, test_fact_is_conversational_and_not_fabricated,
                test_decision_weaves_evolution, test_orchestrate_produces_natural_message_not_mechanical,
                test_specialist_attribution_cites_area, test_decision_attribution_lists_contributing_areas,
-               test_multientity_compare_without_data_names_them, test_fact_has_no_attribution):
+               test_multientity_compare_without_data_names_them, test_fact_has_no_attribution,
+               test_fact_lock_guard_pure, test_ai_polish_rejected_if_hallucinates_number):
         fn(); print("OK", fn.__name__)

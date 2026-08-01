@@ -37,6 +37,7 @@ import ProcurementPage from "@/pages/ProcurementPage";
 import DocStudioPage from "@/pages/DocStudioPage";
 import TransactionsPage from "@/pages/transactions/TransactionsPage";
 import AIChatPage from "@/pages/AIChatPage";
+import CopilotPage from "@/pages/CopilotPage";
 import HealthPage from "@/pages/engine/HealthPage";
 import ProfilesPage from "@/pages/engine/ProfilesPage";
 import ScrapeQueuePage from "@/pages/engine/ScrapeQueuePage";
@@ -122,6 +123,7 @@ function AppRoutes() {
         <Route path="manual" element={<ManualPage />} />
         <Route path="api-docs" element={<ApiDocsPage />} />
         <Route path="ai-chat" element={<AIChatPage />} />
+        <Route path="copilot" element={<CopilotPage />} />
 
         {/* Intelligence Engine */}
         <Route path="engine/health" element={<HealthPage />} />

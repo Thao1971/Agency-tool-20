@@ -33,6 +33,19 @@
 | ADMIN | Usuarios, Roles, Seguridad, Auditoría |
 
 ## Latest changes (Agosto 2026)
+- **ARROBA Copilot COMPLETO v2 (chat interno + CNAE español + guardián fact-lock) ✅ (2026-08-01)**
+  - Aplicado `arroba_copilot_full_v2.zip` (aditivo). Sobrescrituras cuidadas para preservar mis desarrollos:
+    - `docstudio/composer.py`: overwrite del vendor (CNAE en español vía `resolve_cnae_label` en los 18 composers) + **re-inyecté mi `compose_one_pager`** (que el vendor no incluye) al final del fichero.
+    - `docstudio/model_provider.py`: overwrite (voz Copilot + guardián fact-lock) + **re-apliqué mi `NVIDIA_TIMEOUT` configurable + logging repr**.
+    - `services/cnae_catalog.py`: nueva `resolve_cnae_label(code, fallback)` (str) + `section_label`.
+    - `services/copilot/**`, `services/engines/investment_decision/**`, `routes/copilot.py`, `routes/investment_decision.py`: overwrite (v2).
+    - NUEVO backend: `routes/copilot_ui.py` (API JWT interna, prefijo `/api/v1/copilot-ui`).
+  - Frontend (adiciones MÍNIMAS, NO overwrite): `pages/CopilotPage.jsx` (nuevo, chat con mini-card/chips/ver deliberación/nudge); `App.js` (+import +ruta `/copilot`); `components/Layout.js` (+icono Brain, item "Copilot M&A" en INICIO).
+  - `server.py`: registrado `copilot_ui_router` (copilot_router e ide ya estaban).
+  - Verificado: **17 ficheros de test verdes** (copilot+IDE, los 64 tests; timeouts iniciales solo por llamadas reales a Claude, pasan deterministas con IA off). Endpoints vivos: `/copilot/health` (service-key) 200, `/copilot-ui/health` (JWT) 200, auth negativa 401. `/copilot-ui/ask` de SERVIER → mensaje natural, **score/banda NO visibles en el chat** (invariante ✅, solo tras "Ver deliberación"), mini-cards (open_deliberation/gen_teaser/add_watchlist). CNAE en español (`62`→"Programación...", `J`→"Información y comunicaciones", `2120`→"Fabricación de especialidades farmacéuticas"). Pantalla `/copilot` renderiza y responde en la UI. Sin regresiones: investment-memo 50 secc, teaser/one-pager OK y en español.
+  - **Observación (no bug, comportamiento fact-lock)**: `CopilotPage` envía solo `{question, session_id}`; el orquestador detecta la mención de empresa (`INTENT.extract_entities`) pero NO la resuelve a un CIF real en BD → "cobertura 0%" salvo que se pase `cif`/`company_id` estructurado (por API sí da análisis completo PROCEED/76). Wiring de resolución nombre→CIF desde texto libre queda como mejora.
+
+
 - **ARROBA Copilot v1 integrado (cerebro conversacional, API service-key) ✅ (2026-08-01)**
   - Aplicado `arroba_copilot_v1.zip` (aditivo). Nuevo: `services/copilot/**` (orquestador L0–L4, memoria usuario/sesión/entidad, voz, persona, narrador, NBA/mini-cards, feedback→sesgo, gobernanza, métricas, seguridad multi-tenant, proactividad, intención) + `routes/copilot.py`. Sobrescrituras: `services/engines/investment_decision/**` (solo `committee/capabilities.py` cambió — manifiesto de capacidades), `routes/investment_decision.py` (idéntico), `docstudio/model_provider.py` (añade `generate_copilot_message` voz Copilot). Docs canónicas copiadas a `/app/memory/ARROBA_COPILOT_*.md`.
   - `server.py`: `+copilot_router` (import+include) y `ensure_indexes()` del copilot en startup (no bloqueante). Re-apliqué mi ajuste `NVIDIA_TIMEOUT` configurable (default 50) + logging `repr` que el zip había revertido.
