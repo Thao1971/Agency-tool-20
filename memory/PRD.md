@@ -33,6 +33,14 @@
 | ADMIN | Usuarios, Roles, Seguridad, Auditoría |
 
 ## Latest changes (Agosto 2026)
+- **ARROBA Company Taxonomy F1+F2+F3 desplegada + primera pasada real ✅ (2026-08-01)**
+  - Aplicado `arroba_company_taxonomy_f1f3.zip` (aditivo, sin migración). Nuevo `services/taxonomy/**` (registry versionado F1, bridge CNAE→ARROBA, classify engine determinista F2, batch+audit F3) + `routes/company_taxonomy.py` (prefix `/api/v1/company-taxonomy`, service-key). `server.py`: +router + `build_registry_v1()` en startup (no bloqueante).
+  - **F1 Registry**: taxonomía propia ARROBA v1.0 = 639 nodos, 117 dimensiones, 11 sectores, 143 mappings CNAE→ARROBA (colecciones `taxonomy_*`).
+  - **F3 pasada completa** sobre las 24.992 de `master_companies` (company_id=master_id, salta merged; determinista, sin coste IA, 35s): 24.776 clasificadas (99,1%), 216 sin clasificar, 6.340 baja confianza, 0 errores, confianza media 0,673. Distribución: S09 Inmobiliario 33,7% · S01 Servicios Empresariales 18,6% · S04 Consumo/Retail 15,9% · S06 Industria 12,7% · S08 Financieros 3,9% · S03 Medios 3,7% · S11 Alimentación 3,7% · S10 Transporte 3,0% · S05 Salud 2,1% · S02 Tecnología 1,1% · S07 Energía 0,9%.
+  - Verificado: 9 tests verdes (registry 4 + classify 3 + batch/audit 2). Endpoints vivos (health v1.0, seed, classify, classify-batch, audit-report). SERVIER (mc_36c100bcee4a) → S05 "Salud y Ciencias de la Vida" (correcto). Todo referenciado por `master_id`.
+  - **Observación de calibración (anticipada por el vendor, pendiente v1.x)**: S02 Tecnología sale muy bajo (1,1%); el software (CNAE 6201) probablemente cae en S01/S03 → recalibrar balance S02↔S03 y pesos, e iterar el árbol con la muestra de auditoría. F4–F5 (Peer Universe Resolver + Fingerprint + integración en búsqueda/comparables/Copilot) queda como siguiente fase.
+
+
 - **Copilot: resolución de entidad desde texto libre + continuidad conversacional (Boundary First) ✅ (2026-08-01)**
   - Ahora el Copilot ENTIENDE de qué empresa habla el usuario sin exigir CIF: `"¿Comprarías Servier?"` → resuelve → datos reales → Investment Decision → respuesta natural. Antes daba "cobertura 0%".
   - **Boundary First (sin duplicar lógica ni acoplar Copilot a Mongo)**: nuevo `services/company_resolver.py::resolve_company_query(cif|name)` = capacidad canónica única contra `master_companies` (devuelve `master_id`+cif+legal_name+match_score). Refactoricé `routes/company_intelligence.py::resolve` para delegar en ella (mismo código, un solo origen). Nuevo `services/copilot/entity_link.py` REUTILIZA ese resolver: texto → extracción CIF (regex validada) / nombres (`INTENT.extract_entities`) → resolver canónico → `master_id`.
