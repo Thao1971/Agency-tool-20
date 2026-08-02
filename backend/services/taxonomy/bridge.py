@@ -35,6 +35,26 @@ DIVISION_TO_INDUSTRY = {
     "56": ("S04", "Restauración organizada"),
     "35": ("S07", "Electricidad"),
     "10": ("S11", "Alimentación"),
+    # Recalibración 2026-08 (F3 v1.1): la fabricación farmacéutica (sección C) es Salud, no Industria.
+    "21": ("S05", "Industria farmacéutica"),
+}
+
+# Código CNAE de 4 dígitos → (sector, industria). Se comprueba ANTES que la división: son casos de muy
+# alta señal donde la división de 2 díg. es demasiado gruesa o cae en el sector equivocado.
+# Recalibración 2026-08 (F3 v1.1).
+CODE4_TO_INDUSTRY = {
+    # Div 63 (Servicios de información) es medios, pero el hosting/procesamiento de datos y los
+    # portales web son infraestructura tecnológica → S02.
+    "6311": ("S02", "Cloud e infraestructura"),
+    "6312": ("S02", "Cloud e infraestructura"),
+    # Fabricación farmacéutica: explícito además de la división 21.
+    "2110": ("S05", "Industria farmacéutica"),
+    "2120": ("S05", "Industria farmacéutica"),
+    # Investigación en biotecnología (CNAE-2009 7211), cuando el dataset lo trae a 4 díg.
+    "7211": ("S05", "Biotecnología"),
+    # Actividades de préstamo / servicios financieros auxiliares → Financiación (más preciso que "Banca").
+    "6492": ("S08", "Financiación"),
+    "6499": ("S08", "Financiación"),
 }
 
 
@@ -50,9 +70,13 @@ def anchor_from_cnae(code):
     if len(c) == 1 and c.isalpha():
         return (SECTION_TO_SECTOR.get(c.upper()), None)
     d = _digits(c)
+    # 1) código de 4 dígitos de muy alta señal (antes que la división)
+    if len(d) >= 4 and d[:4] in CODE4_TO_INDUSTRY:
+        return CODE4_TO_INDUSTRY[d[:4]]
+    # 2) división de 2 dígitos
     if len(d) >= 2 and d[:2] in DIVISION_TO_INDUSTRY:
         return DIVISION_TO_INDUSTRY[d[:2]]
-    # sección vía catálogo CNAE
+    # 3) sección vía catálogo CNAE
     try:
         from services.cnae_catalog import resolve_cnae_to_section
         sec = resolve_cnae_to_section(c)

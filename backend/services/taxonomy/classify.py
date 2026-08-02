@@ -12,7 +12,7 @@ from services.taxonomy import TAXONOMY_VERSION
 from services.taxonomy import registry as REG
 from services.taxonomy import bridge as BRIDGE
 
-CLASSIFIER_VERSION = "company-classification-engine-v1"
+CLASSIFIER_VERSION = "company-classification-engine-v1.1"
 
 # ── Config (versionada)
 W = {"cnae_section": 0.55, "division_industry": 0.6, "kw_industry": 0.55, "kw_category": 0.45,
@@ -28,23 +28,35 @@ ALIASES: Dict[str, List[str]] = {
     "IND-S03-agencias-digitales": ["agencia digital", "marketing digital"],
     "IND-S03-agencias-de-medios": ["agencia de medios", "compra de medios", "media agency"],
     "IND-S03-martech": ["martech", "marketing automation", "customer data platform", "cdp"],
-    "IND-S02-desarrollo-de-software": ["desarrollo de software", "software factory", "programacion informatica"],
-    "IND-S02-inteligencia-artificial": ["inteligencia artificial", "machine learning", "deep learning"],
+    "IND-S02-desarrollo-de-software": ["desarrollo de software", "software factory", "programacion informatica",
+                                       "software development", "computer programming"],
+    "IND-S02-inteligencia-artificial": ["inteligencia artificial", "machine learning", "deep learning",
+                                        "artificial intelligence"],
     "IND-S02-software-empresarial": ["saas", "software as a service", "plataforma software"],
-    "IND-S02-ciberseguridad": ["ciberseguridad", "cybersecurity"],
-    "IND-S01-consultoria-empresarial": ["consultoria", "consulting"],
-    "IND-S08-fintech": ["fintech"],
+    "IND-S02-ciberseguridad": ["ciberseguridad", "cybersecurity", "cyber security"],
+    "IND-S02-cloud-e-infraestructura": ["hosting", "data processing", "computing infrastructure",
+                                        "web portals", "data center", "centro de datos"],
+    "IND-S01-consultoria-empresarial": ["consultoria", "consulting", "consultancy"],
+    "IND-S08-fintech": ["fintech", "financial technology", "digital payments", "neobank", "pagos digitales"],
+    "IND-S08-pagos": ["medios de pago", "payment services", "payment processing", "pasarela de pago"],
     "IND-S05-healthtech": ["healthtech", "salud digital"],
+    "IND-S05-industria-farmaceutica": ["industria farmaceutica", "pharmaceutical", "pharmaceutical products",
+                                       "pharmaceutical specialties", "laboratorio farmaceutico",
+                                       "especialidades farmaceuticas"],
+    "IND-S05-biotecnologia": ["biotecnologia", "biotech", "biotechnology"],
+    "IND-S05-tecnologia-medica": ["tecnologia medica", "medtech", "medical devices", "dispositivos medicos"],
     "DIM-verticals-adtech": ["adtech", "publicidad programatica", "publicidad contextual", "programmatic"],
     "DIM-verticals-martech": ["martech", "marketing automation"],
     "DIM-verticals-saas": ["saas", "software as a service"],
-    "DIM-verticals-inteligencia-artificial": ["inteligencia artificial", "ia", "machine learning"],
-    "DIM-verticals-fintech": ["fintech"],
+    "DIM-verticals-inteligencia-artificial": ["inteligencia artificial", "ia", "machine learning",
+                                              "artificial intelligence"],
+    "DIM-verticals-fintech": ["fintech", "financial technology"],
     "DIM-business_models-saas": ["saas", "suscripcion software"],
     "DIM-business_models-b2b": ["b2b", "empresas"],
     "DIM-business_models-marketplace": ["marketplace"],
-    "DIM-technologies-inteligencia-artificial": ["inteligencia artificial", "machine learning", "ia generativa"],
-    "DIM-technologies-cloud": ["cloud", "nube"],
+    "DIM-technologies-inteligencia-artificial": ["inteligencia artificial", "machine learning", "ia generativa",
+                                                 "artificial intelligence"],
+    "DIM-technologies-cloud": ["cloud", "nube", "hosting"],
 }
 
 
