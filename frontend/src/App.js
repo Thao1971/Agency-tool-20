@@ -25,6 +25,7 @@ import MacroIntelligencePage from "@/pages/MacroIntelligencePage";
 import SectorIntelligencePage from "@/pages/SectorIntelligencePage";
 import GeoIntelligencePage from "@/pages/GeoIntelligencePage";
 import DataQualityPage from "@/pages/DataQualityPage";
+import TaxonomyAuditPage from "@/pages/TaxonomyAuditPage";
 import CrossIntelligencePage from "@/pages/CrossIntelligencePage";
 import DataComexPage from "@/pages/DataComexPage";
 import TaxonomyIntelligencePage from "@/pages/TaxonomyIntelligencePage";
@@ -97,6 +98,7 @@ function AppRoutes() {
         <Route path="sector-intelligence" element={<SectorIntelligencePage />} />
         <Route path="geo-intelligence" element={<GeoIntelligencePage />} />
         <Route path="data-quality" element={<DataQualityPage />} />
+        <Route path="taxonomy-audit" element={<TaxonomyAuditPage />} />
         <Route path="cross-intelligence" element={<CrossIntelligencePage />} />
         <Route path="datacomex" element={<DataComexPage />} />
         <Route path="taxonomy-intelligence" element={<TaxonomyIntelligencePage />} />

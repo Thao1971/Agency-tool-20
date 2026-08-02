@@ -38,6 +38,45 @@ async def audit_report(sample_n: int = 150) -> Dict:
             "distribution_by_sector": dist, "sample": sample}
 
 
+async def list_unclassified(limit: int = 300) -> Dict:
+    """Empresas sin sector principal (primary_sector nulo), enriquecidas con nombre/CNAE de
+    master_companies, para revisión manual en la Platform Console. Mayoría: autónomos/personas
+    físicas sin CNAE ni objeto social."""
+    from database import db
+    ids: List[str] = [f.get("company_id") async for f in db.company_fingerprint.find(
+        {"primary_sector": None}, {"company_id": 1, "_id": 0})]
+    total = len(ids)
+    ids = [i for i in ids if i][:limit]
+    by_id: Dict[str, Dict] = {}
+    if ids:
+        async for m in db.master_companies.find(
+                {"master_id": {"$in": ids}},
+                {"_id": 0, "master_id": 1, "identity.legal_name": 1, "identity.cif": 1,
+                 "classification.cnae_code": 1, "classification.cnae_description": 1,
+                 "objeto_social": 1, "location.provincia": 1}):
+            by_id[m["master_id"]] = m
+    items = []
+    for cid in ids:
+        m = by_id.get(cid) or {}
+        idn = m.get("identity") or {}
+        cls = m.get("classification") or {}
+        os_v = m.get("objeto_social")
+        os_txt = os_v if isinstance(os_v, str) else ""
+        items.append({
+            "company_id": cid,
+            "legal_name": idn.get("legal_name"),
+            "cif": idn.get("cif"),
+            "cnae_code": cls.get("cnae_code"),
+            "cnae_description": cls.get("cnae_description"),
+            "provincia": (m.get("location") or {}).get("provincia"),
+            "has_objeto_social": bool(os_txt),
+            "objeto_social_preview": os_txt[:160] if os_txt else None,
+        })
+    return {"taxonomy_version": REG.TAXONOMY_VERSION, "total_unclassified": total,
+            "returned": len(items), "items": items}
+
+
+
 def render_audit_md(rep: Dict) -> str:
     lines = ["# Auditoría de clasificación — ARROBA Company Taxonomy", "",
              f"- Versión taxonomía: {rep.get('taxonomy_version')}",

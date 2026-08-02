@@ -81,6 +81,7 @@ const navSections = [
     items: [
       { path: '/taxonomy', label: 'Taxonomía CIS', dot: 'bg-indigo-500' },
       { path: '/taxonomy-intelligence', label: 'Taxonomía Intel', icon: Layers },
+      { path: '/taxonomy-audit', label: 'Auditoría Taxonomía', icon: PieChart },
       { path: '/review', label: 'Cola de revisión', icon: ClipboardCheck },
       { path: '/data-providers', label: 'Proveedores de datos', icon: Database },
       { path: '/data-providers/iberinform-delivery', label: 'Entregas Iberinform', icon: Upload },
