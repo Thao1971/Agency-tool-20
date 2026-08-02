@@ -211,6 +211,20 @@ async def rebuild_master(scope: str = "full", cif_list: Optional[List[str]] = No
 FIXTURE_SOURCE_VERSION = "iberinform"
 
 
+async def sweep_orphan_signals() -> int:
+    """Borra cualquier señal cuyo master_id ya no resuelva a una empresa de master_companies.
+    Idempotente y determinista (todas las señales llevan master_id). Devuelve nº borradas."""
+    sig_mids = [m for m in await db.signals.distinct("master_id") if m]
+    if not sig_mids:
+        return 0
+    existing = set(await db.master_companies.distinct(
+        "master_id", {"master_id": {"$in": sig_mids}}))
+    orphans = [m for m in sig_mids if m not in existing]
+    if not orphans:
+        return 0
+    return (await db.signals.delete_many({"master_id": {"$in": orphans}})).deleted_count
+
+
 async def purge_fixture_sample() -> Dict:
     """Remove the bundled test-fixture Iberinform sample (tests/fixtures/iberinform_sample,
     ~1,000 real companies in the old Valu8 CSV format that ended up loaded into production
@@ -235,11 +249,15 @@ async def purge_fixture_sample() -> Dict:
     cifs = await db.norm_company.distinct("cif_normalized", marker)
 
     if not cifs:
+        # Sin CIFs de fixture que purgar, pero aún así barremos señales huérfanas de purgas parciales
+        # previas (evita que contaminen el ranking de "Oportunidades").
+        orphan_signals_deleted = await sweep_orphan_signals()
         return {
             "status": "completed", "cifs_purged": 0,
             "norm_company_deleted": 0, "norm_financials_deleted": 0,
             "norm_ownership_deleted": 0, "norm_officers_deleted": 0,
             "master_companies_deleted": 0, "entity_xref_deleted": 0,
+            "signals_deleted": 0, "orphan_signals_deleted": orphan_signals_deleted,
         }
 
     # Capture master_ids BEFORE deleting anything, scoped to these exact CIFs, so the
@@ -279,6 +297,12 @@ async def purge_fixture_sample() -> Dict:
         signals_deleted = (await db.signals.delete_many(
             {"master_id": {"$in": master_ids}})).deleted_count
 
+    # 2026-08-01 fix: barrido GENERAL de señales huérfanas (cualquier señal cuyo master_id ya no
+    # resuelva a una empresa de master_companies), no solo las de los master_ids que borramos ahora.
+    # Cubre purgas parciales previas que dejaron señales sin empresa: seguían colándose en el ranking
+    # de "Oportunidades" (el join las descarta en silencio, pero cuentan para paginación/orden).
+    orphan_signals_deleted = await sweep_orphan_signals()
+
     return {
         "status": "completed",
         "cifs_purged": len(cifs),
@@ -289,4 +313,5 @@ async def purge_fixture_sample() -> Dict:
         "master_companies_deleted": master_deleted,
         "entity_xref_deleted": xref_deleted,
         "signals_deleted": signals_deleted,
+        "orphan_signals_deleted": orphan_signals_deleted,
     }

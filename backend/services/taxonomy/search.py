@@ -28,22 +28,86 @@ def _build_label_index():
 
 _LABEL_IDX = _build_label_index()
 _IS_NODE = {"sector", "industry", "category"}
+
+
+def _stem_token(w: str) -> str:
+    """Raíz ligera ES: quita plural (-es/-s) y vocal final de género (-o/-a) para casar
+    'farmacéutico'/'farmacéutica'/'farmacéuticas' → 'farmaceutic'. Conserva palabras cortas."""
+    if len(w) <= 4:
+        return w
+    if w.endswith("es"):
+        w = w[:-2]
+    elif w.endswith("s"):
+        w = w[:-1]
+    if len(w) > 4 and w[-1] in "oa":
+        w = w[:-1]
+    return w
+
+
+def _stem(s: str) -> str:
+    return " ".join(_stem_token(w) for w in s.split())
+
+
+def _phrase_in(a: str, b: str) -> bool:
+    """True si `a` aparece en `b` como frase completa a nivel de palabra (no dentro de otra palabra)."""
+    return a == b or (" " + a + " ") in (" " + b + " ")
+
+
+# Índice con raíz precomputada: (stem_label, norm_label, value). Evita re-stemizar en cada consulta.
+_STEM_ITEMS = [(_stem(k), k, v) for k, v in _LABEL_IDX.items()]
+
 # Prioridad por nivel al resolver un texto ambiguo ("salud" → sector S05, no la categoría "Salud").
 _KIND_PRIO = {"sector": 0, "industry": 1, "verticals": 2, "business_models": 3, "technologies": 3,
               "client_types": 3, "value_chain": 3, "capabilities": 3, "category": 4}
 
+# Palabras de relleno de una consulta en lenguaje natural ("busca empresas del sector X") que no
+# aportan a la resolución de la etiqueta. Se descartan antes de generar n-gramas.
+_STOPWORDS = {
+    "busca", "buscar", "buscame", "dame", "damos", "muestra", "muestrame", "ensename",
+    "quiero", "ver", "listado", "lista", "listame", "cuales", "cual", "son", "hay",
+    "empresas", "empresa", "companias", "compania", "companies", "firmas", "firma",
+    "sector", "sectores", "industria", "industrias", "vertical", "verticales", "segmento",
+    "segmentos", "mercado", "mercados", "actividad", "categoria", "categorias",
+    "del", "de", "la", "el", "los", "las", "un", "una", "unos", "unas", "en", "con",
+    "que", "como", "y", "o", "a", "al", "sobre", "me", "por", "para", "mi", "tu", "su",
+}
+
 
 def resolve_label(text: str) -> Optional[Dict]:
-    """Mapea un texto ('salud', 'adtech', 'tecnología'…) a {id, kind, label}. Prioriza el nivel más alto
-    (sector > industria > dimensión > categoría) y, a igualdad, la etiqueta más corta."""
+    """Mapea un texto libre ('salud', 'adtech', 'sector farmacéutico', 'busca empresas de fintech'…)
+    a {id, kind, label}. Tolera frases completas: descarta palabras de relleno, prueba n-gramas de
+    mayor a menor y agrega todos los candidatos. El emparejamiento es por LÍMITE DE PALABRA sobre
+    raíces (tolera género/plural: 'farmacéutico'→'farmacéutica', pero NO 'tecnología' dentro de
+    'biotecnología'). Prioriza el n-grama más largo, luego el nivel más alto
+    (sector > industria > dimensión > categoría), luego coincidencia exacta y la etiqueta más corta."""
     t = _norm(text)
     if not t:
         return None
-    cands = [v for k, v in _LABEL_IDX.items()
-             if k == t or (len(k) >= 4 and (t in k or k in t)) or (len(t) >= 4 and t in k)]
+
+    tokens = [w for w in t.split() if w and w not in _STOPWORDS]
+    if not tokens:
+        tokens = t.split()
+
+    ngrams: List[str] = []
+    n = len(tokens)
+    for size in range(n, 0, -1):
+        for i in range(0, n - size + 1):
+            ngrams.append(" ".join(tokens[i:i + size]))
+
+    cands: List = []
+    for g in ngrams:
+        gs, gl = _stem(g), len(g)
+        for ks, k, v in _STEM_ITEMS:
+            exact = (k == g)
+            if not exact and gl < 4:
+                continue
+            if exact or _phrase_in(gs, ks) or _phrase_in(ks, gs):
+                cands.append((gl, _KIND_PRIO.get(v["kind"], 5), 0 if exact else 1,
+                              len(v["label"]), v))
     if not cands:
         return None
-    return sorted(cands, key=lambda v: (_KIND_PRIO.get(v["kind"], 5), len(v["label"])))[0]
+    cands.sort(key=lambda c: (-c[0], c[1], c[2], c[3]))
+    return cands[0][4]
 
 
 async def search_by_taxonomy(node_id: Optional[str] = None, dimension_id: Optional[str] = None,

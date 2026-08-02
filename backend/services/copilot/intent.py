@@ -94,6 +94,20 @@ def classify(text: str, screen: str = None) -> dict:
         if any(_norm(k).strip() in t for k in kws):
             return {"level": "L4", "capability": cap, "targets": [], "metric": None, "kind": None}
 
+    # L4 taxo_search "inteligente": consultas de listado ("empresas/compañías de <X>", "firmas en <X>")
+    # donde <X> resuelve a un sector/vertical real de la taxonomía. Va DESPUÉS del loop L4 (peers/compare/
+    # recommend explícitos ganan) y ANTES de DECISION, para no robar intents de recomendación/decisión.
+    m = re.search(r"\b(?:empresas|companias|compa[nñ]ias|firmas|negocios|startups|scaleups)\s+"
+                  r"(?:del sector|de la industria|de la|del|de|en el|en|sector)\s+(.+)", t)
+    if m:
+        try:
+            from services.taxonomy import search as _SR
+            if _SR.resolve_label(m.group(1)):
+                return {"level": "L4", "capability": "taxo_search", "targets": [],
+                        "metric": None, "kind": None}
+        except Exception:
+            pass
+
     # L3 — decisión de inversión (comité completo)
     if any(k in t for k in DECISION):
         return {"level": "L3", "capability": None, "targets": [], "metric": None, "kind": None}
