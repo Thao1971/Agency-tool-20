@@ -23,6 +23,7 @@ from borme.scheduler import start_borme_scheduler, stop_borme_scheduler
 from services.intelligence_scheduler import start_intelligence_scheduler, stop_intelligence_scheduler
 from services.watchlist_scheduler import start_watchlist_scheduler, stop_watchlist_scheduler
 from services.datacomex_scheduler import start_datacomex_scheduler, stop_datacomex_scheduler
+from services.ine_demography_scheduler import start_ine_demography_scheduler, stop_ine_demography_scheduler
 from services.cnmv_bme_scheduler import start_cnmv_bme_scheduler, stop_cnmv_bme_scheduler
 from services.placsp_scheduler import start_placsp_scheduler, stop_placsp_scheduler
 from editorial.routes import router as editorial_router
@@ -1098,6 +1099,7 @@ async def startup():
     await start_editorial_worker()
     await start_intelligence_scheduler()
     await start_datacomex_scheduler()
+    await start_ine_demography_scheduler()
     await start_watchlist_scheduler()
     await start_cnmv_bme_scheduler()
     await start_placsp_scheduler()
@@ -1523,6 +1525,7 @@ async def shutdown():
     await stop_editorial_worker()
     await stop_intelligence_scheduler()
     await stop_datacomex_scheduler()
+    await stop_ine_demography_scheduler()
     await stop_watchlist_scheduler()
     await stop_cnmv_bme_scheduler()
     from docstudio.compose_worker import stop_compose_worker
