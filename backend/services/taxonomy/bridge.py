@@ -4,7 +4,7 @@ Ver memory/ARROBA_TAXONOMY_ENGINE_DESIGN.md (P1)."""
 
 # Sección CNAE (A–U) → sector ARROBA (ancla coarse; las reglas afinan y pueden mover a otro sector).
 SECTION_TO_SECTOR = {
-    "A": "S11", "B": "S06", "C": "S06", "D": "S07", "E": "S07", "F": "S06", "G": "S04", "H": "S10",
+    "A": "S11", "B": "S07", "C": "S06", "D": "S07", "E": "S07", "F": "S06", "G": "S04", "H": "S10",
     "I": "S04", "J": "S02", "K": "S08", "L": "S09", "M": "S01", "N": "S01", "O": "S01", "P": "S01",
     "Q": "S05", "R": "S03", "S": "S01", "T": "S01", "U": "S01",
 }
@@ -65,6 +65,7 @@ DIVISION_TO_INDUSTRY = {
     "56": ("S04", "Restauración organizada"),
     "35": ("S07", "Electricidad"),
     "10": ("S11", "Alimentación"),
+    "11": ("S11", "Bebidas"),                      # fabricación de bebidas (v1.3)
     "21": ("S05", "Industria farmacéutica"),       # fabricación farmacéutica → Salud (fallback, preservado v1.1)
 }
 

@@ -12,7 +12,7 @@ from services.taxonomy import TAXONOMY_VERSION
 from services.taxonomy import registry as REG
 from services.taxonomy import bridge as BRIDGE
 
-CLASSIFIER_VERSION = "company-classification-engine-v1.2"
+CLASSIFIER_VERSION = "company-classification-engine-v1.3"
 
 # ── Config (versionada)
 W = {"cnae_section": 0.55, "division_industry": 0.6, "kw_industry": 0.55, "kw_category": 0.45,
@@ -210,6 +210,53 @@ ALIASES: Dict[str, List[str]] = {
     "DIM-technologies-iot": ["iot", "internet de las cosas"],
     "DIM-technologies-big-data": ["big data", "datos masivos"],
 }
+
+
+# v1.3 — alias en INGLÉS (los cnae_description reales vienen en inglés). Se fusionan en ALIASES sin
+# sobrescribir (setdefault+extend). Cubren los patrones más frecuentes del triaje de baja confianza.
+ALIASES_EN: Dict[str, List[str]] = {
+    "IND-S04-gran-distribucion": ["wholesale trade", "wholesale", "comercio al por mayor"],
+    "IND-S04-retail-especializado": ["retail trade", "retail sale", "comercio al por menor"],
+    "IND-S06-automocion": ["motor vehicles", "repair and maintenance of motor vehicles",
+                           "sale of motor vehicles", "motorcycles"],
+    "IND-S03-entretenimiento": ["gambling", "betting", "gambling and betting"],
+    "IND-S11-agricultura": ["crops", "cultivation", "growing of", "non-perennial crops",
+                            "perennial crops"],
+    "IND-S11-ganaderia": ["raising of", "animal production", "livestock"],
+    "IND-S11-pesca-y-acuicultura": ["fishing", "aquaculture"],
+    "IND-S06-materiales": ["metal products", "fabricated metal", "basic metals", "manufacture of metal"],
+    "IND-S06-papel-y-productos-forestales": ["manufacture of wood", "wood", "paper", "forestry"],
+    "IND-S06-maquinaria": ["manufacture of machinery", "machinery and equipment"],
+    "IND-S06-construccion": ["construction", "building construction", "specialized construction",
+                             "civil engineering"],
+    "IND-S06-quimica": ["manufacture of chemicals", "chemical products", "manufacture of plastics",
+                        "plastics in primary forms", "rubber and plastic"],
+    "IND-S11-bebidas": ["brewing", "manufacture of beer", "distilling", "manufacture of wine", "soft drinks"],
+    "IND-S11-panaderia-y-dulces": ["manufacture of bread", "bakery products", "cocoa, chocolate"],
+    "IND-S11-carne-y-proteinas": ["processing and preserving of meat", "meat products"],
+    "IND-S07-mineria": ["quarrying", "mining", "extraction of"],
+    "IND-S01-facility-management": ["general cleaning of buildings", "cleaning of buildings",
+                                    "cleaning activities", "landscape service"],
+    "IND-S10-transporte-terrestre": ["freight transport by road", "road transport"],
+    "IND-S10-logistica": ["warehousing", "storage"],
+    "IND-S01-servicios-legales": ["legal activities"],
+    "IND-S01-auditoria-y-contabilidad": ["accounting", "bookkeeping", "auditing", "tax consultancy"],
+    "IND-S01-consultoria-empresarial": ["management consultancy", "business consultancy"],
+    "IND-S01-ingenieria-y-servicios-tecnicos": ["engineering activities", "technical testing", "architecture"],
+    "IND-S04-restauracion-organizada": ["restaurants", "food and beverage service", "catering"],
+    "IND-S04-hoteles": ["hotels and similar accommodation", "accommodation"],
+    "IND-S05-industria-farmaceutica": ["pharmaceutical", "pharmaceutical preparations"],
+    "IND-S05-hospitales": ["hospital activities"],
+    "IND-S08-banca": ["monetary intermediation", "banking"],
+    "IND-S08-seguros": ["insurance", "life insurance", "non-life insurance"],
+    "IND-S09-servicios-inmobiliarios": ["real estate activities", "real estate agencies"],
+    "IND-S09-promocion-inmobiliaria": ["buying and selling of real estate", "development of building projects"],
+}
+for _k, _v in ALIASES_EN.items():
+    ALIASES.setdefault(_k, [])
+    for _t in _v:
+        if _t not in ALIASES[_k]:
+            ALIASES[_k].append(_t)
 
 
 def _norm(s: str) -> str:
