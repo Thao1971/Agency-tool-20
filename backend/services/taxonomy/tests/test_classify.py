@@ -72,6 +72,35 @@ def test_persistence_idempotent():
     assert n == len(stored["classifications"]) and stored["fingerprint"] is not None
 
 
+def test_semantic_signal_classifies_without_cnae():
+    from database import db
+    # Perfil del Semantic Engine (sin CNAE ni descripción en inputs)
+    _run(db.semantic_profiles.insert_one({
+        "master_id": "SEMCO",
+        "economic_activity": {"value": "agencia de publicidad y marketing digital"},
+        "capabilities": [{"value": "branding"}, {"value": "compra de medios"}],
+        "technologies": [{"value": "inteligencia artificial"}],
+    }))
+    r = _run(CLS.classify({"company_id": "SEMCO", "inputs": {"name": "SemCo"}}))
+    sectors = [x["taxonomy_id"] for x in r["classifications"]["sector"]]
+    assert "S03" in sectors                                   # el sector sale del perfil semántico
+    inds = [x["label_es"] for x in r["classifications"]["industry"]]
+    assert any("Agencias" in i for i in inds)
+    # desactivar la señal semántica → ya no clasifica por ese texto
+    r2 = _run(CLS.classify({"company_id": "SEMCO", "inputs": {"name": "SemCo"}, "use_semantic": False}))
+    assert "S03" not in [x["taxonomy_id"] for x in r2["classifications"]["sector"]]
+
+
+def test_cnae_group_precision():
+    from services.taxonomy import bridge as B
+    assert B.anchor_from_cnae("6311")[0] == "S02"   # hosting/proceso de datos → Tecnología
+    assert B.anchor_from_cnae("6312")[0] == "S03"   # portal web → Medios
+    assert B.anchor_from_cnae("7211")[0] == "S05"   # I+D biotech → Salud
+    assert B.anchor_from_cnae("2110")[0] == "S05"   # farma
+    assert B.anchor_from_cnae("62")[0] == "S02"     # división (fallback) sigue funcionando
+
+
 if __name__ == "__main__":
-    for fn in (test_adtech_platform_multiclass, test_core_vs_used_technology, test_persistence_idempotent):
+    for fn in (test_adtech_platform_multiclass, test_core_vs_used_technology, test_persistence_idempotent,
+               test_semantic_signal_classifies_without_cnae, test_cnae_group_precision):
         fn(); print("OK", fn.__name__)

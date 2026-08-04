@@ -12,7 +12,7 @@ from services.taxonomy import TAXONOMY_VERSION
 from services.taxonomy import registry as REG
 from services.taxonomy import bridge as BRIDGE
 
-CLASSIFIER_VERSION = "company-classification-engine-v1.1"
+CLASSIFIER_VERSION = "company-classification-engine-v1.2"
 
 # ── Config (versionada)
 W = {"cnae_section": 0.55, "division_industry": 0.6, "kw_industry": 0.55, "kw_category": 0.45,
@@ -22,41 +22,193 @@ _TECH_SECTORS = {"S02"}
 
 # Alias de alta señal por id de nodo/dimensión (además de la etiqueta). Se ampliará con la clasificación.
 ALIASES: Dict[str, List[str]] = {
+    # ── S01 Servicios Empresariales
+    "IND-S01-consultoria-empresarial": ["consultoria", "consulting", "consultora", "asesoramiento estrategico",
+                                        "consultancy", "business consulting"],
+    "IND-S01-servicios-profesionales": ["servicios profesionales", "outsourcing"],
+    "IND-S01-recursos-humanos": ["recursos humanos", "seleccion de personal", "ett", "trabajo temporal",
+                                 "headhunting", "executive search", "reclutamiento"],
+    "IND-S01-servicios-legales": ["despacho de abogados", "abogados", "bufete", "asesoria juridica", "legal"],
+    "IND-S01-auditoria-y-contabilidad": ["auditoria", "contabilidad", "asesoria fiscal", "gestoria",
+                                         "asesoria contable", "nominas", "accounting", "auditing",
+                                         "bookkeeping", "tax consultancy"],
+    "IND-S01-ingenieria-y-servicios-tecnicos": ["ingenieria", "arquitectura", "inspeccion", "certificacion",
+                                                "project management"],
+    "IND-S01-facility-management": ["facility management", "limpieza", "mantenimiento de edificios",
+                                    "seguridad privada", "servicios integrales", "conserjeria"],
+    "IND-S01-bpo": ["bpo", "contact center", "call center", "back office", "atencion al cliente"],
+    "IND-S01-informacion-empresarial": ["informacion empresarial", "business information", "due diligence"],
+    "IND-S01-servicios-de-marketing": ["investigacion de mercados", "field marketing", "promocion"],
+    # ── S02 Tecnología
+    "IND-S02-software-empresarial": ["saas", "software as a service", "plataforma software", "erp", "crm",
+                                     "software de gestion", "aplicacion web", "plataforma cloud"],
+    "IND-S02-software-financiero": ["software financiero", "software contable", "facturacion electronica"],
+    "IND-S02-software-de-rrhh": ["software de rrhh", "hris", "software de nominas"],
+    "IND-S02-datos-y-analitica": ["business intelligence", "analitica de datos", "data analytics",
+                                  "big data", "cuadros de mando", "dashboards"],
+    "IND-S02-inteligencia-artificial": ["inteligencia artificial", "machine learning", "deep learning",
+                                        "aprendizaje automatico", "vision artificial", "ia generativa",
+                                        "artificial intelligence"],
+    "IND-S02-ciberseguridad": ["ciberseguridad", "cybersecurity", "seguridad informatica", "soc", "pentesting",
+                               "cyber security"],
+    "IND-S02-cloud-e-infraestructura": ["cloud computing", "hosting", "servidores", "devops", "infraestructura it",
+                                        "data processing", "data center", "web portals"],
+    "IND-S02-desarrollo-de-software": ["desarrollo de software", "software factory", "programacion informatica",
+                                       "desarrollo web", "desarrollo de aplicaciones", "software a medida",
+                                       "software development", "computer programming"],
+    "IND-S02-telecomunicaciones": ["telecomunicaciones", "operador de telefonia", "redes", "fibra optica"],
+    "IND-S02-hardware-y-electronica": ["hardware", "electronica", "sensores", "semiconductores"],
+    "IND-S02-internet-de-las-cosas": ["internet de las cosas", "iot", "smart buildings", "telemetria"],
+    "IND-S02-automatizacion": ["rpa", "automatizacion de procesos", "process mining"],
+    # ── S03 Medios, Marketing y Comunicación
+    "IND-S03-agencias-creativas": ["agencia creativa", "agencia de publicidad", "agencia publicitaria",
+                                   "publicidad"],
+    "IND-S03-agencias-digitales": ["agencia digital", "marketing digital", "marketing online"],
+    "IND-S03-branding-y-diseno": ["branding", "diseno grafico", "identidad corporativa", "estudio de diseno"],
+    "IND-S03-agencias-de-medios": ["agencia de medios", "compra de medios", "planificacion de medios",
+                                   "media agency"],
+    "IND-S03-marketing-de-resultados": ["performance marketing", "sem", "paid media", "captacion de leads",
+                                        "afiliacion"],
+    "IND-S03-martech": ["martech", "marketing automation", "customer data platform", "cdp"],
     "IND-S03-adtech": ["adtech", "publicidad programatica", "programmatic", "ad server", "dsp", "ssp",
                        "publicidad contextual"],
-    "IND-S03-agencias-creativas": ["agencia creativa", "agencia de publicidad", "agencia publicitaria"],
-    "IND-S03-agencias-digitales": ["agencia digital", "marketing digital"],
-    "IND-S03-agencias-de-medios": ["agencia de medios", "compra de medios", "media agency"],
-    "IND-S03-martech": ["martech", "marketing automation", "customer data platform", "cdp"],
-    "IND-S02-desarrollo-de-software": ["desarrollo de software", "software factory", "programacion informatica",
-                                       "software development", "computer programming"],
-    "IND-S02-inteligencia-artificial": ["inteligencia artificial", "machine learning", "deep learning",
-                                        "artificial intelligence"],
-    "IND-S02-software-empresarial": ["saas", "software as a service", "plataforma software"],
-    "IND-S02-ciberseguridad": ["ciberseguridad", "cybersecurity", "cyber security"],
-    "IND-S02-cloud-e-infraestructura": ["hosting", "data processing", "computing infrastructure",
-                                        "web portals", "data center", "centro de datos"],
-    "IND-S01-consultoria-empresarial": ["consultoria", "consulting", "consultancy"],
-    "IND-S08-fintech": ["fintech", "financial technology", "digital payments", "neobank", "pagos digitales"],
-    "IND-S08-pagos": ["medios de pago", "payment services", "payment processing", "pasarela de pago"],
-    "IND-S05-healthtech": ["healthtech", "salud digital"],
-    "IND-S05-industria-farmaceutica": ["industria farmaceutica", "pharmaceutical", "pharmaceutical products",
-                                       "pharmaceutical specialties", "laboratorio farmaceutico",
-                                       "especialidades farmaceuticas"],
+    "IND-S03-influencer-marketing": ["influencer marketing", "influencers", "creator economy"],
+    "IND-S03-relaciones-publicas": ["relaciones publicas", "comunicacion corporativa", "gabinete de prensa",
+                                    "public affairs"],
+    "IND-S03-eventos-y-experiencias": ["organizacion de eventos", "eventos corporativos", "activaciones"],
+    "IND-S03-medios-digitales": ["medios digitales", "portal de noticias", "publisher", "revista digital"],
+    "IND-S03-television-y-video": ["productora audiovisual", "produccion audiovisual", "television", "video"],
+    "IND-S03-audio": ["radio", "podcast", "audio digital"],
+    "IND-S03-publicidad-exterior": ["publicidad exterior", "ooh", "dooh", "vallas publicitarias"],
+    "IND-S03-investigacion-de-mercados": ["investigacion de mercados", "estudios de mercado", "consumer insights"],
+    "IND-S03-produccion-de-contenidos": ["branded content", "produccion de contenidos", "content"],
+    "IND-S03-entretenimiento": ["entretenimiento", "gaming", "videojuegos", "musica", "espectaculos"],
+    # ── S04 Consumo y Retail
+    "IND-S04-retail-especializado": ["tienda", "comercio minorista", "retail", "cadena de tiendas"],
+    "IND-S04-gran-distribucion": ["supermercado", "hipermercado", "gran distribucion", "cadena de alimentacion"],
+    "IND-S04-comercio-electronico": ["ecommerce", "comercio electronico", "tienda online", "venta online", "d2c"],
+    "IND-S04-moda-y-accesorios": ["moda", "textil", "calzado", "complementos", "ropa"],
+    "IND-S04-belleza-y-cuidado-personal": ["cosmetica", "perfumeria", "belleza", "cuidado personal"],
+    "IND-S04-hogar": ["mobiliario", "muebles", "decoracion", "electrodomesticos"],
+    "IND-S04-ocio-y-deporte": ["articulos deportivos", "deporte", "fitness", "outdoor"],
+    "IND-S04-restauracion-organizada": ["restaurante", "restauracion", "hosteleria", "cafeteria", "delivery",
+                                        "comida rapida"],
+    "IND-S04-viajes-y-turismo": ["agencia de viajes", "turismo", "tour operador", "travel"],
+    "IND-S04-hoteles": ["hotel", "hoteles", "resort", "aparthotel", "alojamiento"],
+    # ── S05 Salud
+    "IND-S05-industria-farmaceutica": ["farmaceutica", "laboratorio farmaceutico", "pharma", "medicamentos",
+                                       "pharmaceutical", "manufacture of pharmaceutical"],
     "IND-S05-biotecnologia": ["biotecnologia", "biotech", "biotechnology"],
-    "IND-S05-tecnologia-medica": ["tecnologia medica", "medtech", "medical devices", "dispositivos medicos"],
+    "IND-S05-tecnologia-medica": ["tecnologia medica", "medtech", "dispositivos medicos", "equipamiento medico",
+                                  "medical devices"],
+    "IND-S05-diagnostico": ["laboratorio de analisis", "diagnostico", "imagen medica"],
+    "IND-S05-hospitales": ["hospital", "clinica", "centro medico", "centro sanitario"],
+    "IND-S05-atencion-ambulatoria": ["centro medico", "policlinica", "atencion primaria"],
+    "IND-S05-dental": ["clinica dental", "dental", "odontologia"],
+    "IND-S05-salud-mental": ["salud mental", "psicologia", "terapia"],
+    "IND-S05-residencias-y-dependencia": ["residencia de mayores", "geriatrico", "dependencia", "ayuda a domicilio"],
+    "IND-S05-healthtech": ["healthtech", "salud digital", "telemedicina"],
+    "IND-S05-salud-animal": ["veterinaria", "salud animal", "clinica veterinaria"],
+    # ── S06 Industria
+    "IND-S06-maquinaria": ["maquinaria industrial", "fabricante de maquinaria", "bienes de equipo"],
+    "IND-S06-automatizacion-industrial": ["robotica industrial", "automatizacion industrial", "control industrial"],
+    "IND-S06-componentes-industriales": ["componentes industriales", "piezas", "fabricacion de componentes"],
+    "IND-S06-automocion": ["automocion", "componentes de automocion", "recambios", "aftermarket"],
+    "IND-S06-aeroespacial-y-defensa": ["aeronautica", "aeroespacial", "defensa"],
+    "IND-S06-quimica": ["quimica", "industria quimica", "productos quimicos"],
+    "IND-S06-materiales": ["metalurgia", "siderurgia", "vidrio", "ceramica"],
+    "IND-S06-packaging": ["packaging", "envases", "embalaje"],
+    "IND-S06-construccion": ["constructora", "construccion", "obra civil", "edificacion", "reformas",
+                             "rehabilitacion", "construction", "civil engineering"],
+    "IND-S06-materiales-de-construccion": ["cemento", "hormigon", "materiales de construccion", "aislamiento"],
+    "IND-S06-mantenimiento-industrial": ["mantenimiento industrial", "mro"],
+    # ── S07 Energía y Recursos Naturales
+    "IND-S07-electricidad": ["electricidad", "comercializadora electrica", "distribucion electrica"],
+    "IND-S07-energias-renovables": ["energias renovables", "fotovoltaica", "solar", "eolica", "biomasa"],
+    "IND-S07-servicios-energeticos": ["eficiencia energetica", "esco", "servicios energeticos"],
+    "IND-S07-oil-gas": ["petroleo", "gas", "hidrocarburos"],
+    "IND-S07-gestion-del-agua": ["gestion del agua", "tratamiento de aguas", "depuracion", "desalacion"],
+    "IND-S07-residuos": ["gestion de residuos", "reciclaje", "recogida de residuos"],
+    "IND-S07-mineria": ["mineria", "extraccion", "cantera"],
+    "IND-S07-servicios-ambientales": ["consultoria ambiental", "medio ambiente", "descontaminacion"],
+    # ── S08 Servicios Financieros
+    "IND-S08-banca": ["banco", "banca", "entidad financiera", "banking"],
+    "IND-S08-financiacion": ["financiacion", "prestamos", "leasing", "renting", "credito al consumo",
+                             "lending", "other lending activities"],
+    "IND-S08-pagos": ["pagos", "medios de pago", "pasarela de pago", "tpv", "digital payments", "payment services"],
+    "IND-S08-seguros": ["aseguradora", "compania de seguros", "seguros"],
+    "IND-S08-mediacion-de-seguros": ["correduria de seguros", "corredor de seguros", "mediacion de seguros"],
+    "IND-S08-gestion-de-activos": ["gestora de fondos", "gestion de activos", "asset management", "sgiic"],
+    "IND-S08-capital-privado": ["private equity", "capital riesgo", "venture capital", "capital privado"],
+    "IND-S08-servicios-de-inversion": ["sociedad de valores", "broker", "servicios de inversion"],
+    "IND-S08-fintech": ["fintech", "neobanco", "financial technology"],
+    "IND-S08-insurtech": ["insurtech"],
+    # ── S09 Inmobiliario e Infraestructuras
+    "IND-S09-residencial": ["vivienda residencial", "build to rent", "alquiler residencial"],
+    "IND-S09-oficinas": ["oficinas", "espacios de trabajo", "coworking"],
+    "IND-S09-industrial-y-logistica": ["naves logisticas", "naves industriales", "logistics property"],
+    "IND-S09-promocion-inmobiliaria": ["promotora inmobiliaria", "promocion inmobiliaria", "desarrollo inmobiliario"],
+    "IND-S09-gestion-de-activos": ["property management", "gestion de patrimonio inmobiliario"],
+    "IND-S09-servicios-inmobiliarios": ["inmobiliaria", "agencia inmobiliaria", "real estate", "tasacion",
+                                        "intermediacion inmobiliaria", "renting of real estate"],
+    "IND-S09-proptech": ["proptech"],
+    "IND-S09-infraestructuras": ["infraestructuras", "concesiones", "autopistas"],
+    "IND-S09-infraestructura-digital": ["data center", "centro de datos", "torres de telecomunicaciones"],
+    # ── S10 Transporte y Logística
+    "IND-S10-transporte-terrestre": ["transporte por carretera", "transporte terrestre", "camiones",
+                                     "transporte de mercancias"],
+    "IND-S10-transporte-maritimo": ["transporte maritimo", "naviera", "shipping"],
+    "IND-S10-transporte-aereo": ["aerolinea", "transporte aereo", "carga aerea"],
+    "IND-S10-logistica": ["logistica", "operador logistico", "almacenaje", "3pl", "distribucion"],
+    "IND-S10-transitarios": ["transitario", "freight forwarding", "agente de aduanas"],
+    "IND-S10-ultima-milla": ["ultima milla", "reparto urbano", "last mile"],
+    "IND-S10-mensajeria": ["mensajeria", "paqueteria", "courier", "envio urgente"],
+    "IND-S10-movilidad": ["movilidad", "vtc", "carsharing", "movilidad compartida"],
+    "IND-S10-tecnologia-logistica": ["software logistico", "tms", "gestion de flotas"],
+    # ── S11 Alimentación y Agroindustria
+    "IND-S11-agricultura": ["agricultura", "explotacion agricola", "cultivos"],
+    "IND-S11-ganaderia": ["ganaderia", "explotacion ganadera", "avicultura"],
+    "IND-S11-pesca-y-acuicultura": ["pesca", "acuicultura", "piscifactoria"],
+    "IND-S11-alimentacion": ["industria alimentaria", "alimentacion", "procesado de alimentos", "conservas"],
+    "IND-S11-bebidas": ["bebidas", "bodega", "vino", "cerveza", "refrescos"],
+    "IND-S11-panaderia-y-dulces": ["panaderia", "pasteleria", "reposteria", "snacks"],
+    "IND-S11-lacteos": ["lacteos", "quesos", "productos lacteos"],
+    "IND-S11-carne-y-proteinas": ["carnica", "matadero", "procesado carnico"],
+    "IND-S11-distribucion-alimentaria": ["distribucion alimentaria", "mayorista de alimentacion"],
+    "IND-S11-foodtech": ["foodtech"],
+    "IND-S11-agtech": ["agtech", "agricultura de precision"],
+    # ── Dimensiones · Verticales
     "DIM-verticals-adtech": ["adtech", "publicidad programatica", "publicidad contextual", "programmatic"],
     "DIM-verticals-martech": ["martech", "marketing automation"],
     "DIM-verticals-saas": ["saas", "software as a service"],
-    "DIM-verticals-inteligencia-artificial": ["inteligencia artificial", "ia", "machine learning",
-                                              "artificial intelligence"],
-    "DIM-verticals-fintech": ["fintech", "financial technology"],
+    "DIM-verticals-inteligencia-artificial": ["inteligencia artificial", "machine learning", "ia generativa"],
+    "DIM-verticals-fintech": ["fintech"],
+    "DIM-verticals-insurtech": ["insurtech"],
+    "DIM-verticals-healthtech": ["healthtech", "salud digital"],
+    "DIM-verticals-proptech": ["proptech"],
+    "DIM-verticals-ecommerce": ["ecommerce", "comercio electronico"],
+    "DIM-verticals-cybersecurity": ["ciberseguridad", "cybersecurity"],
+    "DIM-verticals-foodtech": ["foodtech"],
+    "DIM-verticals-agtech": ["agtech"],
+    # ── Dimensiones · Modelo de negocio
     "DIM-business_models-saas": ["saas", "suscripcion software"],
-    "DIM-business_models-b2b": ["b2b", "empresas"],
+    "DIM-business_models-b2b": ["b2b", "para empresas"],
+    "DIM-business_models-b2c": ["b2c", "consumidor final"],
     "DIM-business_models-marketplace": ["marketplace"],
-    "DIM-technologies-inteligencia-artificial": ["inteligencia artificial", "machine learning", "ia generativa",
-                                                 "artificial intelligence"],
-    "DIM-technologies-cloud": ["cloud", "nube", "hosting"],
+    "DIM-business_models-suscripcion": ["suscripcion", "cuota mensual", "membresia"],
+    "DIM-business_models-franquicia": ["franquicia"],
+    "DIM-business_models-rental-leasing": ["renting", "leasing", "alquiler de equipos"],
+    "DIM-business_models-servicios-profesionales": ["servicios profesionales", "consultoria"],
+    # ── Dimensiones · Tipo de cliente
+    "DIM-client_types-administraciones-publicas": ["administracion publica", "sector publico", "b2g"],
+    "DIM-client_types-pyme": ["pymes", "pequenas y medianas empresas"],
+    "DIM-client_types-grandes-empresas": ["grandes empresas", "grandes cuentas"],
+    # ── Dimensiones · Tecnología (core)
+    "DIM-technologies-inteligencia-artificial": ["inteligencia artificial", "machine learning", "ia generativa"],
+    "DIM-technologies-cloud": ["cloud", "nube"],
+    "DIM-technologies-blockchain": ["blockchain"],
+    "DIM-technologies-iot": ["iot", "internet de las cosas"],
+    "DIM-technologies-big-data": ["big data", "datos masivos"],
 }
 
 
@@ -114,6 +266,19 @@ def _rows(axis: str, scores: Dict, ev: Dict, label_of) -> List[Dict]:
     return out
 
 
+async def _semantic_text(company_id: Optional[str]) -> str:
+    """Señal de clasificación desde el Semantic Engine (perfil web/negocio). Best-effort; '' si no hay."""
+    if not company_id:
+        return ""
+    try:
+        from services.engines.semantic import persistence as _SP
+        from services.engines.semantic import profile as _PR
+        p = await _SP.get(company_id)
+        return _PR.embedding_text(p) if p else ""
+    except Exception:
+        return ""
+
+
 async def classify(request: Dict) -> Dict:
     inputs = request.get("inputs") or {}
     company_id = request.get("company_id") or inputs.get("company_id") or inputs.get("master_id")
@@ -122,7 +287,11 @@ async def classify(request: Dict) -> Dict:
         cnaes = [cnaes]
     name = inputs.get("name") or (inputs.get("identity") or {}).get("name") or ""
     desc = inputs.get("description") or inputs.get("profile_text") or inputs.get("objeto_social") or ""
-    hay = _norm(f"{name} {desc}")
+    # Señal semántica real (perfil del Semantic Engine) salvo que se aporte inline o se desactive.
+    sem = inputs.get("semantic_text") or ""
+    if not sem and request.get("use_semantic", True):
+        sem = await _semantic_text(company_id)
+    hay = _norm(f"{name} {desc} {sem}")
 
     sec, ind, cat, ev = {}, {}, {}, {}
     dim_scores = {d: {} for d in ("verticals", "business_models", "client_types", "technologies",

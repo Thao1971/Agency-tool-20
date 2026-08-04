@@ -9,10 +9,40 @@ SECTION_TO_SECTOR = {
     "Q": "S05", "R": "S03", "S": "S01", "T": "S01", "U": "S01",
 }
 
+# Grupo CNAE (4 díg.) → (sector, industria ARROBA). MÁS específico que la división; se comprueba primero.
+# Resuelve ambigüedades reales de la división (p. ej. 6311 hosting=tech vs 6312 portales=medios).
+GROUP_TO_INDUSTRY = {
+    # J — Información y comunicaciones (tech vs medios)
+    "6201": ("S02", "Desarrollo de software"),
+    "6202": ("S02", "Software empresarial"),        # consultoría/actividades informáticas
+    "6203": ("S02", "Cloud e infraestructura"),     # gestión de recursos informáticos
+    "6209": ("S02", "Desarrollo de software"),
+    "6311": ("S02", "Cloud e infraestructura"),     # proceso de datos, hosting
+    "6312": ("S03", "Medios digitales"),            # portales web
+    "6391": ("S03", "Medios digitales"),            # agencias de noticias
+    "5821": ("S03", "Entretenimiento"),             # edición de videojuegos
+    "5829": ("S02", "Software empresarial"),        # edición de otros programas
+    "5814": ("S03", "Medios digitales"),            # edición de revistas
+    "5911": ("S03", "Televisión y vídeo"),          # producción audiovisual
+    "6010": ("S03", "Audio"),                       # radio
+    # C/M — salud y ciencias de la vida
+    "7211": ("S05", "Biotecnología"),               # I+D en biotecnología
+    "2110": ("S05", "Industria farmacéutica"),
+    "2120": ("S05", "Industria farmacéutica"),
+    "2660": ("S05", "Tecnología médica"),           # equipos electromédicos
+    # K — servicios financieros
+    "6419": ("S08", "Banca"),
+    "6499": ("S08", "Financiación"),
+    "6492": ("S08", "Financiación"),               # otras actividades de préstamo (preservado v1.1)
+    "6612": ("S08", "Servicios de inversión"),
+    "6622": ("S08", "Mediación de seguros"),
+}
+
 # División CNAE (2 díg.) → (sector, etiqueta de industria ARROBA) para los casos claros.
 DIVISION_TO_INDUSTRY = {
     "62": ("S02", "Desarrollo de software"),
-    "63": ("S03", "Medios digitales"),
+    "63": ("S02", "Cloud e infraestructura"),       # división J: proceso de datos predomina (los portales
+                                                    # van por grupo 6312→S03)
     "58": ("S02", "Software empresarial"),
     "59": ("S03", "Televisión y vídeo"),
     "60": ("S03", "Audio"),
@@ -35,26 +65,7 @@ DIVISION_TO_INDUSTRY = {
     "56": ("S04", "Restauración organizada"),
     "35": ("S07", "Electricidad"),
     "10": ("S11", "Alimentación"),
-    # Recalibración 2026-08 (F3 v1.1): la fabricación farmacéutica (sección C) es Salud, no Industria.
-    "21": ("S05", "Industria farmacéutica"),
-}
-
-# Código CNAE de 4 dígitos → (sector, industria). Se comprueba ANTES que la división: son casos de muy
-# alta señal donde la división de 2 díg. es demasiado gruesa o cae en el sector equivocado.
-# Recalibración 2026-08 (F3 v1.1).
-CODE4_TO_INDUSTRY = {
-    # Div 63 (Servicios de información) es medios, pero el hosting/procesamiento de datos y los
-    # portales web son infraestructura tecnológica → S02.
-    "6311": ("S02", "Cloud e infraestructura"),
-    "6312": ("S02", "Cloud e infraestructura"),
-    # Fabricación farmacéutica: explícito además de la división 21.
-    "2110": ("S05", "Industria farmacéutica"),
-    "2120": ("S05", "Industria farmacéutica"),
-    # Investigación en biotecnología (CNAE-2009 7211), cuando el dataset lo trae a 4 díg.
-    "7211": ("S05", "Biotecnología"),
-    # Actividades de préstamo / servicios financieros auxiliares → Financiación (más preciso que "Banca").
-    "6492": ("S08", "Financiación"),
-    "6499": ("S08", "Financiación"),
+    "21": ("S05", "Industria farmacéutica"),       # fabricación farmacéutica → Salud (fallback, preservado v1.1)
 }
 
 
@@ -70,13 +81,11 @@ def anchor_from_cnae(code):
     if len(c) == 1 and c.isalpha():
         return (SECTION_TO_SECTOR.get(c.upper()), None)
     d = _digits(c)
-    # 1) código de 4 dígitos de muy alta señal (antes que la división)
-    if len(d) >= 4 and d[:4] in CODE4_TO_INDUSTRY:
-        return CODE4_TO_INDUSTRY[d[:4]]
-    # 2) división de 2 dígitos
+    if len(d) >= 4 and d[:4] in GROUP_TO_INDUSTRY:      # grupo (4 díg.) primero — más específico
+        return GROUP_TO_INDUSTRY[d[:4]]
     if len(d) >= 2 and d[:2] in DIVISION_TO_INDUSTRY:
         return DIVISION_TO_INDUSTRY[d[:2]]
-    # 3) sección vía catálogo CNAE
+    # sección vía catálogo CNAE
     try:
         from services.cnae_catalog import resolve_cnae_to_section
         sec = resolve_cnae_to_section(c)
