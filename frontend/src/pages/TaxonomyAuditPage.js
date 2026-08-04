@@ -3,7 +3,7 @@ import api from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Loader2, RefreshCw, PieChart, AlertTriangle, CheckCircle2, PlayCircle } from 'lucide-react';
+import { Loader2, RefreshCw, PieChart, AlertTriangle, CheckCircle2, PlayCircle, Download } from 'lucide-react';
 import { toast } from 'sonner';
 
 const SECTOR_COLORS = {
@@ -47,6 +47,24 @@ export default function TaxonomyAuditPage() {
 
   useEffect(() => { loadData(); }, []);
 
+  const downloadTriage = async () => {
+    toast.info('Generando export de triaje…');
+    try {
+      const r = await api.get('/company-taxonomy-ui/triage-low-confidence');
+      const blob = new Blob([JSON.stringify(r.data, null, 1)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `taxonomy_triage_lowconf_${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      const b = r.data?.triage_breakdown || {};
+      toast.success(`Triaje: ${r.data?.count} filas · falta_alias ${b.con_texto_pero_baja_conf || 0} · solo_cnae ${b.solo_cnae_sin_texto_libre || 0} · vacío ${b.vacio_sin_cnae_ni_texto || 0}`);
+    } catch (e) {
+      toast.error('No se pudo generar el triaje');
+    }
+  };
+
   const reclassify = async () => {
     setReclassifying(true);
     toast.info('Reclasificando el universo… (~40s)');
@@ -85,6 +103,10 @@ export default function TaxonomyAuditPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={downloadTriage}
+            className="border-amber-700 text-amber-300 h-7 text-xs" data-testid="download-triage-btn">
+            <Download className="w-3 h-3 mr-1.5" /> Descargar triaje
+          </Button>
           <Button variant="outline" size="sm" onClick={reclassify} disabled={reclassifying}
             className="border-violet-700 text-violet-300 h-7 text-xs" data-testid="reclassify-btn">
             {reclassifying ? <Loader2 className="w-3 h-3 mr-1.5 animate-spin" /> : <PlayCircle className="w-3 h-3 mr-1.5" />}

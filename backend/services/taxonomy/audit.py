@@ -38,6 +38,72 @@ async def audit_report(sample_n: int = 150) -> Dict:
             "distribution_by_sector": dist, "sample": sample}
 
 
+def _text_val(v) -> str:
+    if isinstance(v, str):
+        return v
+    if isinstance(v, dict):
+        for k in ("text", "value", "description", "summary", "content"):
+            if isinstance(v.get(k), str):
+                return v[k]
+    return ""
+
+
+async def _semantic_len(cid: str) -> int:
+    try:
+        from services.engines.semantic import persistence as SP, profile as PR
+        p = await SP.get(cid)
+        return len(PR.embedding_text(p)) if p else 0
+    except Exception:
+        return 0
+
+
+async def triage_low_confidence(conf_threshold: float = 0.5, limit: int = 5000) -> Dict:
+    """Export de triaje: empresas de baja confianza (< umbral) + sin clasificar, con señales para
+    distinguir FALTA DE ALIAS (hay texto pero no casó keyword) de DESCRIPCIÓN POBRE/VACÍA.
+    Campos por fila: company_id, name, cnae, cnae_description, primary_sector, overall_confidence,
+    objeto_social_len, semantic_len, triage."""
+    from collections import Counter
+    from database import db
+    q = {"$or": [{"overall_confidence": {"$lt": conf_threshold}}, {"primary_sector": None}]}
+    fps: List[Dict] = [f async for f in db.company_fingerprint.find(
+        q, {"_id": 0, "company_id": 1, "primary_sector": 1, "overall_confidence": 1}).limit(limit)]
+    mids = [f["company_id"] for f in fps]
+    master: Dict[str, Dict] = {}
+    if mids:
+        async for m in db.master_companies.find(
+                {"master_id": {"$in": mids}},
+                {"_id": 0, "master_id": 1, "identity.legal_name": 1,
+                 "classification.cnae_code": 1, "classification.cnae_description": 1,
+                 "objeto_social": 1}):
+            master[m["master_id"]] = m
+    rows: List[Dict] = []
+    reasons: Counter = Counter()
+    for f in fps:
+        cid = f["company_id"]
+        m = master.get(cid) or {}
+        idn = m.get("identity") or {}
+        cls = m.get("classification") or {}
+        cnae = cls.get("cnae_code")
+        cdesc = cls.get("cnae_description") or ""
+        os_txt = _text_val(m.get("objeto_social"))
+        slen = await _semantic_len(cid)
+        freetext = len(os_txt) + slen  # texto libre real (objeto social + perfil semántico)
+        if not cnae and freetext == 0:
+            reason = "vacio_sin_cnae_ni_texto"      # autónomos/sin datos → requiere enriquecimiento
+        elif freetext == 0:
+            reason = "solo_cnae_sin_texto_libre"     # solo ancla CNAE → confianza limitada por señal única
+        else:
+            reason = "con_texto_pero_baja_conf"      # HAY texto pero no casó keyword → falta de alias real
+        reasons[reason] += 1
+        rows.append({"company_id": cid, "name": idn.get("legal_name"), "cnae": cnae,
+                     "cnae_description": cdesc or None, "primary_sector": f.get("primary_sector"),
+                     "overall_confidence": f.get("overall_confidence"),
+                     "objeto_social_len": len(os_txt), "semantic_len": slen, "triage": reason})
+    return {"taxonomy_version": REG.TAXONOMY_VERSION, "conf_threshold": conf_threshold,
+            "count": len(rows), "triage_breakdown": dict(reasons.most_common()), "items": rows}
+
+
+
 async def list_unclassified(limit: int = 300) -> Dict:
     """Empresas sin sector principal (primary_sector nulo), enriquecidas con nombre/CNAE de
     master_companies, para revisión manual en la Platform Console. Mayoría: autónomos/personas

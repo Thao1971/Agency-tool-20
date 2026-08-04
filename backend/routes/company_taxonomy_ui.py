@@ -28,6 +28,14 @@ async def unclassified(limit: int = 300, user=Depends(get_current_user)):
     return await AUDIT.list_unclassified(limit=limit)
 
 
+@router.get("/triage-low-confidence")
+async def triage_low_confidence(conf_threshold: float = 0.5, limit: int = 5000,
+                                user=Depends(get_current_user)):
+    """Export de triaje: baja confianza + sin clasificar, con señales para distinguir falta de alias
+    vs descripción pobre/vacía. Útil para pasarle al vendor la calibración de pesos/alias."""
+    return await AUDIT.triage_low_confidence(conf_threshold=conf_threshold, limit=limit)
+
+
 @router.post("/reclassify")
 async def reclassify(limit: Optional[int] = None, user=Depends(get_current_user)):
     """Re-lanza la pasada de clasificación F3 sobre el universo (o los primeros `limit`)."""
