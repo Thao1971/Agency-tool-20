@@ -89,6 +89,12 @@ def classify(text: str, screen: str = None) -> dict:
     if any(k in t for k in EVOLUTION):
         return {"level": "L3", "capability": None, "targets": [], "metric": None, "kind": "evolution"}
 
+    # Multi-entidad: "compara X con Y" (dos compañías concretas) → capacidad compare_pair.
+    # Antes del loop L4 para ganar a compare/peers; "compara estas dos" (sin ' con ') sigue siendo compare.
+    if " con " in t and any(w in t for w in ("compara", "comparar", "comparala", "comparalo",
+                                             "frente a", "versus", " vs ")):
+        return {"level": "L4", "capability": "compare_pair", "targets": [], "metric": None, "kind": None}
+
     # L4 — capacidades
     for kws, cap in L4:
         if any(_norm(k).strip() in t for k in kws):

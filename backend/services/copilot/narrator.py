@@ -283,6 +283,22 @@ def _n_capability(out: Dict, ctx: Dict) -> Dict:
         msg = (f"Hay {data.get('count', len(ids))} empresas en {label}. Te muestro las primeras: "
                + _join(show) + ".")
         return {"headline": f"Empresas en {label}.", "message": msg}
+    if cap == "compare_pair":
+        if data.get("note"):
+            return {"headline": data["note"], "message": data["note"]}
+        bname = data.get("b_name") or "la otra compañía"
+        cos = data.get("fingerprint_similarity", 0)
+        grado = "muy parecidas" if cos >= 0.85 else ("bastante parecidas" if cos >= 0.6 else "poco parecidas")
+        sh = data.get("shared", {})
+        comunes = _join(((sh.get("sector") or []) + (sh.get("industry") or []) + (sh.get("verticals") or []))[:4])
+        difa = _join((data.get("only_a", {}).get("industry") or [])[:2])
+        difb = _join((data.get("only_b", {}).get("industry") or [])[:2])
+        msg = f"Frente a {bname} son {grado} (similitud de perfil {cos})."
+        if comunes:
+            msg += f" Comparten {comunes}."
+        if difa or difb:
+            msg += f" Se diferencian en {difa or '—'} vs {difb or '—'}."
+        return {"headline": f"Comparación con {bname}.", "message": msg}
     # portfolio u otros
     base = (out.get("answer") or {}).get("headline") or "Análisis de cartera listo."
     return {"headline": base, "message": base}

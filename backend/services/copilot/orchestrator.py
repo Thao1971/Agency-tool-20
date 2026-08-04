@@ -249,16 +249,31 @@ async def _route(request: Dict, _sink: Dict = None) -> Dict:
     if level == "L4":
         cap = intent["capability"]
         bp = request.get("buyer_profile") or {"type": profile["type"]}
-        # Taxonomía ARROBA: comparables (peers) y búsqueda por sector/vertical. Import perezoso.
-        if cap in ("peers", "taxo_search"):
+        # Taxonomía ARROBA: comparables (peers), búsqueda por sector/vertical y comparación de pares.
+        if cap in ("peers", "taxo_search", "compare_pair"):
             cid = request.get("company_id") or request.get("cif") or request.get("opportunity_id")
             try:
+                from services.taxonomy import similarity as _SIM
+                from services.taxonomy import search as _SR
                 if cap == "peers":
-                    from services.taxonomy import similarity as _SIM
                     data = await _SIM.peers(cid, k=int(request.get("k") or 8)) if cid else \
                         {"peers": [], "note": "Dime sobre qué compañía busco comparables."}
+                elif cap == "compare_pair":
+                    b = None
+                    if request.get("company_id_b"):
+                        b = {"company_id": request["company_id_b"], "name": request["company_id_b"]}
+                    else:
+                        for e in INTENT.extract_entities(text):
+                            hit = await _SR.resolve_company_by_name(e)
+                            if hit and hit["company_id"] != cid:
+                                b = hit
+                                break
+                    if cid and b:
+                        data = await _SIM.compare_pair(cid, b["company_id"])
+                        data["b_name"] = b.get("name")
+                    else:
+                        data = {"note": "Dime las dos compañías a comparar (analiza una y nómbrame la otra)."}
                 else:
-                    from services.taxonomy import search as _SR
                     hit = _SR.resolve_label(text)
                     if not hit:
                         data = {"count": 0, "company_ids": [], "note": "No reconozco ese sector/vertical."}

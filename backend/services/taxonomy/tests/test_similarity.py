@@ -63,6 +63,16 @@ def test_peers_unclassified_is_safe():
     assert res["peers"] == [] and "note" in res
 
 
+def test_compare_pair():
+    _seed()
+    r = _run(SIM.compare_pair("P1", "P2"))
+    assert r["fingerprint_similarity"] >= 0.85          # dos AdTech gemelas
+    assert r["shared"].get("sector")                     # comparten sector
+    r2 = _run(SIM.compare_pair("P1", "NO"))
+    assert "note" in r2
+
+
 if __name__ == "__main__":
-    for fn in (test_fingerprint_cosine, test_peers_ranks_similar_first, test_peers_unclassified_is_safe):
+    for fn in (test_fingerprint_cosine, test_peers_ranks_similar_first, test_peers_unclassified_is_safe,
+               test_compare_pair):
         fn(); print("OK", fn.__name__)

@@ -94,3 +94,16 @@ async def search(node_id: Optional[str] = None, dimension_id: Optional[str] = No
             dimension_id = hit["id"]
     return await SEARCH.search_by_taxonomy(node_id=node_id, dimension_id=dimension_id,
                                            primary_only=primary_only, limit=limit)
+
+
+
+@router.get("/sectors")
+async def sectors(_key=Depends(require_service_key)):
+    """Sectores con nº de empresas (actividad principal) — para chips/atajos."""
+    return {"sectors": await SEARCH.sector_counts()}
+
+
+@router.get("/compare-pair")
+async def compare_pair(a: str, b: str, _key=Depends(require_service_key)):
+    """Compara dos empresas por taxonomía (compartido/diferencias + similitud de fingerprint)."""
+    return await SIM.compare_pair(a, b)

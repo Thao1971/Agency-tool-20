@@ -110,6 +110,38 @@ def resolve_label(text: str) -> Optional[Dict]:
     return cands[0][4]
 
 
+async def sector_counts() -> List[Dict]:
+    """Sectores con nº de empresas cuya actividad PRINCIPAL es ese sector (para los chips del Copilot)."""
+    labels = {n["id"]: n["label_es"] for n in REG.build_nodes() if n["level"] == "sector"}
+    out = []
+    for sid, label in labels.items():
+        try:
+            from database import db
+            c = await db.company_classifications.count_documents(
+                {"axis": "sector", "taxonomy_id": sid, "role": "primary"})
+        except Exception:
+            c = 0
+        out.append({"id": sid, "label": label, "count": c})
+    return sorted(out, key=lambda x: -x["count"])
+
+
+async def resolve_company_by_name(name: str) -> Optional[Dict]:
+    """Resuelve un nombre de empresa a master_id (best-effort, por identity.legal_name)."""
+    if not name or len(name.strip()) < 3:
+        return None
+    try:
+        import re as _re
+        from database import db
+        rx = _re.compile(_re.escape(name.strip()), _re.I)
+        d = await db.master_companies.find_one({"identity.legal_name": rx},
+                                               {"_id": 0, "master_id": 1, "identity.legal_name": 1})
+        if d:
+            return {"company_id": d.get("master_id"), "name": (d.get("identity") or {}).get("legal_name")}
+    except Exception:
+        pass
+    return None
+
+
 async def search_by_taxonomy(node_id: Optional[str] = None, dimension_id: Optional[str] = None,
                              primary_only: bool = False, limit: int = 50, offset: int = 0) -> Dict:
     """Empresas clasificadas bajo un nodo (sector/industria/categoría) o dimensión (vertical, etc.).

@@ -43,6 +43,17 @@ def test_search_by_sector_dual_mode():
     assert "A2" in s06["company_ids"]
 
 
+def test_sector_counts_and_resolve_name():
+    from database import db
+    _run(CLS.classify({"company_id": "SC1", "inputs": {"cnae": "6201", "name": "AdCo",
+         "description": "publicidad programatica con inteligencia artificial"}}))
+    _run(db.master_companies.insert_one({"master_id": "SC1", "identity": {"legal_name": "AdCo Uno SL"}}))
+    secs = _run(SEARCH.sector_counts())
+    assert len(secs) == 11 and all("count" in s for s in secs)
+    hit = _run(SEARCH.resolve_company_by_name("AdCo Uno"))
+    assert hit and hit["company_id"] == "SC1"
+
+
 if __name__ == "__main__":
-    for fn in (test_resolve_label, test_search_by_sector_dual_mode):
+    for fn in (test_resolve_label, test_search_by_sector_dual_mode, test_sector_counts_and_resolve_name):
         fn(); print("OK", fn.__name__)

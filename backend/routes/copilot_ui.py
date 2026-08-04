@@ -47,6 +47,14 @@ async def capabilities(user=Depends(get_current_user)):
     return {"committee": CAP.all_capabilities()}
 
 
+
+@router.get("/sectors")
+async def sectors(user=Depends(get_current_user)):
+    """Sectores con nº de empresas — para los chips de sector bajo el chat del Copilot."""
+    from services.taxonomy import search as SEARCH
+    return {"sectors": await SEARCH.sector_counts()}
+
+
 @router.post("/ask")
 async def ask(req: AskIn, user=Depends(get_current_user)):
     r = {"question": req.question, "company_id": req.company_id, "cif": req.cif,

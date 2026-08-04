@@ -60,6 +60,25 @@ def test_orchestrate_sector_search():
     assert "empresas en" in r["answer"]["message"].lower()
 
 
+def test_intent_compare_pair():
+    assert INTENT.classify("compara Servier con BETACO")["capability"] == "compare_pair"
+    assert INTENT.classify("compárala con PHARMACO")["capability"] == "compare_pair"
+    # sin 'con' sigue siendo compare de oportunidades
+    assert INTENT.classify("compara estas dos")["capability"] == "compare"
+
+
+def test_orchestrate_compare_pair():
+    from database import db
+    _seed()
+    _run(db.master_companies.insert_one({"master_id": "P2", "identity": {"legal_name": "AdCo Dos SL"}}))
+    r = _run(orchestrate({"question": "compara con AdCo Dos", "company_id": "P1",
+                          "opportunity_id": "P1", "user": {"tenant_id": "t", "user_id": "u"}}))
+    assert r["level"] == "L4" and r.get("capability") == "compare_pair"
+    msg = r["answer"]["message"].lower()
+    assert "parecid" in msg or "comparten" in msg or "similitud" in msg
+
+
 if __name__ == "__main__":
-    for fn in (test_intent_peers_and_sector, test_orchestrate_peers, test_orchestrate_sector_search):
+    for fn in (test_intent_peers_and_sector, test_orchestrate_peers, test_orchestrate_sector_search,
+               test_intent_compare_pair, test_orchestrate_compare_pair):
         fn(); print("OK", fn.__name__)

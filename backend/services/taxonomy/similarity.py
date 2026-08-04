@@ -68,6 +68,36 @@ def _size_prox(a, b) -> float:
         return 0.0
 
 
+
+async def _axis_labels(company_id: str) -> Dict[str, Dict[str, str]]:
+    """axis → {taxonomy_id: label_es} de una empresa (para comparación legible)."""
+    from database import db
+    out: Dict[str, Dict[str, str]] = {}
+    async for r in db.company_classifications.find(
+            {"company_id": company_id}, {"_id": 0, "axis": 1, "taxonomy_id": 1, "label_es": 1}):
+        out.setdefault(r["axis"], {})[r["taxonomy_id"]] = r.get("label_es") or r["taxonomy_id"]
+    return out
+
+
+async def compare_pair(id_a: str, id_b: str) -> Dict:
+    """Compara DOS empresas por taxonomía: qué comparten, en qué difieren y similitud de fingerprint."""
+    from database import db
+    la, lb = await _axis_labels(id_a), await _axis_labels(id_b)
+    if not la or not lb:
+        return {"a": id_a, "b": id_b, "note": "Alguna de las dos no está clasificada todavía."}
+    fa = await db.company_fingerprint.find_one({"company_id": id_a}, {"_id": 0, "fingerprint": 1})
+    fb = await db.company_fingerprint.find_one({"company_id": id_b}, {"_id": 0, "fingerprint": 1})
+    cos = fingerprint_cosine((fa or {}).get("fingerprint"), (fb or {}).get("fingerprint"))
+    shared, only_a, only_b = {}, {}, {}
+    for axis in ("sector", "industry", "verticals", "business_models"):
+        ka, kb = set(la.get(axis, {})), set(lb.get(axis, {}))
+        shared[axis] = [la[axis][i] for i in (ka & kb)]
+        only_a[axis] = [la[axis][i] for i in (ka - kb)]
+        only_b[axis] = [lb[axis][i] for i in (kb - ka)]
+    return {"a": id_a, "b": id_b, "fingerprint_similarity": cos,
+            "shared": shared, "only_a": only_a, "only_b": only_b}
+
+
 async def peers(company_id: str, k: int = 10, same_primary_only: bool = False) -> Dict:
     from database import db
     t_axes = await _axis_ids(company_id)

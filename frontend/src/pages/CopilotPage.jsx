@@ -61,9 +61,16 @@ export default function CopilotPage() {
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
   const [sessionId, setSessionId] = useState(null);
+  const [sectors, setSectors] = useState([]);
   const scrollRef = useRef(null);
   const lastQuestionRef = useRef('');
   const navigate = useNavigate();
+
+  useEffect(() => {
+    api.get('/copilot-ui/sectors')
+      .then(({ data }) => setSectors((data.sectors || []).slice(0, 8)))
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
@@ -210,6 +217,19 @@ export default function CopilotPage() {
           </div>
         )}
       </div>
+
+      {sectors.length > 0 && (
+        <div className="mt-3 flex flex-wrap gap-2" data-testid="copilot-sector-chips">
+          <span className="self-center text-xs text-neutral-400">Explora por sector:</span>
+          {sectors.map((s) => (
+            <button key={s.id} onClick={() => runAsk(`empresas del sector ${s.label}`)} disabled={busy}
+              data-testid={`sector-chip-${s.id}`}
+              className="rounded-full border border-neutral-300 bg-white px-3 py-1 text-xs text-neutral-700 hover:border-neutral-900 hover:text-neutral-900 disabled:opacity-50">
+              {s.label}{typeof s.count === 'number' ? ` (${s.count})` : ''}
+            </button>
+          ))}
+        </div>
+      )}
 
       <div className="mt-3 flex items-end gap-2">
         <Textarea value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={onKeyDown}
