@@ -645,3 +645,8 @@
 - **Incidencia login prod (Cloudflare 520)**: RCA = el backend de producción cayó en crash-loop porque su `MONGO_URL` (Atlas) dejó de autenticar tras rotarse la password del usuario `arroba_app`. NO era bug de código (auth 200 en preview). Fix aplicado por el usuario: nueva password Atlas + `MONGO_URL` de prod + redeploy → producción OK (login/auth/me/dashboard 200, 24.992 empresas). El fallo residual del usuario era caché de Safari.
 - **Deployment health check**: PASS (sin hardcodeos, envs OK, CORS `*`, supervisor válido).
 - **Arranque no bloqueante (server.py)**: `@app.on_event("startup")` ahora sólo lanza `_run_startup_init()` como tarea de fondo (envuelto en try/except con log). El cuerpo (≈200 create_index + seeds + warmups + schedulers, idempotente) ya no bloquea el arranque → elimina la ventana de 520/502 en redeploys (crítico contra Atlas remoto). Verificado: health 200 a ~4s (solo boot de uvicorn), login 200, init de fondo completa sin errores. Requiere redeploy para aplicar en producción.
+
+### 2026-06-XX — Deep health / readiness endpoints
+- `GET /api/v1/health` = shallow liveness (sin BD) — usar como liveness probe.
+- `GET /api/v1/health/deep` y `GET /api/v1/readyz` = readiness con ping real a Mongo (`client.admin.command('ping')`), 200 `{checks.mongo:ok, latency_ms}` o 503 si la BD cae. NO usar como liveness (evita bucles de reinicio por blips de BD).
+- Verificado preview: shallow/deep/readyz + login 200; deep latency ~0.4ms. Prod health 10× = 0×520. Service key `as_ace1afcc...` autentica en prod (200).

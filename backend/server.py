@@ -383,7 +383,7 @@ async def arroba_docs():
 
 
 
-# Health endpoint
+# Health endpoint (shallow / liveness — no DB, never fails on Mongo issues)
 @app.get("/api/v1/health")
 async def health():
     return {
@@ -392,6 +392,38 @@ async def health():
         "version": "2.0.0",
         "timestamp": datetime.now(timezone.utc).isoformat()
     }
+
+
+# Deep health / readiness — pings MongoDB. Use for readiness probes & monitoring,
+# NOT as a liveness probe (a DB blip must not trigger pod restart loops).
+async def _health_deep():
+    started = datetime.now(timezone.utc)
+    payload = {
+        "status": "ok",
+        "service": "agency-scraper",
+        "version": "2.0.0",
+        "checks": {},
+        "timestamp": started.isoformat(),
+    }
+    try:
+        await client.admin.command("ping")
+        latency_ms = round((datetime.now(timezone.utc) - started).total_seconds() * 1000, 1)
+        payload["checks"]["mongo"] = {"status": "ok", "db": os.environ.get("DB_NAME"), "latency_ms": latency_ms}
+        return JSONResponse(status_code=200, content=payload)
+    except Exception as e:
+        payload["status"] = "unavailable"
+        payload["checks"]["mongo"] = {"status": "fail", "error": type(e).__name__}
+        return JSONResponse(status_code=503, content=payload)
+
+
+@app.get("/api/v1/health/deep")
+async def health_deep():
+    return await _health_deep()
+
+
+@app.get("/api/v1/readyz")
+async def readyz():
+    return await _health_deep()
 
 
 # Capacity endpoint — stable contract for consumers
