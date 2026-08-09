@@ -585,6 +585,24 @@ INITIAL_TAXONOMY = [
 
 @app.on_event("startup")
 async def startup():
+    # Defer ALL heavy initialization (index creation, seeds, warmups, schedulers)
+    # to a background task so uvicorn starts accepting traffic immediately.
+    # This prevents the temporary 520/502 window on redeploys, which was caused by
+    # ~200 sequential create_index round-trips against remote MongoDB Atlas blocking
+    # the startup event before the server became ready. The body is fully idempotent.
+    import asyncio as _boot_aio
+
+    async def _boot():
+        try:
+            await _run_startup_init()
+        except Exception as e:
+            logger.error(f"Deferred startup init failed: {e}", exc_info=True)
+
+    _boot_aio.create_task(_boot())
+    logger.info("Startup handler returned immediately; initialization running in background")
+
+
+async def _run_startup_init():
     # Initialize storage
     try:
         init_storage()

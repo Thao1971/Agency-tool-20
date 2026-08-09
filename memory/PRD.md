@@ -638,3 +638,10 @@
 - **Tests**: `tests/smoke/test_sources_freshness.py` (3 tests: frescura universal, grants con datos, endpoint PLACSP válido). Suite total: **63/63 verde**.
 - **Nota (producción)**: las BDs de preview y producción son distintas. Si en producción siguen vacías/desactualizadas tras redeploy, revisar que los schedulers del Intelligence Engine estén activos en el entorno deployado y re-ejecutar las ingestas manuales ("Ejecutar ahora"/acciones de sync) por fuente.
 
+
+### 2026-06-XX (jun 2026) — Migración a Atlas, diagnóstico de login en prod y arranque no bloqueante
+- **Migración manual a MongoDB Atlas** (`arroba_agency_tool`): mongodump local → mongorestore `--drop` a `arroba-pro.ejcghd.mongodb.net`. Verificado: 124/124 colecciones, 1.286.022 docs, `master_companies=24.992` idénticos local vs Atlas. Sin tocar secretos.
+- **Service key manual** `as_ace1afcc...`: registrada en preview (`db.api_keys`, kind=service, active=true, `service_name="arroba-ext-manual"` para que `ensure_service_key` no la pise en reinicios). Verificado 200 con `require_service_key`; clave del env intacta. Pendiente registrar en Atlas (credencial de Atlas fue rotada).
+- **Incidencia login prod (Cloudflare 520)**: RCA = el backend de producción cayó en crash-loop porque su `MONGO_URL` (Atlas) dejó de autenticar tras rotarse la password del usuario `arroba_app`. NO era bug de código (auth 200 en preview). Fix aplicado por el usuario: nueva password Atlas + `MONGO_URL` de prod + redeploy → producción OK (login/auth/me/dashboard 200, 24.992 empresas). El fallo residual del usuario era caché de Safari.
+- **Deployment health check**: PASS (sin hardcodeos, envs OK, CORS `*`, supervisor válido).
+- **Arranque no bloqueante (server.py)**: `@app.on_event("startup")` ahora sólo lanza `_run_startup_init()` como tarea de fondo (envuelto en try/except con log). El cuerpo (≈200 create_index + seeds + warmups + schedulers, idempotente) ya no bloquea el arranque → elimina la ventana de 520/502 en redeploys (crítico contra Atlas remoto). Verificado: health 200 a ~4s (solo boot de uvicorn), login 200, init de fondo completa sin errores. Requiere redeploy para aplicar en producción.
