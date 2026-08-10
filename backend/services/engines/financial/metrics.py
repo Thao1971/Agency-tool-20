@@ -97,3 +97,36 @@ def statements(latest: Dict, employees: Optional[int]) -> Dict:
                      if latest.get("cf_operating") is not None else None),
         "employees": employees,
     }
+
+
+# Multi-year cash-flow statement rows (arroba.v2 FinancialSection shape). Minimal set
+# requested by Beta: OCF, capex, financing flow, net change in cash, FCF.
+_CASHFLOW_ROWS = [
+    ("cf_operating", "Flujo de caja de explotación (OCF)", "operating"),
+    ("cf_capex", "Inversiones (Capex)", "investing"),
+    ("cf_financing", "Flujo de caja de financiación", "financing"),
+    ("cf_net_change", "Variación neta de tesorería", "net_change"),
+    ("free_cash_flow", "Flujo de caja libre (FCF)", "summary"),
+]
+
+
+def cashflow_statement(series: List[Dict]) -> Optional[Dict]:
+    """Structured multi-year cash-flow table, SAME shape as Beta's profit_loss/balance:
+    `{years, rows[{key,label,category,values[{value,format}]}]}`. Real-data-only:
+    only years/rows with genuine EAV cash-flow values are included; returns None when
+    the company filed no cash-flow statement (abbreviated/PYME accounts) → Beta shows
+    "Pendiente". Consumes ONLY figures already produced by `build_series` from the full EAV."""
+    if not series:
+        return None
+    cf_years = [s for s in series if any(s.get(k) is not None for k, _, _ in _CASHFLOW_ROWS)]
+    if not cf_years:
+        return None
+    years = [s.get("year") for s in cf_years]
+    rows = []
+    for key, label, category in _CASHFLOW_ROWS:
+        vals = [s.get(key) for s in cf_years]
+        if all(v is None for v in vals):
+            continue
+        rows.append({"key": key, "label": label, "category": category,
+                     "values": [{"value": v, "format": "currency"} for v in vals]})
+    return {"years": years, "rows": rows} if rows else None

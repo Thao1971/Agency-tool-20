@@ -669,3 +669,9 @@
 
 ### 2026-06-XX — ranking.explain (frases legibles para el hero de Beta)
 - Añadido `ranking.explain` (lista de strings, sin sujeto) en `analyze`: una frase por sub-bloque realmente calculado. Ej. Servier: ["En el percentil 100 por ingresos de su sector", "2ª de 9 en su universo de comparables (sector y tamaño)", "1ª de 34 en Madrid por ingresos de su sector"]. Se omite si no hay ningún sub-bloque; omite la frase de localidad si no hay locality_position. Lugar con .title(). Additivo, null-safe.
+
+### 2026-06-XX — cashflow_statement estructurado en analyze (Cash Flow tab de Beta)
+- `POST /api/v1/financial-intelligence/analyze` ahora expone `cashflow_statement` multi-año en el formato `{years, rows[{key,label,category,values[{value,format:"currency"}]}]}` (igual que profit_loss/balance de la FinancialSection de Beta). Builder `cashflow_statement(series)` en `services/engines/financial/metrics.py`, poblado desde el EAV completo (#134).
+- Filas: cf_operating (OCF), cf_capex, cf_financing, cf_net_change (variación de caja), free_cash_flow (FCF). Solo dato real: años/filas sin valor se omiten; si la empresa no declaró EFE (cuentas abreviadas/PYME) → `cashflow_statement` OMITIDO → Beta muestra "Pendiente".
+- Verificado: Servier B28184687 → tabla 2023/2022 con las 5 partidas reales; B95222139 (sin EFE) → bloque omitido. Antes solo existía `statements.cashflow` (1 año).
+- Additivo, no toca otros bloques/ingesta/legacy/MONGO_URL. Requiere redeploy para producción.
