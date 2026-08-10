@@ -214,6 +214,22 @@ async def ranking(master: Dict, latest: Optional[Dict] = None) -> Dict:
                  "financials.latest.revenue": {"$gt": revenue}})
             out["locality_position"] = {"rank": loc_higher + 1, "total": loc_total, "scope": scope}
 
+    # Human-readable phrases (subject-less, ready for Beta's hero). Only for computed blocks.
+    if out:
+        place = (municipio or provincia or "").title() or None
+        explain = []
+        pct = out.get("sector_revenue_percentile")
+        if pct is not None:
+            explain.append(f"En el percentil {pct} por ingresos de su sector")
+        mp = out.get("market_position")
+        if mp:
+            explain.append(f"{mp['rank']}ª de {mp['total']} en su universo de comparables (sector y tamaño)")
+        lp = out.get("locality_position")
+        if lp and place:
+            explain.append(f"{lp['rank']}ª de {lp['total']} en {place} por ingresos de su sector")
+        if explain:
+            out["explain"] = explain
+
     return out
 
 

@@ -666,3 +666,6 @@
 - Verificado: Servier B28184687 → percentil 100, market 2/9, locality 1/34 (municipio); A12023479 → percentil 95, market 18/86, locality omitido (<3); empresa sin revenue → ranking {}.
 - Innovación (Alta/Media/Baja): FUERA DE ALCANCE (no hay motor de innovación/patentes/I+D). Diferido.
 - No toca otros bloques/ingesta/legacy/MONGO_URL. Requiere redeploy para producción.
+
+### 2026-06-XX — ranking.explain (frases legibles para el hero de Beta)
+- Añadido `ranking.explain` (lista de strings, sin sujeto) en `analyze`: una frase por sub-bloque realmente calculado. Ej. Servier: ["En el percentil 100 por ingresos de su sector", "2ª de 9 en su universo de comparables (sector y tamaño)", "1ª de 34 en Madrid por ingresos de su sector"]. Se omite si no hay ningún sub-bloque; omite la frase de localidad si no hay locality_position. Lugar con .title(). Additivo, null-safe.
