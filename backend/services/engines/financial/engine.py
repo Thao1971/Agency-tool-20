@@ -314,6 +314,76 @@ def _identity_descriptors(master: Dict) -> Dict:
     return out
 
 
+def _ratios_with_trend(series: List[Dict], employees: Optional[int]) -> Dict[str, Dict]:
+    """Ratios of the latest year + per-ratio trend (▲/▼/▬) vs the previous year (I-1 #3).
+    Additive: adds `trend`, `prev_value`, `delta` only when a prior comparable exists."""
+    ratios = R.compute_all(series[0], employees)
+    if len(series) >= 2:
+        prev = R.compute_all(series[1], employees)
+        for key, r in ratios.items():
+            v, pv = r.get("value"), (prev.get(key) or {}).get("value")
+            if v is not None and pv is not None:
+                diff = v - pv
+                eps = abs(pv) * 0.01
+                r["prev_value"] = pv
+                r["delta"] = round(diff, 4)
+                r["trend"] = "▲" if diff > eps else ("▼" if diff < -eps else "▬")
+    return ratios
+
+
+def _valuation_full(val: Dict, latest: Dict, comparables: Dict) -> Dict:
+    """Additive valuation surface (I-1 #5): scenarios (conservador/base/optimista),
+    benchmark vs categoría (empresa vs mediana) y methodology (texto CF). Solo dato real."""
+    import statistics
+    out: Dict = {}
+    method = val.get("method")
+    ev = val.get("enterprise_value")
+    rng = val.get("range") or {}
+    lo, hi = rng.get("low"), rng.get("high")
+    cash = latest.get("cash")
+    net_debt = ((latest.get("financial_debt") or 0) - cash) if cash is not None else None
+
+    def _eq(x):
+        return round(x - net_debt, 0) if (net_debt is not None and x is not None) else None
+
+    if method in ("ev_ebitda", "ev_revenue") and None not in (ev, lo, hi):
+        out["scenarios"] = [
+            {"name": "conservador", "enterprise_value": lo, "equity_value": _eq(lo)},
+            {"name": "base", "enterprise_value": ev, "equity_value": _eq(ev)},
+            {"name": "optimista", "enterprise_value": hi, "equity_value": _eq(hi)},
+        ]
+
+    peers = (comparables or {}).get("peers") or []
+    pmargins = sorted([p["ebitda_margin"] for p in peers if p.get("ebitda_margin") is not None])
+    prevs = sorted([p["revenue"] for p in peers if p.get("revenue") is not None])
+    subj_margin = R._safe_div(latest.get("ebitda"), latest.get("revenue"))
+    if pmargins or prevs:
+        bench: Dict = {"peers_count": len(peers), "scope": "sector CNAE + banda de tamaño"}
+        if pmargins:
+            bench["median_ebitda_margin"] = round(statistics.median(pmargins), 4)
+            if subj_margin is not None:
+                bench["subject_ebitda_margin"] = round(subj_margin, 4)
+        if prevs:
+            bench["median_revenue"] = round(statistics.median(prevs), 0)
+            bench["subject_revenue"] = latest.get("revenue")
+        if (comparables or {}).get("subject_ebitda_margin_percentile") is not None:
+            bench["ebitda_margin_percentile"] = round(comparables["subject_ebitda_margin_percentile"] * 100)
+        out["benchmark"] = bench
+
+    texts = {
+        "ev_ebitda": "Valoración por múltiplo EV/EBITDA (rango 4x–8x según calidad relativa al sector), "
+                     "aplicado al EBITDA del último ejercicio; puente a equity restando la deuda financiera neta.",
+        "ev_revenue": "Valoración por múltiplo EV/Ingresos de referencia sectorial, aplicado a los ingresos "
+                      "del último ejercicio; puente a equity restando la deuda financiera neta.",
+        "book_value": "Valoración por valor en libros (patrimonio neto), ante la ausencia de EBITDA o "
+                      "ingresos utilizables para un enfoque por múltiplos.",
+        "insufficient_data": "Datos insuficientes para una valoración por múltiplos sobre este perfil.",
+    }
+    if method in texts:
+        out["methodology"] = texts[method]
+    return out
+
+
 async def analyze(identifier: str) -> Optional[Dict]:
     """Full financial intelligence profile. identifier = master_id or cif_normalized."""
     master = await db.master_companies.find_one(
@@ -343,11 +413,12 @@ async def analyze(identifier: str) -> Optional[Dict]:
 
     latest = series[0]
     kpis = compute_kpis(series, employees)
-    ratios = R.compute_all(latest, employees)
+    ratios = _ratios_with_trend(series, employees)
     evolution = compute_evolution(series)
     quality = financial_quality(series, audited)
     comparables = await financial_comparables(master, latest)
     val = await valuation(master, latest)
+    val = {**val, **_valuation_full(val, latest, comparables)}
 
     # rules-based strengths / weaknesses / risks (explainable)
     strengths, weaknesses, risks = [], [], []

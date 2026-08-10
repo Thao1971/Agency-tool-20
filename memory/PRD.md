@@ -679,3 +679,29 @@
 ### 2026-06-XX — cashflow: fila Conversión de caja + nota de "Pendiente"
 - Añadida fila `cash_conversion` "Conversión de caja (OCF/EBITDA)" (format "percent") al `cashflow_statement`. Formatos por fila (currency/percent) en `_CASHFLOW_ROWS`.
 - Cuando hay financials pero NO hay EFE (cuentas abreviadas/PYME), `analyze` expone `cashflow_note`: "No disponible: la empresa presenta cuentas abreviadas/PYME, que no incluyen Estado de Flujos de Efectivo (EFE)." (en vez de omitir en silencio). Verificado: Servier con conversión 65,7%/66,1%; B95222139 con la nota.
+
+### 2026-06-XX — PLAN ÍNTEGRO INTEL (arroba.v2 Ficha) ejecutado
+Objetivo: exponer todo lo que la Ficha necesita en arroba.v2 (X-API-Key), additivo, solo dato real.
+
+I-1 (núcleo en `POST /api/v1/financial-intelligence/analyze`) — COMPLETO:
+- #1 Identidad: `identity.objeto_social/description/activity` (hecho previamente).
+- #2 Cash flow: `cashflow_statement` multi-año + conversión de caja + `cashflow_note` (hecho).
+- #3 Ratios con tendencia: `ratios[*].trend` (▲/▼/▬) + `prev_value`+`delta` vs año anterior. Helper `_ratios_with_trend`.
+- #4 `ranking` (percentil sector, market_position, locality_position + explain) (hecho).
+- #5 Valoración completa: `valuation.scenarios[]` (conservador/base/optimista), `valuation.benchmark` (empresa vs mediana sector, percentil margen), `valuation.methodology` (texto CF). Helper `_valuation_full`.
+
+I-2/I-3/I-4 — NUEVAS superficies service-key en `routes/company_ficha.py` (prefix /api/v1/company):
+- #6 `GET /company/{id}/ownership` — accionistas (norm_ownership), concentración, tramo de control.
+- #7 `GET /company/{id}/governance` — órgano de administración (norm_officers), cargos vigentes.
+- #8 `GET /company/{id}/control-synergy/{buyer_id}` — control + sinergias vs comprador (CS.compute_control_synergy), antes solo JWT.
+- #15 `GET /company/{id}/events` — cronología BORME (borme_events por nombre normalizado).
+Todas: null-safe (`available:false` + coverage), engine_version "arroba-company-ficha-v1".
+
+Ya expuesto previamente con X-API-Key (verificado 200) → NO requería trabajo:
+- #9 sector/mercado (sector-intelligence, geo-intelligence, economic-intelligence).
+- #10 documentos (ext/documents), #11 alerts/watchlist.
+- #12 committee/decision (investment-decision), #13 tesis/veredicto (strategy-intelligence/thesis + copilot).
+- #14 succession-profile (signal-intelligence), rollup-thesis/fragmentation (investment-intelligence).
+- #16 copilot `/ask` (copilot, service-key).
+
+Verificado con service key en empresas reales: Servier B28184687 (ownership 2 accionistas, gov 55 cargos), Grand Tibidabo A08015653 (evento BORME real), control-synergy pareja. analyze sin regresión. Requiere redeploy para producción.
