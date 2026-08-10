@@ -2,6 +2,14 @@
 
 > Registro de cambios de arquitectura de la plataforma Agency Tool (compartida: Valuo.pro + arroba.com + Platform Console).
 
+## 2026-08-10 (fix seed) — Backfill ligero de ratios (rebuild_master era inviable en Atlas)
+- Diagnóstico: `rebuild_master` (full o con cif_list de 13k) NO escribe ni un lote en la Atlas de prod (0 flushes en >8 min) — reescribe el doc entero de 25k empresas con 13 índices. Los VALORES por-empresa ya salían (analyze lee norm directo: NCR cash_flow ok, current_ratio 2.07), pero los PERCENTILES quedaban null (`with_balance_liquidity`=0).
+- **FIX en `scripts/prod_seed_eav.py`**: sustituido `rebuild_master` por `_backfill_ratios` — un solo cursor sobre `norm_financials` (con balance) + `bulk_write` de `$set financials.latest.ratios` (campo NO indexado) en lotes de 1000. Verificado en preview: **3.9s**, `ratios_backfilled=13.447`, `master_current_ratio=13.044`, NCR percentil=50.
+- **Invalidación de caché**: `analyze_cache` usa `data_version = updated_at|signals_updated_at|last_enriched_at`. El backfill ahora bumpea `updated_at` en cada empresa → cache_key cambia → analyze recomputa fresco (resuelve el riesgo de servir respuestas cacheadas viejas tras el seed).
+- El endpoint `/reingest-eav` y su subproceso aislado siguen igual. PENDIENTE: **1 redeploy más** para llevar este fix a prod; luego re-ejecutar el seed (los subprocesos lentos antiguos mueren al reiniciar el backend en el deploy).
+- VERIFICADO en prod (antes del fix): master_total=24.992, NCR B28031458 resolved=true (financials+cash_flow+governance+signals), cashflow_years=246, is_listed=1 → prod apunta al Atlas correcto con las 25k; NO hace falta ingesta completa.
+
+
 ## 2026-08-10 (deploy) — Siembra de PRODUCCIÓN ejecutada
 - Deploy a `intel.arroba.com` confirmado (código nuevo: `/coverage/check` da JSON). Lanzado `POST /api/v1/admin/iberinform/reingest-eav` en prod.
 - **Core sembrado y VERIFICADO en prod**: balances EAV (cashflow_years 5→246), is_listed (0→1), y por-empresa: NCR B28031458 cash_flow presente + current_ratio 2.07; PROCOLUIDE A81921611 st_debt=1.395.128,55/lt=2.905.096,59/fin=4.300.225,14 + current_ratio 1,76; A28354132 is_listed=true (BME). **Señal de éxito del usuario CUMPLIDA.**

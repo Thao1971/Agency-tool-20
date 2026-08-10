@@ -1,9 +1,14 @@
 """Siembra/actualiza la base a la que apunta el backend (preview local o el Atlas de
 producción) con la re-ingesta EAV completa (balance + cash-flow) + ownership +
-marcado is_listed(BME) + rebuild del master. Escribe progreso en `eav_reingest_runs`.
+marcado is_listed(BME) + backfill LIGERO de ratios en master (para percentiles).
+Escribe progreso en `eav_reingest_runs`.
 
 Se ejecuta como SUBPROCESO AISLADO (lo lanza el endpoint admin /reingest-eav) para NO
 bloquear el event loop del backend. Idempotente.
+
+NOTA: NO usa `rebuild_master` completo (reescribe el doc entero de 25k empresas con 13
+índices → inviable en Atlas). En su lugar hace un backfill dirigido de
+`financials.latest.ratios` vía bulk_write (campo NO indexado) — rápido y con progreso.
 
 Uso: python -m scripts.prod_seed_eav <run_id> <ownership 0/1> <listed 0/1>
 """
@@ -16,12 +21,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from dotenv import load_dotenv
 load_dotenv(str(Path(__file__).resolve().parent.parent / ".env"))
 
+from pymongo import UpdateOne
+
 from database import db
 from models import now_iso
 from services.data_layer.ingestion.iberinform_tab_ingest import (
     ingest_balances_file, ingest_accionistas_file, ingest_participadas_file)
-from services.data_layer.master.master_builder import rebuild_master
 from services.data_layer.normalize import name_key
+from services.engines.financial import metrics as _M, ratios_library as _R
 
 SAMPLE_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "muestra_25000"
 SV = "iberinform_tab_96664fb7"
@@ -53,6 +60,45 @@ async def _mark_listed():
     return n
 
 
+async def _backfill_ratios(run_id):
+    """$set financials.latest.ratios (+fcf/cash_conversion) por empresa con balance.
+    Un solo cursor + bulk_write en lotes → rápido en Atlas y con progreso."""
+    # elegir, por cif, el mejor doc (individual > consolidado, año más reciente)
+    best = {}
+    async for f in db.norm_financials.find(
+            {"accounts.10000": {"$exists": True}},
+            {"_id": 0, "cif_normalized": 1, "basis": 1, "year": 1, "accounts": 1}):
+        cif = f.get("cif_normalized")
+        if not cif:
+            continue
+        rank = (1 if f.get("basis") == "individual" else 0, f.get("year") or 0)
+        cur = best.get(cif)
+        if cur is None or rank > cur[0]:
+            best[cif] = (rank, f)
+
+    ops, updated = [], 0
+    for cif, (_, f) in best.items():
+        ym = _M._year_metrics(f.get("accounts") or {})
+        ratios = {k: v["value"] for k, v in _R.compute_all(ym, None).items()
+                  if v.get("value") is not None}
+        if not ratios:
+            continue
+        setter = {"financials.latest.ratios": ratios, "updated_at": now_iso()}
+        for extra in ("free_cash_flow", "cash_conversion"):
+            if ym.get(extra) is not None:
+                setter[f"financials.latest.{extra}"] = ym[extra]
+        ops.append(UpdateOne({"cif_normalized": cif}, {"$set": setter}))
+        if len(ops) >= 1000:
+            res = await db.master_companies.bulk_write(ops, ordered=False)
+            updated += res.modified_count
+            ops = []
+            await _set(run_id, step=f"backfill_ratios ({updated})")
+    if ops:
+        res = await db.master_companies.bulk_write(ops, ordered=False)
+        updated += res.modified_count
+    return {"candidates": len(best), "ratios_backfilled": updated}
+
+
 async def main(run_id, do_ownership, do_listed):
     t0 = time.time()
     try:
@@ -71,20 +117,18 @@ async def main(run_id, do_ownership, do_listed):
             await _set(run_id, step="is_listed")
             listed = await _mark_listed()
 
-        await _set(run_id, step="rebuild_master")
-        # Asegurar índices (rápido si ya existen) para que el rebuild no se arrastre en Atlas.
-        try:
-            await db.norm_company.create_index("cif_normalized")
-            await db.norm_financials.create_index("cif_normalized")
-            await db.norm_officers.create_index("cif_normalized")
-            await db.norm_ownership.create_index("src_cif")
-            await db.master_companies.create_index("cif_normalized")
-            await db.master_companies.create_index("name_key")
-        except Exception:
-            pass
-        # scope="full" (escaneo secuencial de norm_company) — MUCHO más rápido en Atlas que
-        # pasar un cif_list de 13k como $in gigante (que se arrastra por round-trips de índice).
-        rb = await rebuild_master(scope="full", force=True)
+        # índices (idempotente; acelera queries del contrato)
+        await _set(run_id, step="ensure_indexes")
+        for col, field in [("norm_company", "cif_normalized"), ("norm_financials", "cif_normalized"),
+                           ("norm_officers", "cif_normalized"), ("norm_ownership", "src_cif"),
+                           ("master_companies", "cif_normalized"), ("master_companies", "name_key")]:
+            try:
+                await db[col].create_index(field)
+            except Exception:
+                pass
+
+        await _set(run_id, step="backfill_ratios")
+        rb = await _backfill_ratios(run_id)
 
         cov = {
             "norm_current_assets": await db.norm_financials.count_documents({"accounts.12000": {"$exists": True}}),
@@ -93,7 +137,7 @@ async def main(run_id, do_ownership, do_listed):
             "master_is_listed": await db.master_companies.count_documents({"is_listed": True}),
         }
         await _set(run_id, status="completed", step="done", balances=bal, ownership=own,
-                   is_listed_marked=listed, rebuild=rb, coverage=cov,
+                   is_listed_marked=listed, ratios=rb, coverage=cov,
                    elapsed_s=round(time.time() - t0, 1))
     except Exception as e:
         await _set(run_id, status="failed", error=str(e), elapsed_s=round(time.time() - t0, 1))
