@@ -2,6 +2,15 @@
 
 > Registro de cambios de arquitectura de la plataforma Agency Tool (compartida: Valuo.pro + arroba.com + Platform Console).
 
+## 2026-08-10 (P0) — Desajuste de ENTORNO: preview(local) ≠ producción(Atlas)
+- **Diagnóstico**: preview usa MongoDB LOCAL (`localhost:27017`, `arroba_agency_tool`); producción (`intel.arroba.com`) es despliegue separado con código antiguo + otra base (Atlas). Beta consume producción → no ve nada del trabajo de datos hecho en preview. Prueba: rankings coinciden (misma base de empresas/revenue) pero cash_flow/current_ratio/st_debt/is_listed = null (falta re-ingesta EAV) y `/coverage/check` devuelve HTML del SPA (código no desplegado).
+- **NUEVO endpoint de siembra idempotente**: `POST /api/v1/admin/iberinform/reingest-eav` (+ `GET .../reingest-eav/{run_id}`) en `routes/iberinform_admin.py`. Corre en **SUBPROCESO AISLADO** (`scripts/prod_seed_eav.py`) → NO bloquea el event loop (verificado: health ~3ms durante ejecución; ~8s en preview). Re-ingiere balances EAV completo + ownership + marca is_listed(BME) + rebuild master de las empresas con balance. Úsalo UNA vez tras el redeploy para sembrar la base de producción.
+  - IMPORTANTE: la 1ª versión usaba `asyncio.create_task` in-process y tumbó el backend (rebuild de 13k bloquea el loop). Corregido a subproceso aislado.
+- Ruta de datos: `SAMPLE_DIR = /app/data/muestra_25000` (los 10 `.tab` están versionados en git → viajan al deploy).
+- Handoff de resolución para Beta/PM: `/app/frontend/public/PARA_BETA_ENTORNO_RESOLUCION.md`.
+- Login admin: la respuesta de `/api/v1/auth/login` usa la clave **`token`** (no `access_token`).
+
+
 ## 2026-08-10 (cont.) — Estabilidad enriquecimiento + is_listed + ownership idempotente
 - **Estabilidad (a)**: causa raíz de la caída de la API = `uvicorn --reload` vigila `/app/backend` (incluido `scripts/`); ejecutar scripts ahí disparaba un reload que se colgaba en el scraper síncrono de CNMV del arranque. Solución: runners AISLADOS en `/app/tools_runtime/` (fuera del árbol vigilado) con `PYTHONDONTWRITEBYTECODE=1` + throttling (concurrencia 4, lotes con pausas). Verificado: API en 200 (3ms) mientras corre el enriquecimiento.
 - **Enriquecimiento web PARADO por decisión del usuario**: rendimiento marginal (ok≈0,2% sobre URLs adivinadas por url_discovery; las descripciones reales ~2.942 vienen de las URLs de Iberinform). Sin LLM.

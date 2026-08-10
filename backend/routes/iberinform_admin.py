@@ -337,3 +337,49 @@ async def iberinform_stats(user=Depends(get_current_user)):
             "province_coverage_pct": round(master_with_province / master_total * 100, 1) if master_total > 0 else 0,
         },
     }
+
+
+
+# ── Re-ingesta EAV completa (balance + cash-flow) + ownership + is_listed(BME) ──────
+# Siembra/actualiza la base a la que ESTÉ conectado el backend (preview local o el Atlas
+# de producción tras el redeploy) usando los .tab versionados en /app/data/muestra_25000.
+# Se ejecuta como SUBPROCESO AISLADO (no bloquea el event loop del backend). Idempotente.
+import sys as _sys
+
+SAMPLE_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "muestra_25000"
+BACKEND_DIR = Path(__file__).resolve().parent.parent
+
+
+@router.post("/reingest-eav")
+async def reingest_eav(
+    ownership: bool = Query(True),
+    listed: bool = Query(True),
+    user=Depends(get_current_user),
+):
+    """Re-ingesta EAV completa (balance + cash-flow) desde los .tab versionados, + ownership
+    + marcado is_listed(BME) + rebuild del master. Corre en subproceso AISLADO (no bloquea el
+    backend). Idempotente. Úsalo UNA vez tras el redeploy para sembrar la base de producción
+    con el dato que hoy solo está en preview."""
+    if not (SAMPLE_DIR / "Datos_BALANCES.tab").exists():
+        raise HTTPException(400, f"No se encuentra Datos_BALANCES.tab en {SAMPLE_DIR}")
+    run_id = str(uuid.uuid4())
+    await db.eav_reingest_runs.insert_one({
+        "run_id": run_id, "status": "queued", "step": "queued",
+        "options": {"ownership": ownership, "listed": listed},
+        "started_at": now_iso(), "updated_at": now_iso()})
+    env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
+    await asyncio.create_subprocess_exec(
+        _sys.executable, "-m", "scripts.prod_seed_eav",
+        run_id, "1" if ownership else "0", "1" if listed else "0",
+        cwd=str(BACKEND_DIR), env=env,
+        stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL)
+    return {"run_id": run_id, "status": "queued",
+            "poll": f"/api/v1/admin/iberinform/reingest-eav/{run_id}"}
+
+
+@router.get("/reingest-eav/{run_id}")
+async def reingest_eav_status(run_id: str, user=Depends(get_current_user)):
+    doc = await db.eav_reingest_runs.find_one({"run_id": run_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(404, "run_id no encontrado")
+    return doc
