@@ -72,8 +72,19 @@ async def main(run_id, do_ownership, do_listed):
             listed = await _mark_listed()
 
         await _set(run_id, step="rebuild_master")
-        cifs = await db.norm_financials.distinct("cif_normalized", {"accounts.10000": {"$exists": True}})
-        rb = await rebuild_master(scope="full", cif_list=cifs, force=True)
+        # Asegurar índices (rápido si ya existen) para que el rebuild no se arrastre en Atlas.
+        try:
+            await db.norm_company.create_index("cif_normalized")
+            await db.norm_financials.create_index("cif_normalized")
+            await db.norm_officers.create_index("cif_normalized")
+            await db.norm_ownership.create_index("src_cif")
+            await db.master_companies.create_index("cif_normalized")
+            await db.master_companies.create_index("name_key")
+        except Exception:
+            pass
+        # scope="full" (escaneo secuencial de norm_company) — MUCHO más rápido en Atlas que
+        # pasar un cif_list de 13k como $in gigante (que se arrastra por round-trips de índice).
+        rb = await rebuild_master(scope="full", force=True)
 
         cov = {
             "norm_current_assets": await db.norm_financials.count_documents({"accounts.12000": {"$exists": True}}),

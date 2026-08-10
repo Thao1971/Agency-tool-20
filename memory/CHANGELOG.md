@@ -2,6 +2,13 @@
 
 > Registro de cambios de arquitectura de la plataforma Agency Tool (compartida: Valuo.pro + arroba.com + Platform Console).
 
+## 2026-08-10 (deploy) — Siembra de PRODUCCIÓN ejecutada
+- Deploy a `intel.arroba.com` confirmado (código nuevo: `/coverage/check` da JSON). Lanzado `POST /api/v1/admin/iberinform/reingest-eav` en prod.
+- **Core sembrado y VERIFICADO en prod**: balances EAV (cashflow_years 5→246), is_listed (0→1), y por-empresa: NCR B28031458 cash_flow presente + current_ratio 2.07; PROCOLUIDE A81921611 st_debt=1.395.128,55/lt=2.905.096,59/fin=4.300.225,14 + current_ratio 1,76; A28354132 is_listed=true (BME). **Señal de éxito del usuario CUMPLIDA.**
+- ⚠️ **`rebuild_master` (percentiles sectoriales) se arrastró en Atlas**: pasé `cif_list` de 13.451 CIFs → `$in` gigante patológicamente lento en Atlas (0 lotes escritos en ~9 min; en local fue 8s). `with_balance_liquidity` quedó en 0. La API en vivo de prod se mantuvo sana (subproceso aislado OK).
+- **FIX** en `scripts/prod_seed_eav.py`: rebuild ahora `scope="full"` (escaneo secuencial, sin `$in` gigante) + `create_index` en cif_normalized/src_cif/name_key. Verificado en preview: seed completo en **10.5s**, rebuild 24.992, current_ratio 13.044. **PENDIENTE: redeploy + re-ejecutar el seed en prod** (el redeploy reinicia el backend y mata el subproceso lento antiguo).
+
+
 ## 2026-08-10 (P0) — Desajuste de ENTORNO: preview(local) ≠ producción(Atlas)
 - **Diagnóstico**: preview usa MongoDB LOCAL (`localhost:27017`, `arroba_agency_tool`); producción (`intel.arroba.com`) es despliegue separado con código antiguo + otra base (Atlas). Beta consume producción → no ve nada del trabajo de datos hecho en preview. Prueba: rankings coinciden (misma base de empresas/revenue) pero cash_flow/current_ratio/st_debt/is_listed = null (falta re-ingesta EAV) y `/coverage/check` devuelve HTML del SPA (código no desplegado).
 - **NUEVO endpoint de siembra idempotente**: `POST /api/v1/admin/iberinform/reingest-eav` (+ `GET .../reingest-eav/{run_id}`) en `routes/iberinform_admin.py`. Corre en **SUBPROCESO AISLADO** (`scripts/prod_seed_eav.py`) → NO bloquea el event loop (verificado: health ~3ms durante ejecución; ~8s en preview). Re-ingiere balances EAV completo + ownership + marca is_listed(BME) + rebuild master de las empresas con balance. Úsalo UNA vez tras el redeploy para sembrar la base de producción.
