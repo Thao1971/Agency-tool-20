@@ -719,3 +719,15 @@ Smoke ≥3 empresas: Servier B28184687 (grande, todo poblado), B95222139 (PYME a
 - `_ratio_sector_percentiles` ahora lee `financials.latest.ratios` de los peers del sector → cubre TODOS los ratios automáticamente (antes solo 7 calculados on-the-fly). Fallback a line-items para docs no backfilled.
 - Backfill `scripts/backfill_latest_ratios.py`: pobló `financials.latest.ratios` en 13.464 docs. Cobertura actual de percentil: solvency, debt_ratio, roe, roa, capital_intensity, ebit_margin, net_margin, ebitda_margin. Liquidez/working-capital (current_ratio, dso, dpo, inventory_days, debt_to_equity, working_capital) = 0 cobertura (cuentas abreviadas Iberinform sin esas líneas); aparecerán solos cuando se ingiera/denormalice el EAV de balance. master_builder._fin_summary ya persiste latest.ratios en builds futuros.
 - Nuevo `GET /api/v1/company/{id}/ficha` (service-key): agregador 1-call = identity (company-intelligence/_build) + finances (analyze completo) + ranking + ownership + governance + events. Null-safe por bloque. Verificado: Servier (todo), A0051199H sin cuentas (bloques degradan), 404 desconocido, 401 sin key.
+
+### 2026-06-XX — Lote 2: Armonización de contrato (Bloque A) + Cobertura (Bloque B)
+Bloque A (armonización, hecho y verificado):
+- A1 `company-intelligence/identity`: description + corporate_purpose (objeto social) no nulos (ya hecho lote anterior).
+- A2 `POST /api/v1/financial-intelligence/valuation`: ahora devuelve scenarios/benchmark/methodology (hereda de analyze.valuation).
+- A3 NUEVO `GET /api/v1/company/{id}/signals` (section/signal, antes 404): hechos relevantes por empresa (type, category, date, polarity, severity, title). Cobertura: 24.989 empresas. Incluido en agregador /ficha.
+- A4 `statements.balance_sheet`: añadidos st_debt, lt_debt (+ financial_debt ya estaba). _year_metrics devuelve st_debt/lt_debt.
+Bloque B (cobertura):
+- B7 HECHO: `financial_quality` ahora incluye label + assessment (Lectura financiera, prosa CF) + verdict (Veredicto de ARROBA) + strengths/weaknesses/risks. Helper `_financial_narrative`. Cobertura: 9.593 empresas con financieros.
+- B5 BLOQUEADO (dato upstream): los códigos EAV de balance/EFE (12000/32000/31200/32300/12300/12200/32510/61500...) tienen ~0 cobertura en norm_financials (5-8 docs de 13.501). No es mapeo: falta ingerir el EAV completo de Iberinform. Código ya cableado (metrics.CODES + _year_metrics + backfill ratios) → se activará solo al ingerir.
+- B6 PENDIENTE (enriquecimiento web a escala): description 29/24.992. Requiere run de scraping/LLM (pipeline pesado); proponer como job en background.
+Bloque C (futuro): innovación desde patentes/OEPM (viable, no bloquea); árbol societario multinivel desde /graph/{id}/traverse.

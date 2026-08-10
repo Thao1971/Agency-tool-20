@@ -42,6 +42,44 @@ def _cagr(series_vals: List):
     return round((last / first) ** (1 / n) - 1, 4)
 
 
+def _financial_narrative(quality: Dict, kpis: Dict, evolution: Dict,
+                         strengths: list, weaknesses: list, risks: list) -> Dict:
+    """Deterministic Corporate-Finance prose for the 'Lectura financiera de ARROBA'
+    (`assessment`) and the 'Veredicto de ARROBA' (`verdict`). No AI. Real data only."""
+    score = quality.get("score") or 0
+    label = ("Sólida" if score >= 75 else "Aceptable" if score >= 55
+             else "Frágil" if score >= 35 else "Débil")
+
+    def pct(x):
+        return f"{round(x * 100, 1)}%" if isinstance(x, (int, float)) else None
+
+    parts = [f"Calidad financiera {label.lower()} ({score}/100)."]
+    m = kpis.get("ebitda_margin")
+    if m is not None:
+        tone = "holgado" if m > 0.15 else "ajustado" if m < 0.05 else "moderado"
+        parts.append(f"Margen EBITDA {tone} del {pct(m)}.")
+    g = kpis.get("revenue_growth_yoy")
+    if g is not None:
+        parts.append(f"Ingresos {'al alza' if g >= 0 else 'a la baja'} ({pct(g)}) interanual.")
+    s = kpis.get("solvency")
+    if s is not None:
+        parts.append(f"Autonomía financiera (PN/Activo) del {pct(s)}.")
+    assessment = " ".join(parts)
+
+    if score >= 75 and not risks:
+        verdict = "Perfil financiero sólido y consistente; candidato atractivo para operaciones corporativas."
+    elif score >= 55:
+        head = strengths[0] if strengths else "fundamentales razonables"
+        tail = f" Vigilar: {risks[0].lower()}." if risks else ""
+        verdict = f"Perfil aceptable apoyado en {head.lower()}.{tail}"
+    else:
+        main = (risks or weaknesses or ["información financiera limitada"])[0]
+        verdict = f"Perfil {label.lower()}: {main.lower()}. Requiere análisis y due diligence adicionales."
+
+    return {"label": label, "assessment": assessment, "verdict": verdict,
+            "strengths": strengths, "weaknesses": weaknesses, "risks": risks}
+
+
 def compute_kpis(series: List[Dict], employees: Optional[int]) -> Dict:
     latest = series[0]
     prev = series[1] if len(series) > 1 else {}
@@ -493,6 +531,8 @@ async def analyze(identifier: str) -> Optional[Dict]:
         risks.append("Resultado neto negativo")
     if evolution.get("trend") == "deterioration":
         risks.append("Tendencia de ingresos a la baja")
+
+    quality.update(_financial_narrative(quality, kpis, evolution, strengths, weaknesses, risks))
 
     overall_conf = round(min(1.0, 0.3 + 0.5 * (quality["score"] / 100) + (0.2 if len(series) >= 2 else 0)), 2)
     return {

@@ -56,6 +56,7 @@ def _year_metrics(acc: Dict) -> Dict[str, Optional[float]]:
         "non_current_liabilities": _g(acc, "non_current_liabilities"),
         "current_liabilities": _g(acc, "current_liabilities"),
         "financial_debt": fin_debt, "total_liabilities": total_liabilities,
+        "st_debt": st, "lt_debt": lt,
         "cf_operating": cf_op, "cf_investing": cf_inv, "cf_financing": _g(acc, "cf_financing"),
         "cf_capex": _g(acc, "cf_capex"), "cf_net_change": _g(acc, "cf_net_change"),
         "cash_start": _g(acc, "cash_start"), "cash_end": _g(acc, "cash_end"),
@@ -89,7 +90,7 @@ def statements(latest: Dict, employees: Optional[int]) -> Dict:
         "balance_sheet": {k: latest.get(k) for k in
                           ("non_current_assets", "current_assets", "cash", "total_assets",
                            "equity", "non_current_liabilities", "current_liabilities",
-                           "financial_debt", "total_liabilities")},
+                           "st_debt", "lt_debt", "financial_debt", "total_liabilities")},
         # Cash flow only when the company filed it (full accounts). None otherwise — honest.
         "cashflow": ({k: latest.get(k) for k in
                       ("cf_operating", "cf_investing", "cf_financing", "cf_capex",

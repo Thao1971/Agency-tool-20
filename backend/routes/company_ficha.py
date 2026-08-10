@@ -190,6 +190,39 @@ async def control_synergy(identifier: str, buyer_identifier: str, _key=Depends(r
             "available": True, "control_synergy": result, "engine_version": ENGINE_VERSION}
 
 
+@router.get("/{identifier}/signals")
+async def signals(identifier: str, limit: int = 50, _key=Depends(require_service_key)):
+    """Cambios/hechos relevantes de la empresa (I-3 'section/signal'): tipo, categoría,
+    fecha, polaridad, severidad, título. Solo señales activas, más recientes primero."""
+    master = await _master(identifier)
+    if not master:
+        raise HTTPException(status_code=404, detail="Company not found")
+    cif = master["cif_normalized"]
+    limit = max(1, min(limit, 200))
+    total = await db.signals.count_documents({"master_id": master["master_id"], "status": "active"})
+    rows = await db.signals.find(
+        {"master_id": master["master_id"], "status": "active"},
+        {"_id": 0, "signal_type": 1, "category": 1, "polarity": 1, "severity": 1,
+         "explanation": 1, "confidence": 1, "trend": 1, "last_seen_at": 1, "detected_at": 1},
+    ).sort("last_seen_at", -1).limit(limit).to_list(limit)
+    if not rows:
+        return {"identifier": identifier, "cif": cif, "available": False,
+                "engine_version": ENGINE_VERSION}
+    sigs = [{
+        "type": r.get("signal_type"),
+        "category": r.get("category"),
+        "date": r.get("last_seen_at") or r.get("detected_at"),
+        "polarity": r.get("polarity"),
+        "severity": r.get("severity"),
+        "title": r.get("explanation"),
+        "confidence": r.get("confidence"),
+        "trend": r.get("trend"),
+    } for r in rows]
+    return {"identifier": identifier, "cif": cif, "available": True,
+            "signals": sigs, "coverage": {"total": total, "returned": len(sigs)},
+            "engine_version": ENGINE_VERSION}
+
+
 @router.get("/{identifier}/ficha")
 async def ficha(identifier: str, _key=Depends(require_service_key)):
     """Agregador de la Ficha: identidad + finanzas + ranking + propiedad + gobierno + eventos
@@ -207,5 +240,6 @@ async def ficha(identifier: str, _key=Depends(require_service_key)):
         "ownership": await ownership(identifier, _key=None),
         "governance": await governance(identifier, _key=None),
         "events": await events(identifier, _key=None),
+        "signals": await signals(identifier, _key=None),
         "engine_version": ENGINE_VERSION,
     }
