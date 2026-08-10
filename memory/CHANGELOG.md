@@ -2,6 +2,15 @@
 
 > Registro de cambios de arquitectura de la plataforma Agency Tool (compartida: Valuo.pro + arroba.com + Platform Console).
 
+## 2026-08-10 (cont.) — Estabilidad enriquecimiento + is_listed + ownership idempotente
+- **Estabilidad (a)**: causa raíz de la caída de la API = `uvicorn --reload` vigila `/app/backend` (incluido `scripts/`); ejecutar scripts ahí disparaba un reload que se colgaba en el scraper síncrono de CNMV del arranque. Solución: runners AISLADOS en `/app/tools_runtime/` (fuera del árbol vigilado) con `PYTHONDONTWRITEBYTECODE=1` + throttling (concurrencia 4, lotes con pausas). Verificado: API en 200 (3ms) mientras corre el enriquecimiento.
+- **Enriquecimiento web PARADO por decisión del usuario**: rendimiento marginal (ok≈0,2% sobre URLs adivinadas por url_discovery; las descripciones reales ~2.942 vienen de las URLs de Iberinform). Sin LLM.
+- **(b) multi-ejercicio EAV: BLOQUEADO POR DATOS** — `Datos_BALANCES.tab` tiene 1 año/empresa (snapshot, no histórico). El usuario no tiene el histórico por ahora. `evolution`/CAGR quedan pendientes de datos.
+- **(c) ownership: DATA-LIMITED** — `Datos_ACCIONISTAS.tab` = 628 filas/318 empresas (ya todo ingerido, idempotente re-verificado). Se expandirá al subir una entrega completa por `POST /api/v1/admin/iberinform/upload-delivery` (zip con todos los .tab).
+- **(d) is_listed: cableado** desde `bme_companies` (`tools_runtime/mark_listed_from_bme.py`), expuesto en `/api/v2/company-intelligence/identity` (`is_listed`/`listed_market`) y contado en `/api/v1/company/coverage.listed_companies`. Solape actual: 1 (A28354132 INNOVATIVE SOLUTIONS ECOSYSTEM, con financials → CIF demo de cotizada para Beta).
+- Runners nuevos (aislados): `tools_runtime/web_enrich_throttled.py`, `tools_runtime/mark_listed_from_bme.py`, `tools_runtime/reingest_ownership.py`.
+
+
 ## 2026-08-10 — B5 EAV completo re-ingerido + armonización contrato B-2 (Beta Fase 0) ✅
 - **Causa raíz B5 encontrada y resuelta**: la ingesta 2026-07-22 corrió con una versión antigua de `ingest_balances_file` (filtro `_ACCOUNT_CODES`, código muerto ahora) que solo guardaba ~6 códigos canónicos por empresa-año. El código EAV completo ya existía pero **nunca se re-ejecutó**. Re-ejecutada sobre las ~25k en Atlas (555.550 filas, ~3s balances + ~10s rebuild master). Validado primero sobre muestra de 500.
   - `norm_financials` con `current_assets`(12000): 8 → **13.430**; `current_liabilities`(32000): 8 → **13.123**; cash-flow OCF(61500): 5 → **246**.

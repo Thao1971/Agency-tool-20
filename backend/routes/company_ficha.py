@@ -80,6 +80,7 @@ async def coverage(_key=Depends(require_service_key)):
     with_own = await db.master_companies.count_documents({"ownership.shareholders.0": {"$exists": True}})
     with_off = await db.master_companies.count_documents({"officers_count": {"$gt": 0}})
     cf_years = await db.norm_financials.count_documents({"accounts.61500": {"$exists": True}})
+    listed = await db.master_companies.count_documents({"is_listed": True})
     return {
         "master_total": total,
         "with_financials": with_fin,
@@ -87,7 +88,7 @@ async def coverage(_key=Depends(require_service_key)):
         "with_ownership": with_own,
         "with_governance": with_off,
         "financial_years_with_cashflow": cf_years,
-        "listed_companies": 0,
+        "listed_companies": listed,
         "notes": [
             "La muestra actual (Iberinform 25k) es un subconjunto; no incluye grandes "
             "cotizadas del IBEX/Mercado Continuo (Iberdrola, Planeta, Technip no están en el master).",

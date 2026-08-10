@@ -30,7 +30,9 @@
 | 5 | **V83153700** | AGRUPACION IUSTIME | Microempresa | S (asociativo) | Madrid | 0,35 M€ | ⚠️ N/D (cuentas abreviadas) | current_ratio 1.38 (p47) | 92 | **2** ✅ |
 
 **Notas importantes:**
-- **No hay grandes cotizadas del IBEX/Continuo en esta muestra**, así que "1 gran cotizada" no es cableable hoy (ver §3). NCR España es la mayor por ingresos disponible; **`is_listed` no está poblado en ningún registro** (campo aún no alimentado — no hay fuente de cotizadas en la entrega actual).
+- **Actualización cotizadas**: ya hay soporte de `is_listed`/`listed_market` (cableado desde `bme_companies`). En la muestra actual solo **1** cotizada solapa con el master pero **es válida como CIF demo de "gran cotizada"**:
+  - **A28354132** · INNOVATIVE SOLUTIONS ECOSYSTEM · `is_listed=true` · `listed_market="BME (Mercado Continuo)"` · `has_financials=true`. Úsala para validar `is_listed` en B-2.1.
+- El resto de grandes cotizadas del IBEX/Continuo (Iberdrola, etc.) **no están en la muestra 25k** (ver §2). `listed_companies` en `/coverage` = 1 hoy; subirá cuando se cargue una entrega con cotizadas.
 - **Para probar `control-synergy`**: usa **V83153700** (AGRUPACION IUSTIME), que tiene `buyers.count = 2`.
   1. `POST /api/v1/recommendation-intelligence/buyers` con `{"identifier":"V83153700","limit":5}` → coge un `master_id`/`cif` de la lista.
   2. `GET /api/v1/company/V83153700/control-synergy/{buyer_cif}`.

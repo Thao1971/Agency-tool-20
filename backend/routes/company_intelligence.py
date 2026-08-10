@@ -116,6 +116,8 @@ def _build(doc: dict) -> CompanyIdentityResponse:
         updated_at=doc.get("updated_at") or doc.get("built_at"),
         sources=sources,
         provenance_fields=sorted(list((doc.get("provenance") or {}).keys())),
+        is_listed=doc.get("is_listed"),
+        listed_market=doc.get("listed_market"),
     )
     present = {}
     for f in ["cif", "legal_name", "commercial_name", "legal_form", "mercantile_status",
