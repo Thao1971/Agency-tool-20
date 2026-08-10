@@ -401,28 +401,36 @@ _PCT_RATIOS = {
 
 
 async def _ratio_sector_percentiles(section: Optional[str], ratios: Dict) -> None:
-    """Add `percentile` (sector, national) to each ratio computable from the denormalized
-    `financials.latest` of sector peers (arroba.v2 #3). Real-data-only: only ratios with a
-    sufficient peer sample (≥20) get a percentile; the rest keep just their trend."""
+    """Add `percentile` (sector, national) to EVERY ratio for which the sector has a
+    sufficient sample (arroba.v2 #3). Primary source: the denormalized
+    `financials.latest.ratios` of sector peers (covers liquidity/working-capital once
+    backfilled). Falls back to computing margins/returns from `financials.latest` line
+    items for peers not yet backfilled. Real-data-only: percentile only when sample ≥20."""
     if not section:
         return
     peers = await db.master_companies.find(
         {"classification.cnae_section": section, "financials.latest.revenue": {"$ne": None}},
-        {"_id": 0, "financials.latest": 1}).to_list(5000)
-    dists = {k: [] for k in _PCT_RATIOS}
+        {"_id": 0, "financials.latest": 1}).to_list(6000)
+    dists: Dict[str, list] = {}
     for p in peers:
         lat = (p.get("financials") or {}).get("latest") or {}
-        for k, fn in _PCT_RATIOS.items():
-            v = fn(lat)
-            if v is not None:
-                dists[k].append(v)
-    for k in _PCT_RATIOS:
-        subj = (ratios.get(k) or {}).get("value")
-        vals = dists[k]
+        pr = lat.get("ratios")
+        if isinstance(pr, dict) and pr:
+            for k, v in pr.items():
+                if v is not None:
+                    dists.setdefault(k, []).append(v)
+        else:  # fallback for docs not yet backfilled
+            for k, fn in _PCT_RATIOS.items():
+                v = fn(lat)
+                if v is not None:
+                    dists.setdefault(k, []).append(v)
+    for k, r in ratios.items():
+        subj = (r or {}).get("value")
+        vals = dists.get(k) or []
         if subj is not None and len(vals) >= 20:
             below = sum(1 for x in vals if x < subj)
-            ratios[k]["percentile"] = round(below / len(vals) * 100)
-            ratios[k]["percentile_sample"] = len(vals)
+            r["percentile"] = round(below / len(vals) * 100)
+            r["percentile_sample"] = len(vals)
 
 
 async def analyze(identifier: str) -> Optional[Dict]:

@@ -12,6 +12,8 @@ from database import db
 from services.service_auth import require_service_key
 from borme.parser import normalize_company_name
 from services.data_layer.master import control_synergy as CS
+from services.engines.financial import engine as FE
+from routes.company_intelligence import _build as _build_identity
 
 router = APIRouter(prefix="/api/v1/company", tags=["company-ficha (arroba.v2)"])
 ENGINE_VERSION = "arroba-company-ficha-v1"
@@ -186,3 +188,24 @@ async def control_synergy(identifier: str, buyer_identifier: str, _key=Depends(r
     return {"identifier": identifier, "cif": target["cif_normalized"],
             "buyer_identifier": buyer_identifier, "buyer_cif": buyer["cif_normalized"],
             "available": True, "control_synergy": result, "engine_version": ENGINE_VERSION}
+
+
+@router.get("/{identifier}/ficha")
+async def ficha(identifier: str, _key=Depends(require_service_key)):
+    """Agregador de la Ficha: identidad + finanzas + ranking + propiedad + gobierno + eventos
+    en una sola llamada. Cada bloque es null-safe (Beta degrada por bloque)."""
+    master = await _master(identifier)
+    if not master:
+        raise HTTPException(status_code=404, detail="Company not found")
+    cif = master["cif_normalized"]
+    finances = await FE.analyze(cif)
+    return {
+        "identifier": identifier, "cif": cif, "master_id": master["master_id"],
+        "identity": _build_identity(master).model_dump(),
+        "finances": finances,
+        "ranking": (finances or {}).get("ranking"),
+        "ownership": await ownership(identifier, _key=None),
+        "governance": await governance(identifier, _key=None),
+        "events": await events(identifier, _key=None),
+        "engine_version": ENGINE_VERSION,
+    }
