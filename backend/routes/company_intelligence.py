@@ -59,6 +59,7 @@ class CompanyIdentityResponse(BaseModel):
     cnae_secondary: List[CnaeRef] = Field(default_factory=list)
     activity: Optional[str] = Field(None)
     corporate_purpose: Optional[str] = Field(None)
+    objeto_social: Optional[str] = Field(None, description="Alias de corporate_purpose (armonización con /financial-analysis). Texto registral del objeto social.")
     description: Optional[str] = Field(None, description="Solo si existe descripción con soporte; nunca texto inventado")
     sectors: List[str] = Field(default_factory=list)
     is_listed: Optional[bool] = Field(None, description="Cotizada (null si no verificable)")
@@ -108,6 +109,7 @@ def _build(doc: dict) -> CompanyIdentityResponse:
         cnae_primary=cnae,
         activity=cls.get("cnae_description"),
         corporate_purpose=doc.get("objeto_social"),
+        objeto_social=doc.get("objeto_social"),
         description=description,
         sectors=sectors,
         record_status=doc.get("status"),
@@ -119,7 +121,8 @@ def _build(doc: dict) -> CompanyIdentityResponse:
     for f in ["cif", "legal_name", "commercial_name", "legal_form", "mercantile_status",
               "activity_status", "incorporation_date", "locality", "province",
               "autonomous_community", "country", "website", "domain", "capital_social",
-              "employees_total", "cnae_primary", "corporate_purpose", "description", "is_listed"]:
+              "employees_total", "cnae_primary", "corporate_purpose", "objeto_social",
+              "description", "is_listed"]:
         v = getattr(resp, f)
         present[f] = bool(v)
     resp.data_coverage = present

@@ -4,9 +4,10 @@ Read-only, additive, X-API-Key protected. Real-data-only: every block reports it
 `coverage` and returns `available: false` cleanly when there is no data (Beta degrades to
 "información en preparación"). No internal/provider vocabulary in user-facing text.
 """
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 
 from database import db
 from services.service_auth import require_service_key
@@ -22,6 +23,90 @@ ENGINE_VERSION = "arroba-company-ficha-v1"
 async def _master(identifier: str) -> Optional[Dict]:
     return await db.master_companies.find_one(
         {"$or": [{"cif_normalized": identifier}, {"master_id": identifier}]}, {"_id": 0})
+
+
+# ── Coverage / pre-flight (B-2 Fase 0): let Beta pre-filter valid CIFs before calling
+# analyze/ficha, and diagnose 404s (company simply not in the master vs. lookup issue). ──
+class CoverageCheckRequest(BaseModel):
+    identifiers: List[str]
+
+
+async def _coverage_for(identifier: str) -> Dict:
+    """Per-CIF availability snapshot (cheap counts, no engine run). `resolved: false`
+    means the company is NOT in the master → analyze/ficha would 404 (expected, honest)."""
+    master = await _master(identifier)
+    if not master:
+        return {"identifier": identifier, "resolved": False,
+                "reason": "not_in_master",
+                "sections": {"financials": False, "cash_flow": False, "ownership": False,
+                             "governance": False, "events": False, "signals": False}}
+    cif = master["cif_normalized"]
+    legal_name = (master.get("identity") or {}).get("legal_name")
+    name_norm = normalize_company_name(legal_name) if legal_name else ""
+
+    fin_years = await db.norm_financials.count_documents({"cif_normalized": cif})
+    has_cf = await db.norm_financials.count_documents(
+        {"cif_normalized": cif, "accounts.61500": {"$exists": True}}) > 0
+    own = await db.norm_ownership.count_documents({"src_cif": cif, "relationship_type": "shareholder"})
+    if not own:
+        own = len(((master.get("ownership") or {}).get("shareholders") or []))
+    gov = await db.norm_officers.count_documents({"cif_normalized": cif})
+    events = (await db.borme_events.count_documents({"company_name_normalized": name_norm})
+              if name_norm else 0)
+    signals = await db.signals.count_documents({"master_id": master["master_id"], "status": "active"})
+    has_fin = fin_years > 0 and (master.get("financials") or {}).get("latest") is not None
+    return {
+        "identifier": identifier, "resolved": True, "cif": cif,
+        "master_id": master["master_id"], "name": legal_name,
+        "sections": {
+            "financials": has_fin, "cash_flow": has_cf,
+            "ownership": own > 0, "governance": gov > 0,
+            "events": events > 0, "signals": signals > 0,
+        },
+        "counts": {"financial_years": fin_years, "shareholders": own,
+                   "officers": gov, "events": events, "signals": signals},
+    }
+
+
+@router.get("/coverage")
+async def coverage(_key=Depends(require_service_key)):
+    """Cobertura agregada del master de Intel (B-2 Fase 0): totales por sección para que
+    Beta calibre expectativas. Nota: la entrega de muestra (25k) NO incluye grandes
+    cotizadas del IBEX/Continuo — no hay campo `is_listed` poblado todavía."""
+    total = await db.master_companies.count_documents({})
+    with_fin = await db.master_companies.count_documents({"financials.latest.revenue": {"$ne": None}})
+    with_balance = await db.master_companies.count_documents(
+        {"financials.latest.ratios.current_ratio": {"$ne": None}})
+    with_own = await db.master_companies.count_documents({"ownership.shareholders.0": {"$exists": True}})
+    with_off = await db.master_companies.count_documents({"officers_count": {"$gt": 0}})
+    cf_years = await db.norm_financials.count_documents({"accounts.61500": {"$exists": True}})
+    return {
+        "master_total": total,
+        "with_financials": with_fin,
+        "with_balance_liquidity": with_balance,
+        "with_ownership": with_own,
+        "with_governance": with_off,
+        "financial_years_with_cashflow": cf_years,
+        "listed_companies": 0,
+        "notes": [
+            "La muestra actual (Iberinform 25k) es un subconjunto; no incluye grandes "
+            "cotizadas del IBEX/Mercado Continuo (Iberdrola, Planeta, Technip no están en el master).",
+            "Cash flow (EFE) solo disponible para empresas que presentan cuentas normales "
+            "(no PYME/abreviadas): la mayoría de PYMEs no lo incluyen (silencio elegante).",
+            "Use POST /api/v1/company/coverage/check para pre-filtrar CIFs antes de analyze/ficha.",
+        ],
+        "engine_version": ENGINE_VERSION,
+    }
+
+
+@router.post("/coverage/check")
+async def coverage_check(req: CoverageCheckRequest, _key=Depends(require_service_key)):
+    """Pre-flight de un lote de CIFs: por cada uno indica si resuelve en el master y qué
+    secciones tienen dato. Permite a Beta evitar 404s y elegir CIFs de demo con confianza."""
+    ids = req.identifiers[:100]
+    results = [await _coverage_for(i) for i in ids]
+    return {"count": len(results), "resolved": sum(1 for r in results if r["resolved"]),
+            "results": results, "engine_version": ENGINE_VERSION}
 
 
 def _control_tier(top_pct: Optional[float]) -> Optional[str]:

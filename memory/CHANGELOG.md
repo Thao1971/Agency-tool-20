@@ -2,6 +2,20 @@
 
 > Registro de cambios de arquitectura de la plataforma Agency Tool (compartida: Valuo.pro + arroba.com + Platform Console).
 
+## 2026-08-10 — B5 EAV completo re-ingerido + armonización contrato B-2 (Beta Fase 0) ✅
+- **Causa raíz B5 encontrada y resuelta**: la ingesta 2026-07-22 corrió con una versión antigua de `ingest_balances_file` (filtro `_ACCOUNT_CODES`, código muerto ahora) que solo guardaba ~6 códigos canónicos por empresa-año. El código EAV completo ya existía pero **nunca se re-ejecutó**. Re-ejecutada sobre las ~25k en Atlas (555.550 filas, ~3s balances + ~10s rebuild master). Validado primero sobre muestra de 500.
+  - `norm_financials` con `current_assets`(12000): 8 → **13.430**; `current_liabilities`(32000): 8 → **13.123**; cash-flow OCF(61500): 5 → **246**.
+  - `master.financials.latest.ratios.current_ratio`: 0 → **13.044**. Ratios de liquidez/working-capital + percentil sectorial y desglose de deuda (st/lt/financial_debt) ahora activos en el contrato. Cash flow (EFE) solo en cuentas normales (246); PYMEs abreviadas → `cash_flow:null`+nota (honesto).
+- **Armonización de contrato para Beta**:
+  - `routes/company_intelligence.py`: añadido `objeto_social` (alias de `corporate_purpose`) a la respuesta de `POST /api/v2/company-intelligence/identity` + a `data_coverage`.
+  - Confirmado (sin cambios): `benchmark`/`methodology`/`scenarios` ya salen en `POST /api/v1/financial-intelligence/valuation`; señales canónicas = `GET /api/v1/company/{id}/signals`.
+- **NUEVO endpoint de cobertura** (`routes/company_ficha.py`, X-API-Key): `GET /api/v1/company/coverage` (agregado) + `POST /api/v1/company/coverage/check` (pre-flight por lote hasta 100 CIFs). Permite a Beta pre-filtrar CIFs y evitar 404s.
+- **Diagnóstico 404 de Beta**: los 4 CIFs (Iberdrola A28017895, Planeta A08363419, Technip B65076193, micro B95758389) **NO están en el master** (gap de cobertura de la muestra 25k; no incluye cotizadas). NO es bug de lookup ni de variante de CIF. La ficha es multi-empresa (funciona para las 24.992). `is_listed` no poblado en ningún registro (sin fuente de cotizadas en la entrega).
+- **5 CIFs demo entregados** a Beta (ver test_credentials.md). Handoff publicado en `/app/frontend/public/PARA_BETA_B2_FASE0_RESPUESTA.md` (accesible en `{preview}/PARA_BETA_B2_FASE0_RESPUESTA.md`).
+- **Web enrichment** (`description` ~4%): batch corrido (+335 descripciones, +19 tech tags); url_discovery encontró ~3.900 URLs. **PAUSADO**: los jobs en background saturaban el pool de Atlas y tumbaban la API en vivo (health timeout). Retomar de forma controlada bajo demanda.
+- Scripts nuevos: `scripts/reingest_balances_sample.py`, `scripts/reingest_balances_full.py`, `scripts/beta_diagnostic.py`.
+
+
 ## 2026-07-23 — v16 desplegada y verificada en Emergent Preview ✅
 - `arroba_agency_tool_v16.zip` (v13 fix ciclo de vida de señales + v14 fix category/severity y pestaña Señales + v15 auditoría de fuentes/DIRCE/stats + documentación de esta capa) subida y desplegada por Neo sobre "preview-arroba-app".
 - **Testing agent**: backend 19/20 (el único punto es un bug de aserción del propio test — busca `real_companies` en la raíz cuando la respuesta lo anida bajo `iberinform`; el dato servido es correcto: `real=24992, synthetic=0`), frontend 100%, 0 errores de consola en las 5 pantallas nuevas/tocadas (Oportunidades, Señales, DIRCE, y regresión de Watchlist/Fragmentación/Roll-up/Control-Synergy).
