@@ -655,3 +655,14 @@
 - `POST /api/v1/financial-intelligence/analyze` ahora incluye en `identity` (additivo): `objeto_social` (raw de `master_companies.objeto_social`), `description` (de `master_companies.web_description.description`, enriquecimiento web) y `activity` (si normalizado). Helper `_identity_descriptors()` en `services/engines/financial/engine.py`, aplicado a ambas ramas (con/sin financials).
 - Regla dura: solo dato real; si falta, se OMITE la clave (nunca null/inventado). Verificado: Servier B28184687 → objeto_social+description reales; B83139154 (sin web_description) → description omitida.
 - No toca otros bloques/ingesta/legacy/MONGO_URL. Requiere redeploy para producción.
+
+### 2026-06-XX — ranking (arroba.v2): posición relativa de la empresa en analyze
+- Confirmado: NO existía endpoint de ranking → expuesto DENTRO de `POST /api/v1/financial-intelligence/analyze` (additivo, sin crear endpoint nuevo). Función `ranking()` en `services/engines/financial/engine.py`, llamada en ambas ramas (con/sin financials).
+- Bloque `ranking` (null-safe, solo dato real; cada sub-bloque se omite si no se puede calcular honestamente):
+  - `sector_revenue_percentile` ← % de empresas del mismo `cnae_section` con revenue por debajo (min 5 en sector).
+  - `market_position {rank,total,scope}` ← rank ordinal por ingresos en peer universe F4 (sector + banda 0,3x–3x; min 3).
+  - `locality_position {rank,total,scope}` ← rank por ingresos en mismo sector dentro de `location.municipio` (fallback `provincia`; min 3).
+- Implementado con `count_documents` (sin scans en memoria) + 3 índices de apoyo en `master_companies` (cnae_section×revenue, municipio×section×revenue, provincia×section×revenue).
+- Verificado: Servier B28184687 → percentil 100, market 2/9, locality 1/34 (municipio); A12023479 → percentil 95, market 18/86, locality omitido (<3); empresa sin revenue → ranking {}.
+- Innovación (Alta/Media/Baja): FUERA DE ALCANCE (no hay motor de innovación/patentes/I+D). Diferido.
+- No toca otros bloques/ingesta/legacy/MONGO_URL. Requiere redeploy para producción.

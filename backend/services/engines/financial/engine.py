@@ -159,6 +159,64 @@ async def financial_comparables(master: Dict, latest: Dict, limit: int = 8) -> D
             "method": "structural (sector+size+geo)", "embeddings_used": False}
 
 
+async def ranking(master: Dict, latest: Optional[Dict] = None) -> Dict:
+    """Relative position of THIS company (arroba.v2, additive). Real-data-only:
+      • sector_revenue_percentile ← % of same-CNAE-section companies below its revenue.
+      • market_position {rank,total} ← ordinal by revenue within the Peer Universe
+        (same CNAE section + size band 0.3x–3x revenue).
+      • locality_position {rank,total,scope} ← ordinal by revenue within the same sector
+        in its municipality (fallback: province).
+    Every sub-block is OMITTED when it cannot be computed honestly (no revenue, or the
+    universe is too small). Uses count_documents only (no in-memory scans)."""
+    section = (master.get("classification") or {}).get("cnae_section")
+    revenue = (latest or {}).get("revenue")
+    if revenue is None:
+        revenue = ((master.get("financials") or {}).get("latest") or {}).get("revenue")
+    if revenue is None or not section:
+        return {}
+
+    loc = master.get("location") or {}
+    provincia = loc.get("provincia")
+    municipio = loc.get("municipio")
+    out: Dict = {}
+
+    # 1. Sector revenue percentile (whole CNAE section, national)
+    sector_q = {"classification.cnae_section": section, "financials.latest.revenue": {"$ne": None}}
+    sector_total = await db.master_companies.count_documents(sector_q)
+    if sector_total >= 5:
+        below = await db.master_companies.count_documents(
+            {"classification.cnae_section": section, "financials.latest.revenue": {"$lt": revenue}})
+        out["sector_revenue_percentile"] = round(below / sector_total * 100)
+
+    # 2. Market position within the Peer Universe (sector + size band 0.3x–3x)
+    lo, hi = revenue * 0.3, revenue * 3.0
+    market_total = await db.master_companies.count_documents(
+        {"classification.cnae_section": section, "financials.latest.revenue": {"$gte": lo, "$lte": hi}})
+    if market_total >= 3:
+        higher = await db.master_companies.count_documents(
+            {"classification.cnae_section": section, "financials.latest.revenue": {"$gt": revenue, "$lte": hi}})
+        out["market_position"] = {"rank": higher + 1, "total": market_total,
+                                  "scope": "sector CNAE + banda de tamaño (0,3x–3x ingresos)"}
+
+    # 3. Locality position (same sector, within municipality; fallback province)
+    loc_filter, scope = None, None
+    if municipio:
+        loc_filter, scope = {"location.municipio": municipio}, "municipio"
+    elif provincia:
+        loc_filter, scope = {"location.provincia": provincia}, "provincia"
+    if loc_filter:
+        base = {**loc_filter, "classification.cnae_section": section,
+                "financials.latest.revenue": {"$ne": None}}
+        loc_total = await db.master_companies.count_documents(base)
+        if loc_total >= 3:
+            loc_higher = await db.master_companies.count_documents(
+                {**loc_filter, "classification.cnae_section": section,
+                 "financials.latest.revenue": {"$gt": revenue}})
+            out["locality_position"] = {"rank": loc_higher + 1, "total": loc_total, "scope": scope}
+
+    return out
+
+
 async def valuation(master: Dict, latest: Dict) -> Dict:
     """EV/EBITDA → EV/revenue → book value → insufficient_data. Consumes Master Layer.
 
@@ -261,6 +319,7 @@ async def analyze(identifier: str) -> Optional[Dict]:
                          "cnae_section": (master.get("classification") or {}).get("cnae_section"),
                          **_identity_descriptors(master)},
             "has_financials": False,
+            "ranking": await ranking(master, {}),
             "valuation": {"method": "insufficient_data", "confidence": 0.0,
                           "hypotheses": ["Sin estados financieros normalizados"], "lineage": {}},
             "engine_version": ENGINE_VERSION, "generated_at": now_iso(), "confidence": 0.0,
@@ -298,6 +357,7 @@ async def analyze(identifier: str) -> Optional[Dict]:
                      "provincia": (master.get("location") or {}).get("provincia"),
                      **_identity_descriptors(master)},
         "has_financials": True,
+        "ranking": await ranking(master, latest),
         "statements": M.statements(latest, employees),
         "kpis": kpis,
         "ratios": ratios,

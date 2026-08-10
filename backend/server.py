@@ -1023,6 +1023,10 @@ async def _run_startup_init():
     await db.category_valuations.create_index("category")
     await db.category_valuations_meta.create_index("last_rebuilt")
     await db.valuation_rebuild_logs.create_index("log_id", unique=True)
+    # Ranking (arroba.v2 company relative position) — support indexes
+    await db.master_companies.create_index([("classification.cnae_section", 1), ("financials.latest.revenue", 1)])
+    await db.master_companies.create_index([("location.municipio", 1), ("classification.cnae_section", 1), ("financials.latest.revenue", 1)])
+    await db.master_companies.create_index([("location.provincia", 1), ("classification.cnae_section", 1), ("financials.latest.revenue", 1)])
     logger.info("Database indexes created")
 
     # Seed CNAE catalog if empty
