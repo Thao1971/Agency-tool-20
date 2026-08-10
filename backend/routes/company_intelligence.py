@@ -85,6 +85,12 @@ def _build(doc: dict) -> CompanyIdentityResponse:
                          source_version=s.get("source_version"), ingested_at=s.get("ingested_at"))
                for s in (doc.get("sources") or [])]
     sectors = [cls["cnae_section"]] if cls.get("cnae_section") else []
+    wd = doc.get("web_description")
+    description = None
+    if isinstance(wd, dict):
+        description = (wd.get("description") or "").strip() or None
+    elif isinstance(wd, str):
+        description = wd.strip() or None
     resp = CompanyIdentityResponse(
         master_id=doc["master_id"],
         cif=doc.get("cif_normalized") or ident.get("cif"),
@@ -102,6 +108,7 @@ def _build(doc: dict) -> CompanyIdentityResponse:
         cnae_primary=cnae,
         activity=cls.get("cnae_description"),
         corporate_purpose=doc.get("objeto_social"),
+        description=description,
         sectors=sectors,
         record_status=doc.get("status"),
         updated_at=doc.get("updated_at") or doc.get("built_at"),
@@ -112,7 +119,7 @@ def _build(doc: dict) -> CompanyIdentityResponse:
     for f in ["cif", "legal_name", "commercial_name", "legal_form", "mercantile_status",
               "activity_status", "incorporation_date", "locality", "province",
               "autonomous_community", "country", "website", "domain", "capital_social",
-              "employees_total", "cnae_primary", "corporate_purpose", "is_listed"]:
+              "employees_total", "cnae_primary", "corporate_purpose", "description", "is_listed"]:
         v = getattr(resp, f)
         present[f] = bool(v)
     resp.data_coverage = present

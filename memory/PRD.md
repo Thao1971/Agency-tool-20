@@ -705,3 +705,12 @@ Ya expuesto previamente con X-API-Key (verificado 200) → NO requería trabajo:
 - #16 copilot `/ask` (copilot, service-key).
 
 Verificado con service key en empresas reales: Servier B28184687 (ownership 2 accionistas, gov 55 cargos), Grand Tibidabo A08015653 (evento BORME real), control-synergy pareja. analyze sin regresión. Requiere redeploy para producción.
+
+### 2026-06-XX — Alineación con contracts/arroba.v2.json (I-1 poblado)
+Verificado contra el contrato (2026-08-10). Cambios additivos, solo dato real:
+1. Identidad: `company-intelligence/identity` ahora puebla `description` (web_description del enriquecimiento); `corporate_purpose` (objeto social) y `activity` (CNAE) ya se poblaban. + `data_coverage.description`.
+2. Cash flow: movido a `analyze.statements.cash_flow = {years, rows[{key,label,category,values[{value,format}]}]}` (+ `statements.cash_flow_note` cuando hay financials sin EFE). Filas: OCF, capex, financiación, variación de caja, FCF, conversión de caja. (Se elimina la clave top-level cashflow_statement/cashflow_note anterior.)
+3. Ratios: cada ratio lleva `trend` (▲/▼/▬) y `percentile` (percentil sectorial nacional) para los ratios calculables desde `financials.latest` (ebitda_margin, ebit_margin, net_margin, roa, roe, solvency, capital_intensity), con muestra ≥20 (`percentile_sample`). Helper `_ratio_sector_percentiles`.
+4. ranking: sin cambios (ya conforme).
+5. Valoración: `valuation.scenarios[{label,multiple,enterprise_value,equity_value}]` (conservador/base/optimista) y `valuation.benchmark[{metric,company,category,format}]` (empresa vs mediana categoría) + `benchmark_scope`/`ebitda_margin_percentile`. net_debt corregido (equity ya no null).
+Smoke ≥3 empresas: Servier B28184687 (grande, todo poblado), B95222139 (PYME abreviada: cash_flow null+nota, ratios trend+percentil, scenarios/benchmark), A0051199H (sin cuentas: todo degrada a vacío/null). Sin regresión. Requiere redeploy para producción.

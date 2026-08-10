@@ -332,46 +332,50 @@ def _ratios_with_trend(series: List[Dict], employees: Optional[int]) -> Dict[str
 
 
 def _valuation_full(val: Dict, latest: Dict, comparables: Dict) -> Dict:
-    """Additive valuation surface (I-1 #5): scenarios (conservador/base/optimista),
-    benchmark vs categoría (empresa vs mediana) y methodology (texto CF). Solo dato real."""
+    """Additive valuation surface (arroba.v2): scenarios (conservador/base/optimista con
+    label+multiple+EV+equity), benchmark (lista empresa vs mediana categoría) y methodology.
+    Solo dato real."""
     import statistics
     out: Dict = {}
     method = val.get("method")
     ev = val.get("enterprise_value")
+    mult = val.get("multiple")
     rng = val.get("range") or {}
     lo, hi = rng.get("low"), rng.get("high")
-    cash = latest.get("cash")
-    net_debt = ((latest.get("financial_debt") or 0) - cash) if cash is not None else None
+    net_debt = (latest.get("financial_debt") or 0) - (latest.get("cash") or 0)
 
-    def _eq(x):
-        return round(x - net_debt, 0) if (net_debt is not None and x is not None) else None
+    def _mult_for(x):
+        return round(mult * x / ev, 2) if (mult and ev) else None
 
     if method in ("ev_ebitda", "ev_revenue") and None not in (ev, lo, hi):
         out["scenarios"] = [
-            {"name": "conservador", "enterprise_value": lo, "equity_value": _eq(lo)},
-            {"name": "base", "enterprise_value": ev, "equity_value": _eq(ev)},
-            {"name": "optimista", "enterprise_value": hi, "equity_value": _eq(hi)},
+            {"label": "conservador", "multiple": _mult_for(lo),
+             "enterprise_value": lo, "equity_value": round(lo - net_debt, 0)},
+            {"label": "base", "multiple": mult,
+             "enterprise_value": ev, "equity_value": round(ev - net_debt, 0)},
+            {"label": "optimista", "multiple": _mult_for(hi),
+             "enterprise_value": hi, "equity_value": round(hi - net_debt, 0)},
         ]
 
     peers = (comparables or {}).get("peers") or []
     pmargins = sorted([p["ebitda_margin"] for p in peers if p.get("ebitda_margin") is not None])
     prevs = sorted([p["revenue"] for p in peers if p.get("revenue") is not None])
     subj_margin = R._safe_div(latest.get("ebitda"), latest.get("revenue"))
-    if pmargins or prevs:
-        bench: Dict = {"peers_count": len(peers), "scope": "sector CNAE + banda de tamaño"}
-        if pmargins:
-            bench["median_ebitda_margin"] = round(statistics.median(pmargins), 4)
-            if subj_margin is not None:
-                bench["subject_ebitda_margin"] = round(subj_margin, 4)
-        if prevs:
-            bench["median_revenue"] = round(statistics.median(prevs), 0)
-            bench["subject_revenue"] = latest.get("revenue")
+    benchmark = []
+    if pmargins:
+        benchmark.append({"metric": "Margen EBITDA", "company": round(subj_margin, 4) if subj_margin is not None else None,
+                          "category": round(statistics.median(pmargins), 4), "format": "percent"})
+    if prevs:
+        benchmark.append({"metric": "Ingresos", "company": latest.get("revenue"),
+                          "category": round(statistics.median(prevs), 0), "format": "currency"})
+    if benchmark:
+        out["benchmark"] = benchmark
+        out["benchmark_scope"] = "sector CNAE + banda de tamaño"
         if (comparables or {}).get("subject_ebitda_margin_percentile") is not None:
-            bench["ebitda_margin_percentile"] = round(comparables["subject_ebitda_margin_percentile"] * 100)
-        out["benchmark"] = bench
+            out["ebitda_margin_percentile"] = round(comparables["subject_ebitda_margin_percentile"] * 100)
 
     texts = {
-        "ev_ebitda": "Valoración por múltiplo EV/EBITDA (rango 4x–8x según calidad relativa al sector), "
+        "ev_ebitda": "Valoración por múltiplo EV/EBITDA (referencia sectorial/mercado según calidad), "
                      "aplicado al EBITDA del último ejercicio; puente a equity restando la deuda financiera neta.",
         "ev_revenue": "Valoración por múltiplo EV/Ingresos de referencia sectorial, aplicado a los ingresos "
                       "del último ejercicio; puente a equity restando la deuda financiera neta.",
@@ -382,6 +386,43 @@ def _valuation_full(val: Dict, latest: Dict, comparables: Dict) -> Dict:
     if method in texts:
         out["methodology"] = texts[method]
     return out
+
+
+# Ratios computable from the denormalized `financials.latest` (used for sector percentiles).
+_PCT_RATIOS = {
+    "ebitda_margin": lambda l: R._safe_div(l.get("ebitda"), l.get("revenue")),
+    "ebit_margin": lambda l: R._safe_div(l.get("operating_income"), l.get("revenue")),
+    "net_margin": lambda l: R._safe_div(l.get("net_income"), l.get("revenue")),
+    "roa": lambda l: R._safe_div(l.get("net_income"), l.get("total_assets")),
+    "roe": lambda l: R._safe_div(l.get("net_income"), l.get("equity")),
+    "solvency": lambda l: R._safe_div(l.get("equity"), l.get("total_assets")),
+    "capital_intensity": lambda l: R._safe_div(l.get("total_assets"), l.get("revenue")),
+}
+
+
+async def _ratio_sector_percentiles(section: Optional[str], ratios: Dict) -> None:
+    """Add `percentile` (sector, national) to each ratio computable from the denormalized
+    `financials.latest` of sector peers (arroba.v2 #3). Real-data-only: only ratios with a
+    sufficient peer sample (≥20) get a percentile; the rest keep just their trend."""
+    if not section:
+        return
+    peers = await db.master_companies.find(
+        {"classification.cnae_section": section, "financials.latest.revenue": {"$ne": None}},
+        {"_id": 0, "financials.latest": 1}).to_list(5000)
+    dists = {k: [] for k in _PCT_RATIOS}
+    for p in peers:
+        lat = (p.get("financials") or {}).get("latest") or {}
+        for k, fn in _PCT_RATIOS.items():
+            v = fn(lat)
+            if v is not None:
+                dists[k].append(v)
+    for k in _PCT_RATIOS:
+        subj = (ratios.get(k) or {}).get("value")
+        vals = dists[k]
+        if subj is not None and len(vals) >= 20:
+            below = sum(1 for x in vals if x < subj)
+            ratios[k]["percentile"] = round(below / len(vals) * 100)
+            ratios[k]["percentile_sample"] = len(vals)
 
 
 async def analyze(identifier: str) -> Optional[Dict]:
@@ -414,11 +455,21 @@ async def analyze(identifier: str) -> Optional[Dict]:
     latest = series[0]
     kpis = compute_kpis(series, employees)
     ratios = _ratios_with_trend(series, employees)
+    await _ratio_sector_percentiles((master.get("classification") or {}).get("cnae_section"), ratios)
     evolution = compute_evolution(series)
     quality = financial_quality(series, audited)
     comparables = await financial_comparables(master, latest)
     val = await valuation(master, latest)
     val = {**val, **_valuation_full(val, latest, comparables)}
+
+    statements = M.statements(latest, employees)
+    _cf = M.cashflow_statement(series)
+    if _cf:
+        statements["cash_flow"] = _cf
+    else:
+        statements["cash_flow"] = None
+        statements["cash_flow_note"] = ("No disponible: la empresa presenta cuentas abreviadas/PYME, "
+                                        "que no incluyen Estado de Flujos de Efectivo (EFE).")
 
     # rules-based strengths / weaknesses / risks (explainable)
     strengths, weaknesses, risks = [], [], []
@@ -445,10 +496,7 @@ async def analyze(identifier: str) -> Optional[Dict]:
                      **_identity_descriptors(master)},
         "has_financials": True,
         "ranking": await ranking(master, latest),
-        "statements": M.statements(latest, employees),
-        **({"cashflow_statement": _cf_stmt} if (_cf_stmt := M.cashflow_statement(series))
-           else {"cashflow_note": "No disponible: la empresa presenta cuentas abreviadas/PYME, "
-                                   "que no incluyen Estado de Flujos de Efectivo (EFE)."}),
+        "statements": statements,
         "kpis": kpis,
         "ratios": ratios,
         "evolution": evolution,
