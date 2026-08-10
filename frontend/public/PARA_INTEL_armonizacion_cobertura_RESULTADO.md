@@ -18,7 +18,7 @@
 |---|---|---|---|
 | B7 | Poblar `financial_quality.assessment` + `weaknesses` + `risks` | ✅ HECHO | `financial_quality` ahora trae `label`, `assessment` ("Lectura financiera de ARROBA", prosa), `verdict` ("Veredicto de ARROBA"), `strengths`, `weaknesses`, `risks`. **Cobertura: 9.593 empresas** (todas las que tienen financieros). |
 | B5 | Activar cash flow + percentiles de liquidez/WC a escala | ⛔ BLOQUEADO (dato upstream) | Los códigos EAV de balance/EFE (current_assets, current_liabilities, st/lt_debt, existencias, deudores, EFE…) tienen **~0 cobertura en `norm_financials` (5-8 de 13.501)**. No es mapeo: **falta ingerir el EAV completo de Iberinform**. El código ya está cableado → se activará automáticamente al ingerir. |
-| B6 | Enriquecimiento web a escala (`description`) | 🟡 PENDIENTE | Hoy 29/24.992. Requiere un run del pipeline de scraping+LLM (pesado). Recomendado: job en background por lotes. |
+| B6 | Enriquecimiento web a escala (`description`) | ✅ EJECUTADO | Job en background `scripts/web_enrichment_batch.py` sobre las 2.259 con web: **916 scrapeadas OK**, **description 29 → 945**, **74 nuevas etiquetas fintech/biotech/tech**. Techo actual = URLs disponibles (`contact.web` = 2.288); para más hace falta **descubrimiento de URLs**. |
 
 ## BLOQUE C — Futuro (no bloquea)
 - Innovación desde patentes/OEPM (viable, hay que construir el motor).
@@ -28,8 +28,16 @@
 - Total empresas: **24.992**
 - Con estados financieros (→ ratios, ranking, valoración, **assessment/verdict**): **9.593**
 - Con Estado de Flujos de Efectivo (cash flow): **5** ← B5
-- Con `description` web: **29** ← B6
+- Con `description` web: **945** (tras el run B6; +916)
 - Con señales activas (section/signal): **24.989**
+
+## Qué necesito de ti para B5 (bloqueante)
+El feed de Iberinform ya ingerido (`iberinform_financials`, `iberinform_companies`) **solo contiene P&L
+resumido + equity/total_assets** — no trae balance detallado ni Estado de Flujos de Efectivo. Para activar
+cash flow y percentiles de liquidez/working-capital a escala necesito el **export ampliado de Iberinform
+con los estados financieros completos** (activo/pasivo circulante, deuda c/p y l/p, existencias, deudores,
+acreedores y, si es posible, el EFE), por CIF y año. En cuanto lo aportes, la normalización + denormalización
+ya está cableada y se activa sola.
 
 ## Pendiente accionable (prioridad)
 1. **Redeploy** para publicar Bloque A + B7 en `intel.arroba.com`.

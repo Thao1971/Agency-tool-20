@@ -731,3 +731,7 @@ Bloque B (cobertura):
 - B5 BLOQUEADO (dato upstream): los códigos EAV de balance/EFE (12000/32000/31200/32300/12300/12200/32510/61500...) tienen ~0 cobertura en norm_financials (5-8 docs de 13.501). No es mapeo: falta ingerir el EAV completo de Iberinform. Código ya cableado (metrics.CODES + _year_metrics + backfill ratios) → se activará solo al ingerir.
 - B6 PENDIENTE (enriquecimiento web a escala): description 29/24.992. Requiere run de scraping/LLM (pipeline pesado); proponer como job en background.
 Bloque C (futuro): innovación desde patentes/OEPM (viable, no bloquea); árbol societario multinivel desde /graph/{id}/traverse.
+
+### 2026-06-XX — B5 (bloqueado) + B6 (ejecutado)
+- B5 CONFIRMADO BLOQUEADO por dato de origen: iberinform_financials (raw) e iberinform_companies solo traen P&L resumido + equity/total_assets; sin balance detallado ni EFE. No hay dato que denormalizar. Requiere export ampliado de Iberinform (estados completos) por CIF/año. Código ya cableado.
+- B6 EJECUTADO: scripts/web_enrichment_batch.py (httpx best-effort + reclasificación taxonomía). 2.259 pendientes → 916 scrapeadas OK, description 29→945, 74 nuevas etiquetas fintech/biotech/tech. Techo = contact.web (2.288 empresas); para más, falta descubrimiento de URLs. Idempotente/resumable.
