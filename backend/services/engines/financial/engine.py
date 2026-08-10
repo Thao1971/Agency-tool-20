@@ -215,6 +215,31 @@ async def valuation(master: Dict, latest: Dict) -> Dict:
             "hypotheses": ["Sin EBITDA, ingresos ni patrimonio utilizables"], "lineage": lineage}
 
 
+def _identity_descriptors(master: Dict) -> Dict:
+    """Real-data-only descriptors for the identity block (arroba.v2). Keys are OMITTED
+    when there is no genuine value — never fabricated. Additive to the contract.
+      • objeto_social  ← master_companies.objeto_social (raw registry text)
+      • description     ← master_companies.web_description.description (web enrichment)
+      • activity        ← normalized activity, only if present
+    """
+    out: Dict = {}
+    obj = (master.get("objeto_social") or "").strip()
+    if obj:
+        out["objeto_social"] = obj
+    wd = master.get("web_description")
+    desc = ""
+    if isinstance(wd, dict):
+        desc = (wd.get("description") or "").strip()
+    elif isinstance(wd, str):
+        desc = wd.strip()
+    if desc:
+        out["description"] = desc
+    act = master.get("activity") or master.get("activity_normalized")
+    if isinstance(act, str) and act.strip():
+        out["activity"] = act.strip()
+    return out
+
+
 async def analyze(identifier: str) -> Optional[Dict]:
     """Full financial intelligence profile. identifier = master_id or cif_normalized."""
     master = await db.master_companies.find_one(
@@ -233,7 +258,8 @@ async def analyze(identifier: str) -> Optional[Dict]:
             "master_id": master["master_id"], "cif_normalized": cif,
             "identity": {"name": (master.get("identity") or {}).get("legal_name"),
                          "cnae_code": (master.get("classification") or {}).get("cnae_code"),
-                         "cnae_section": (master.get("classification") or {}).get("cnae_section")},
+                         "cnae_section": (master.get("classification") or {}).get("cnae_section"),
+                         **_identity_descriptors(master)},
             "has_financials": False,
             "valuation": {"method": "insufficient_data", "confidence": 0.0,
                           "hypotheses": ["Sin estados financieros normalizados"], "lineage": {}},
@@ -269,7 +295,8 @@ async def analyze(identifier: str) -> Optional[Dict]:
         "identity": {"name": (master.get("identity") or {}).get("legal_name"),
                      "cnae_code": (master.get("classification") or {}).get("cnae_code"),
                      "cnae_section": (master.get("classification") or {}).get("cnae_section"),
-                     "provincia": (master.get("location") or {}).get("provincia")},
+                     "provincia": (master.get("location") or {}).get("provincia"),
+                     **_identity_descriptors(master)},
         "has_financials": True,
         "statements": M.statements(latest, employees),
         "kpis": kpis,

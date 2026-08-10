@@ -650,3 +650,8 @@
 - `GET /api/v1/health` = shallow liveness (sin BD) — usar como liveness probe.
 - `GET /api/v1/health/deep` y `GET /api/v1/readyz` = readiness con ping real a Mongo (`client.admin.command('ping')`), 200 `{checks.mongo:ok, latency_ms}` o 503 si la BD cae. NO usar como liveness (evita bucles de reinicio por blips de BD).
 - Verificado preview: shallow/deep/readyz + login 200; deep latency ~0.4ms. Prod health 10× = 0×520. Service key `as_ace1afcc...` autentica en prod (200).
+
+### 2026-06-XX — analyze (arroba.v2): expuestos objeto_social + description en identity
+- `POST /api/v1/financial-intelligence/analyze` ahora incluye en `identity` (additivo): `objeto_social` (raw de `master_companies.objeto_social`), `description` (de `master_companies.web_description.description`, enriquecimiento web) y `activity` (si normalizado). Helper `_identity_descriptors()` en `services/engines/financial/engine.py`, aplicado a ambas ramas (con/sin financials).
+- Regla dura: solo dato real; si falta, se OMITE la clave (nunca null/inventado). Verificado: Servier B28184687 → objeto_social+description reales; B83139154 (sin web_description) → description omitida.
+- No toca otros bloques/ingesta/legacy/MONGO_URL. Requiere redeploy para producción.
