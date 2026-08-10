@@ -675,3 +675,7 @@
 - Filas: cf_operating (OCF), cf_capex, cf_financing, cf_net_change (variación de caja), free_cash_flow (FCF). Solo dato real: años/filas sin valor se omiten; si la empresa no declaró EFE (cuentas abreviadas/PYME) → `cashflow_statement` OMITIDO → Beta muestra "Pendiente".
 - Verificado: Servier B28184687 → tabla 2023/2022 con las 5 partidas reales; B95222139 (sin EFE) → bloque omitido. Antes solo existía `statements.cashflow` (1 año).
 - Additivo, no toca otros bloques/ingesta/legacy/MONGO_URL. Requiere redeploy para producción.
+
+### 2026-06-XX — cashflow: fila Conversión de caja + nota de "Pendiente"
+- Añadida fila `cash_conversion` "Conversión de caja (OCF/EBITDA)" (format "percent") al `cashflow_statement`. Formatos por fila (currency/percent) en `_CASHFLOW_ROWS`.
+- Cuando hay financials pero NO hay EFE (cuentas abreviadas/PYME), `analyze` expone `cashflow_note`: "No disponible: la empresa presenta cuentas abreviadas/PYME, que no incluyen Estado de Flujos de Efectivo (EFE)." (en vez de omitir en silencio). Verificado: Servier con conversión 65,7%/66,1%; B95222139 con la nota.

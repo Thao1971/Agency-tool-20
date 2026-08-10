@@ -375,7 +375,9 @@ async def analyze(identifier: str) -> Optional[Dict]:
         "has_financials": True,
         "ranking": await ranking(master, latest),
         "statements": M.statements(latest, employees),
-        **({"cashflow_statement": _cf_stmt} if (_cf_stmt := M.cashflow_statement(series)) else {}),
+        **({"cashflow_statement": _cf_stmt} if (_cf_stmt := M.cashflow_statement(series))
+           else {"cashflow_note": "No disponible: la empresa presenta cuentas abreviadas/PYME, "
+                                   "que no incluyen Estado de Flujos de Efectivo (EFE)."}),
         "kpis": kpis,
         "ratios": ratios,
         "evolution": evolution,
