@@ -62,22 +62,15 @@ async def _mark_listed():
 
 async def _backfill_ratios(run_id):
     """$set financials.latest.ratios (+fcf/cash_conversion) por empresa con balance.
-    Un solo cursor + bulk_write en lotes → rápido en Atlas y con progreso."""
-    # elegir, por cif, el mejor doc (individual > consolidado, año más reciente)
-    best = {}
+    STREAMING (memoria acotada: un doc + buffer de 500 ops) → seguro en pods pequeños
+    y con progreso. Bumpea updated_at para invalidar analyze_cache."""
+    ops, updated, seen = [], 0, 0
     async for f in db.norm_financials.find(
-            {"accounts.10000": {"$exists": True}},
-            {"_id": 0, "cif_normalized": 1, "basis": 1, "year": 1, "accounts": 1}):
+            {"accounts.10000": {"$exists": True}, "basis": "individual"},
+            {"_id": 0, "cif_normalized": 1, "accounts": 1}):
         cif = f.get("cif_normalized")
         if not cif:
             continue
-        rank = (1 if f.get("basis") == "individual" else 0, f.get("year") or 0)
-        cur = best.get(cif)
-        if cur is None or rank > cur[0]:
-            best[cif] = (rank, f)
-
-    ops, updated = [], 0
-    for cif, (_, f) in best.items():
         ym = _M._year_metrics(f.get("accounts") or {})
         ratios = {k: v["value"] for k, v in _R.compute_all(ym, None).items()
                   if v.get("value") is not None}
@@ -88,7 +81,8 @@ async def _backfill_ratios(run_id):
             if ym.get(extra) is not None:
                 setter[f"financials.latest.{extra}"] = ym[extra]
         ops.append(UpdateOne({"cif_normalized": cif}, {"$set": setter}))
-        if len(ops) >= 1000:
+        seen += 1
+        if len(ops) >= 500:
             res = await db.master_companies.bulk_write(ops, ordered=False)
             updated += res.modified_count
             ops = []
@@ -96,14 +90,18 @@ async def _backfill_ratios(run_id):
     if ops:
         res = await db.master_companies.bulk_write(ops, ordered=False)
         updated += res.modified_count
-    return {"candidates": len(best), "ratios_backfilled": updated}
+    return {"seen": seen, "ratios_backfilled": updated}
 
 
-async def main(run_id, do_ownership, do_listed):
+async def main(run_id, do_ownership, do_listed, do_balances=True):
     t0 = time.time()
     try:
-        await _set(run_id, status="running", step="balances")
-        bal = await ingest_balances_file(str(SAMPLE_DIR / "Datos_BALANCES.tab"), SV, run_id)
+        bal = None
+        if do_balances:
+            await _set(run_id, status="running", step="balances")
+            bal = await ingest_balances_file(str(SAMPLE_DIR / "Datos_BALANCES.tab"), SV, run_id)
+        else:
+            await _set(run_id, status="running", step="skip_balances")
 
         own = None
         if do_ownership:
@@ -148,4 +146,5 @@ if __name__ == "__main__":
     rid = sys.argv[1]
     ownership = sys.argv[2] == "1" if len(sys.argv) > 2 else True
     listed = sys.argv[3] == "1" if len(sys.argv) > 3 else True
-    asyncio.run(main(rid, ownership, listed))
+    balances = sys.argv[4] == "1" if len(sys.argv) > 4 else True
+    asyncio.run(main(rid, ownership, listed, balances))

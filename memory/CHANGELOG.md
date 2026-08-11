@@ -2,6 +2,13 @@
 
 > Registro de cambios de arquitectura de la plataforma Agency Tool (compartida: Valuo.pro + arroba.com + Platform Console).
 
+## 2026-08-10 (incidente prod) — 520 por OOM del pod + master_id divergente
+- **520 en prod durante el seed**: el paso `balances` de `prod_seed_eav` carga 555k filas en memoria → satura el pod pequeño de prod → Cloudflare 520 (~45s) → el pod reinicia → mata el subproceso a mitad (run3 quedó congelado en step=balances). Los balances YA estaban sembrados de runs previos (cashflow=246), así que re-ejecutarlos era innecesario y peligroso.
+- **FIX**: (1) endpoint `/reingest-eav` acepta `balances: bool = Query(True)` → `balances=false` salta el paso pesado. (2) `_backfill_ratios` reescrito a STREAMING (un doc + buffer de 500 ops, sin cargar todos los accounts en memoria) → seguro en pods pequeños. Verificado en preview con `balances=false`: **1.3s**, seen=13.481, ratios_backfilled=13.452, master_current_ratio=13.044.
+- **master_id divergente (incidente reportado por PM)**: intel.arroba.com devuelve `mc_36c100bcee4a` para Servier de forma CONSISTENTE (8/8 llamadas) = una sola instancia/Atlas. PREVIEW también da `mc_36c100bcee4a` → master_id es DETERMINISTA. Beta ve `mc_908b00949ee2` → **Beta NO consume intel.arroba.com**; lee de un Intel/Atlas DISTINTO y más ANTIGUO (resolver anterior). Canónico = intel.arroba.com (master_total=24.992, service key sha256[:8]=2ba91e0d válida). Acción de consolidación (ops/Beta): apuntar `AGENCY_TOOL_BASE_URL` de Beta a https://intel.arroba.com. NO borrar nada aún.
+- PENDIENTE: 1 redeploy más (fix balances=false) → luego `POST /reingest-eav?ownership=false&listed=true&balances=false` en prod (ligero, sin OOM) → percentiles poblados.
+
+
 ## 2026-08-10 (fix seed) — Backfill ligero de ratios (rebuild_master era inviable en Atlas)
 - Diagnóstico: `rebuild_master` (full o con cif_list de 13k) NO escribe ni un lote en la Atlas de prod (0 flushes en >8 min) — reescribe el doc entero de 25k empresas con 13 índices. Los VALORES por-empresa ya salían (analyze lee norm directo: NCR cash_flow ok, current_ratio 2.07), pero los PERCENTILES quedaban null (`with_balance_liquidity`=0).
 - **FIX en `scripts/prod_seed_eav.py`**: sustituido `rebuild_master` por `_backfill_ratios` — un solo cursor sobre `norm_financials` (con balance) + `bulk_write` de `$set financials.latest.ratios` (campo NO indexado) en lotes de 1000. Verificado en preview: **3.9s**, `ratios_backfilled=13.447`, `master_current_ratio=13.044`, NCR percentil=50.

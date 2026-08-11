@@ -354,23 +354,24 @@ BACKEND_DIR = Path(__file__).resolve().parent.parent
 async def reingest_eav(
     ownership: bool = Query(True),
     listed: bool = Query(True),
+    balances: bool = Query(True),
     user=Depends(get_current_user),
 ):
     """Re-ingesta EAV completa (balance + cash-flow) desde los .tab versionados, + ownership
-    + marcado is_listed(BME) + rebuild del master. Corre en subproceso AISLADO (no bloquea el
-    backend). Idempotente. Úsalo UNA vez tras el redeploy para sembrar la base de producción
-    con el dato que hoy solo está en preview."""
-    if not (SAMPLE_DIR / "Datos_BALANCES.tab").exists():
+    + marcado is_listed(BME) + backfill de ratios en master. Corre en subproceso AISLADO.
+    Idempotente. `balances=false` salta el paso pesado de balances (útil si ya están
+    ingeridos y solo falta el backfill ligero de ratios — evita picos de memoria en el pod)."""
+    if balances and not (SAMPLE_DIR / "Datos_BALANCES.tab").exists():
         raise HTTPException(400, f"No se encuentra Datos_BALANCES.tab en {SAMPLE_DIR}")
     run_id = str(uuid.uuid4())
     await db.eav_reingest_runs.insert_one({
         "run_id": run_id, "status": "queued", "step": "queued",
-        "options": {"ownership": ownership, "listed": listed},
+        "options": {"ownership": ownership, "listed": listed, "balances": balances},
         "started_at": now_iso(), "updated_at": now_iso()})
     env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
     await asyncio.create_subprocess_exec(
         _sys.executable, "-m", "scripts.prod_seed_eav",
-        run_id, "1" if ownership else "0", "1" if listed else "0",
+        run_id, "1" if ownership else "0", "1" if listed else "0", "1" if balances else "0",
         cwd=str(BACKEND_DIR), env=env,
         stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL)
     return {"run_id": run_id, "status": "queued",
