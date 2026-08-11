@@ -33,6 +33,17 @@
 | ADMIN | Usuarios, Roles, Seguridad, Auditoría |
 
 ## Latest changes (Agosto 2026)
+- **Agregador Mercado por empresa `GET /company/{id}/market` + propagado al `/ficha` ✅ (2026-08-11)**
+  - Nuevo endpoint (patrón ownership/governance/events, X-API-Key, null-safe por bloque) en `routes/company_ficha.py` que une 4 bloques y resuelve internamente CNAE + provincia (el front no cruza nada):
+    - `sector` ← `sector_intelligence` leyendo la fila concreta con `find_one` (group CNAE 4 díg. → division 2 díg. → section, primero que exista): size/dynamism/growth/activity scores, trend, primary_driver, signal, active/iberinform companies, market_share, national_yoy_pct.
+    - `geo` ← `geo_intelligence` provincia. Mapeo provincia→geo_id resuelto **por prefijo del código postal** (2 díg = código INE; verificado 3998/4000, los 2 fallos son sin ubicación) con **fallback por nombre normalizado**. Los 4 nombres que no casan por texto (CORUÑA (A), ILLES BALEARS, LA RIOJA, LAS PALMAS) sí resuelven por CP → sin hueco real.
+    - `concentration` (HHI) ← `fragmentation.compute_fragmentation` a **nivel group (CNAE 4 díg.)**, con **degradación honesta a division (2 díg.)** si el universo del group tiene <5 actores de mercado con facturación (`_MIN_ACTORS_FOR_HHI=5`, mismo espíritu que ranking). Marca `level`, `degraded`, `degraded_reason`/`caveat`.
+    - `position` ← reutiliza `FE.ranking(master)` (percentil sectorial + rank/total mercado + rank/total localidad/municipio).
+  - Municipio no bloquea Mercado v1 (su granularidad vive en `position.locality_position`). NO duplica percentiles financieros (viven en `finances.ratios.*.percentile`) ni comparables nominales (pertenecen a Comparativa, aparte).
+  - Verificado E2E por ingress: SERVIER (2120, Madrid) 4 bloques; FARNELL (div 63, Barcelona, HHI group estable 4981), PROCOLUIDE (group pequeño → **degrada a division 20**, HHI 5181 degraded=true), OPEL (div 64, HHI group 1550). `/ficha` incluye ya el bloque `market`.
+  - **Percentil canónico (reconciliación pedida)**: `ratios.ebitda_margin.percentile` (whole CNAE section, nacional, muestra ≥20, `<` estricto) es el CANÓNICO para "percentil sectorial". `valuation.ebitda_margin_percentile` (88) se calcula sobre el set estrecho de comparables de valoración (≤8 peers, sección+banda de tamaño+geo, `<=`) → es un número de contexto de valoración, no el percentil sectorial. Beta debe usar `ratios.*.percentile` como fuente de verdad.
+  - PENDIENTE (acción del usuario): **redeploy a prod** para publicar `/market` + su propagación al `/ficha`.
+
 - **verdict en el bloque `assessment` del agregador + reglas enriquecidas de weaknesses/risks ✅ (2026-08-11)**
   - **Purga de caché ejecutada y verificada EN PROD** (`intel.arroba.com`): `/admin/cache/inspect` mostró `cache_collections: {}` (la Atlas de prod NO tiene colecciones de caché), `purge-analyze` = completed (nada que borrar). Verificado en prod: `financial-intelligence/analyze` de SERVIER devuelve assessment+verdict; COPISA devuelve verdict+risks. La narrativa YA está viva en prod.
   - **Gap real detectado**: `finances.financial_quality.verdict` SÍ estaba en el `/ficha` (verificado en prod), pero el bloque top-level `finances.assessment` solo traía `{strengths, weaknesses, risks}` (sin verdict/score). Ese subset era el que leía Beta. **Fix (`engine.py` analyze)**: `finances.assessment` ahora incluye `score`, `label`, `assessment` (texto) y `verdict`, además de strengths/weaknesses/risks. Aditivo; `financial_quality` intacto.

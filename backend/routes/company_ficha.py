@@ -5,6 +5,7 @@ Read-only, additive, X-API-Key protected. Real-data-only: every block reports it
 "información en preparación"). No internal/provider vocabulary in user-facing text.
 """
 from typing import Dict, List, Optional
+import unicodedata
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -14,6 +15,7 @@ from services.service_auth import require_service_key
 from borme.parser import normalize_company_name
 from services.data_layer.master import control_synergy as CS
 from services.engines.financial import engine as FE
+from services.engines.investment import fragmentation as FRAG
 from routes.company_intelligence import _build as _build_identity
 
 router = APIRouter(prefix="/api/v1/company", tags=["company-ficha (arroba.v2)"])
@@ -309,6 +311,150 @@ async def signals(identifier: str, limit: int = 50, _key=Depends(require_service
             "engine_version": ENGINE_VERSION}
 
 
+# ── Mercado/Sector por empresa (arroba.v2 'Mercado'): une sector-intelligence +
+# geo-intelligence + fragmentation (HHI) + la posición relativa de la empresa. ──
+_MIN_ACTORS_FOR_HHI = 5   # umbral de estabilidad del HHI (mismo espíritu que ranking: sector>=5)
+_LEVEL_NAME = {"cnae_code": "group", "cnae_division": "division", "cnae_section": "section"}
+
+
+def _norm_txt(s: Optional[str]) -> str:
+    s = (s or "").strip().upper()
+    return "".join(c for c in unicodedata.normalize("NFD", s) if unicodedata.category(c) != "Mn")
+
+
+async def _province_index():
+    """{geo_id: doc} + {nombre_normalizado: geo_id} desde geo_intelligence (52 provincias)."""
+    provs = await db.geo_intelligence.find({"geo_level": "province"}, {"_id": 0}).to_list(100)
+    by_code = {p["geo_id"]: p for p in provs}
+    name2code: Dict[str, str] = {}
+    for p in provs:
+        gn = p.get("geo_name") or ""
+        name2code[_norm_txt(gn)] = p["geo_id"]
+        for part in gn.replace("(", " ").replace(")", " ").replace(",", " ").split("/"):
+            k = _norm_txt(part)
+            if k:
+                name2code[k] = p["geo_id"]
+    return by_code, name2code
+
+
+def _sector_card(s: Dict) -> Dict:
+    return {k: s.get(k) for k in (
+        "cnae_code", "cnae_label", "cnae_level", "size_score", "dynamism_score", "growth_score",
+        "activity_score", "active_companies", "iberinform_companies", "market_share",
+        "national_yoy_pct", "trend_direction", "primary_driver", "signal")}
+
+
+def _geo_card(g: Dict) -> Dict:
+    return {k: g.get(k) for k in (
+        "geo_id", "geo_name", "geo_level", "parent_ccaa", "size_score", "dynamism_score",
+        "growth_score", "revenue_growth", "employment_growth", "net_company_creation",
+        "active_companies", "trend_direction", "primary_driver", "signal")}
+
+
+def _conc_fields(fr: Dict) -> Dict:
+    return {"cnae_field": fr.get("cnae_field"), "cnae_value": fr.get("cnae_value"),
+            "hhi": fr.get("hhi"), "concentration_label": fr.get("concentration_label"),
+            "market_actors_count": fr.get("market_actors_count"),
+            "distinct_ownership_groups": fr.get("distinct_ownership_groups"),
+            "standalone_targets_count": fr.get("standalone_targets_count"),
+            "total_companies_in_universe": fr.get("total_companies_in_arroba_universe"),
+            "companies_with_revenue_data": fr.get("companies_with_revenue_data"),
+            "hhi_methodology": fr.get("hhi_methodology")}
+
+
+async def _resolve_sector(cls: Dict) -> Optional[Dict]:
+    """group (CNAE 4 díg.) → division (2 díg.) → section (letra): el primero que exista."""
+    for level, code in (("group", cls.get("cnae_code")), ("division", cls.get("cnae_division")),
+                        ("section", cls.get("cnae_section"))):
+        if not code:
+            continue
+        doc = await db.sector_intelligence.find_one(
+            {"cnae_code": code, "cnae_level": level, "taxonomy_type": "official_cnae"}, {"_id": 0})
+        if doc:
+            return doc
+    return None
+
+
+async def _resolve_geo(master: Dict) -> Optional[Dict]:
+    """Provincia (texto) → geo_id. Principal: prefijo del código postal (2 díg = código INE
+    de provincia). Fallback: nombre normalizado contra geo_name."""
+    loc = master.get("location") or {}
+    by_code, name2code = await _province_index()
+    cp = (loc.get("codigo_postal") or "").strip()
+    code = None
+    if len(cp) >= 2 and cp[:2].isdigit() and cp[:2] in by_code:
+        code = cp[:2]
+    if code is None:
+        code = name2code.get(_norm_txt(loc.get("provincia")))
+    return by_code.get(code) if code else None
+
+
+async def _resolve_concentration(cls: Dict) -> Dict:
+    """HHI a nivel group (CNAE 4 díg.); degrada a division (2 díg.) si el universo del group
+    es demasiado pequeño para un HHI estable. Devuelve available/level/degraded null-safe."""
+    candidates = []
+    if cls.get("cnae_code"):
+        candidates.append(("cnae_code", cls["cnae_code"], 500))
+    if cls.get("cnae_division"):
+        candidates.append(("cnae_division", cls["cnae_division"], 1000))
+    fallback = None
+    for field, value, limit in candidates:
+        fr = await FRAG.compute_fragmentation(field, value, limit_companies=limit)
+        level = _LEVEL_NAME.get(field, field)
+        block = {"available": True, "level": level, "degraded": field != "cnae_code",
+                 **_conc_fields(fr)}
+        if field != "cnae_code":
+            block["degraded_reason"] = ("Universo del grupo CNAE (4 díg.) insuficiente para un "
+                                        "HHI estable; se usa la división (2 díg.).")
+        if fr.get("hhi") is not None and (fr.get("market_actors_count") or 0) >= _MIN_ACTORS_FOR_HHI:
+            return block
+        if fallback is None and fr.get("hhi") is not None:
+            fallback = {**block, "caveat": "Universo reducido (por debajo del umbral de "
+                                           "estabilidad); HHI orientativo."}
+    if fallback:
+        return fallback
+    return {"available": False, "reason": "insufficient_universe_for_hhi"}
+
+
+@router.get("/{identifier}/market")
+async def market(identifier: str, _key=Depends(require_service_key)):
+    """Contexto de mercado de la empresa (arroba.v2 'Mercado'): sector (tamaño/dinamismo/
+    crecimiento), geografía (provincia), concentración/HHI (nivel group con degradación a
+    division) y la posición relativa de la empresa. Cada bloque es null-safe (available)."""
+    master = await _master(identifier)
+    if not master:
+        raise HTTPException(status_code=404, detail="Company not found")
+    cif = master["cif_normalized"]
+    cls = master.get("classification") or {}
+
+    sector_doc = await _resolve_sector(cls)
+    geo_doc = await _resolve_geo(master)
+    concentration = await _resolve_concentration(cls)
+    position = await FE.ranking(master)
+
+    sector_block = ({"available": True, **_sector_card(sector_doc)}
+                    if sector_doc else {"available": False, "reason": "sector_not_computed"})
+    geo_block = ({"available": True, **_geo_card(geo_doc)}
+                 if geo_doc else {"available": False, "reason": "province_not_resolved"})
+    position_block = ({"available": True, **position}
+                      if position else {"available": False, "reason": "no_revenue_for_ranking"})
+
+    blocks = (sector_block, geo_block, concentration, position_block)
+    return {
+        "identifier": identifier, "cif": cif, "master_id": master["master_id"],
+        "available": any(b.get("available") for b in blocks),
+        "sector": sector_block,
+        "geo": geo_block,
+        "concentration": concentration,
+        "position": position_block,
+        "coverage": {"sector": sector_block.get("available", False),
+                     "geo": geo_block.get("available", False),
+                     "concentration": concentration.get("available", False),
+                     "position": position_block.get("available", False)},
+        "engine_version": ENGINE_VERSION,
+    }
+
+
 @router.get("/{identifier}/ficha")
 async def ficha(identifier: str, _key=Depends(require_service_key)):
     """Agregador de la Ficha: identidad + finanzas + ranking + propiedad + gobierno + eventos
@@ -327,5 +473,6 @@ async def ficha(identifier: str, _key=Depends(require_service_key)):
         "governance": await governance(identifier, _key=None),
         "events": await events(identifier, _key=None),
         "signals": await signals(identifier, _key=None),
+        "market": await market(identifier, _key=None),
         "engine_version": ENGINE_VERSION,
     }
