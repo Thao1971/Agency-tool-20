@@ -50,6 +50,7 @@ from routes.sector_intelligence import router as sector_intelligence_router, adm
 from routes.cnae_catalog import router as cnae_catalog_router
 from routes.geo_intelligence import router as geo_intelligence_router
 from routes.iberinform_admin import router as iberinform_admin_router
+from routes.cache_admin import router as cache_admin_router
 from routes.cross_intelligence import router as cross_intelligence_router
 from routes.intelligence_status import router as intelligence_status_router
 from routes.datacomex import router as datacomex_router
@@ -160,6 +161,7 @@ app.include_router(sector_intel_admin_router)
 app.include_router(cnae_catalog_router)
 app.include_router(geo_intelligence_router)
 app.include_router(iberinform_admin_router)
+app.include_router(cache_admin_router)
 app.include_router(cross_intelligence_router)
 app.include_router(intelligence_status_router)
 app.include_router(datacomex_router)
