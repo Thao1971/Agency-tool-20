@@ -517,20 +517,53 @@ async def analyze(identifier: str) -> Optional[Dict]:
         statements["cash_flow_note"] = ("No disponible: la empresa presenta cuentas abreviadas/PYME, "
                                         "que no incluyen Estado de Flujos de Efectivo (EFE).")
 
-    # rules-based strengths / weaknesses / risks (explainable)
+    # rules-based strengths / weaknesses / risks (explainable, real data only)
+    prev = series[1] if len(series) > 1 else {}
     strengths, weaknesses, risks = [], [], []
-    if (kpis.get("ebitda_margin") or 0) > 0.15:
+    em = kpis.get("ebitda_margin")
+    em_prev = R._safe_div(prev.get("ebitda"), prev.get("revenue"))
+    g = kpis.get("revenue_growth_yoy")
+    sol = kpis.get("solvency")
+    cr = kpis.get("current_ratio")
+    roe = kpis.get("roe")
+    d2e = kpis.get("debt_to_equity")
+    ni = latest.get("net_income")
+    ebitda = latest.get("ebitda")
+    net_debt = (latest.get("financial_debt") or 0) - (latest.get("cash") or 0)
+    wc = (latest["current_assets"] - latest["current_liabilities"]
+          if latest.get("current_assets") is not None and latest.get("current_liabilities") is not None else None)
+
+    # strengths
+    if (em or 0) > 0.15:
         strengths.append("Margen EBITDA sólido (>15%)")
-    if (kpis.get("revenue_growth_yoy") or 0) > 0.1:
+    if (g or 0) > 0.1:
         strengths.append("Crecimiento de ingresos >10% interanual")
-    if (kpis.get("solvency") or 1) < 0.2:
+    if cr is not None and cr >= 1.5:
+        strengths.append("Liquidez holgada (ratio corriente ≥1,5)")
+    if ebitda and ebitda > 0 and net_debt <= 0:
+        strengths.append("Caja neta positiva (deuda financiera neta ≤ 0)")
+
+    # weaknesses
+    if sol is not None and sol < 0.2:
         weaknesses.append("Baja autonomía financiera (PN/Activo <20%)")
-    if kpis.get("current_ratio") is not None and kpis["current_ratio"] < 1:
+    if em is not None and em_prev is not None and (em_prev - em) > 0.02:
+        weaknesses.append("Margen EBITDA en caída interanual")
+    if wc is not None and wc < 0:
+        weaknesses.append("Fondo de maniobra negativo (activo corriente < pasivo corriente)")
+    if roe is not None and (ni or 0) > 0 and roe < 0.05:
+        weaknesses.append("Baja rentabilidad sobre fondos propios (ROE <5%)")
+
+    # risks
+    if cr is not None and cr < 1:
         risks.append("Liquidez ajustada (ratio corriente <1)")
-    if (kpis.get("net_income") or 0) < 0:
+    if (ni or 0) < 0:
         risks.append("Resultado neto negativo")
     if evolution.get("trend") == "deterioration":
         risks.append("Tendencia de ingresos a la baja")
+    if ebitda and ebitda > 0 and net_debt > 0 and (net_debt / ebitda) > 4:
+        risks.append("Apalancamiento elevado (deuda financiera neta/EBITDA >4x)")
+    if d2e is not None and d2e > 3:
+        risks.append("Endeudamiento alto sobre fondos propios (deuda/PN >3x)")
 
     quality.update(_financial_narrative(quality, kpis, evolution, strengths, weaknesses, risks))
 
@@ -551,7 +584,9 @@ async def analyze(identifier: str) -> Optional[Dict]:
         "financial_quality": quality,
         "comparables": comparables,
         "valuation": val,
-        "assessment": {"strengths": strengths, "weaknesses": weaknesses, "risks": risks},
+        "assessment": {"score": quality.get("score"), "label": quality.get("label"),
+                       "assessment": quality.get("assessment"), "verdict": quality.get("verdict"),
+                       "strengths": strengths, "weaknesses": weaknesses, "risks": risks},
         "explainability": {
             "data_source": "master_companies + norm_financials (Iberinform)",
             "source_version": master.get("sources", [{}])[-1].get("source_version"),
