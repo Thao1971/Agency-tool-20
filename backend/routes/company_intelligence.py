@@ -63,6 +63,7 @@ class CompanyIdentityResponse(BaseModel):
     description: Optional[str] = Field(None, description="Solo si existe descripción con soporte; nunca texto inventado")
     sectors: List[str] = Field(default_factory=list)
     is_listed: Optional[bool] = Field(None, description="Cotizada (null si no verificable)")
+    is_listed_label_es: Optional[str] = Field(None, description="Etiqueta ES: 'Cotizada'/'No cotizada' (null si no verificable)")
     listed_market: Optional[str] = Field(None)
     record_status: Optional[str] = Field(None, examples=["active"])
     updated_at: Optional[str] = None
@@ -117,6 +118,8 @@ def _build(doc: dict) -> CompanyIdentityResponse:
         sources=sources,
         provenance_fields=sorted(list((doc.get("provenance") or {}).keys())),
         is_listed=doc.get("is_listed"),
+        is_listed_label_es=({True: "Cotizada", False: "No cotizada"}.get(doc.get("is_listed"))
+                            if doc.get("is_listed") is not None else None),
         listed_market=doc.get("listed_market"),
     )
     present = {}

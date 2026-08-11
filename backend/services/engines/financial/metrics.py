@@ -111,6 +111,23 @@ _CASHFLOW_ROWS = [
     ("cash_conversion", "Conversión de caja (OCF/EBITDA)", "summary", "percent"),
 ]
 
+# ES label batch (canon): legend for the flat `statements.cashflow` keys + category labels.
+_CASHFLOW_LABELS_ES = {
+    "cf_operating": "Flujo de caja de explotación (OCF)",
+    "cf_investing": "Flujo de caja de inversión",
+    "cf_financing": "Flujo de caja de financiación",
+    "cf_capex": "Inversiones (Capex)",
+    "cf_net_change": "Variación neta de tesorería",
+    "cash_start": "Tesorería inicial",
+    "cash_end": "Tesorería final",
+    "free_cash_flow": "Flujo de caja libre (FCF)",
+    "cash_conversion": "Conversión de caja (OCF/EBITDA)",
+}
+_CASHFLOW_CATEGORY_ES = {
+    "operating": "Explotación", "investing": "Inversión", "financing": "Financiación",
+    "net_change": "Variación neta", "summary": "Resumen",
+}
+
 
 def cashflow_statement(series: List[Dict]) -> Optional[Dict]:
     """Structured multi-year cash-flow table, SAME shape as Beta's profit_loss/balance:
@@ -130,5 +147,8 @@ def cashflow_statement(series: List[Dict]) -> Optional[Dict]:
         if all(v is None for v in vals):
             continue
         rows.append({"key": key, "label": label, "category": category,
+                     "category_label": _CASHFLOW_CATEGORY_ES.get(category),
                      "values": [{"value": v, "format": fmt} for v in vals]})
-    return {"years": years, "rows": rows} if rows else None
+    return {"years": years, "rows": rows,
+            "cash_flow_labels_es": _CASHFLOW_LABELS_ES,
+            "category_labels_es": _CASHFLOW_CATEGORY_ES} if rows else None
