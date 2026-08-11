@@ -357,9 +357,8 @@ def _conc_fields(fr: Dict) -> Dict:
             "market_actors_count": fr.get("market_actors_count"),
             "distinct_ownership_groups": fr.get("distinct_ownership_groups"),
             "standalone_targets_count": fr.get("standalone_targets_count"),
-            "total_companies_in_universe": fr.get("total_companies_in_arroba_universe"),
-            "companies_with_revenue_data": fr.get("companies_with_revenue_data"),
-            "hhi_methodology": fr.get("hhi_methodology")}
+            "companies_in_sector": fr.get("total_companies_in_arroba_universe"),
+            "companies_with_revenue_data": fr.get("companies_with_revenue_data")}
 
 
 async def _resolve_sector(cls: Dict) -> Optional[Dict]:
@@ -404,16 +403,112 @@ async def _resolve_concentration(cls: Dict) -> Dict:
         block = {"available": True, "level": level, "degraded": field != "cnae_code",
                  **_conc_fields(fr)}
         if field != "cnae_code":
-            block["degraded_reason"] = ("Universo del grupo CNAE (4 díg.) insuficiente para un "
-                                        "HHI estable; se usa la división (2 díg.).")
+            block["degraded_reason"] = ("La lectura se ha ampliado al conjunto del sector por "
+                                        "disponibilidad de datos comparables; conviene tomarla como orientativa.")
         if fr.get("hhi") is not None and (fr.get("market_actors_count") or 0) >= _MIN_ACTORS_FOR_HHI:
             return block
         if fallback is None and fr.get("hhi") is not None:
-            fallback = {**block, "caveat": "Universo reducido (por debajo del umbral de "
-                                           "estabilidad); HHI orientativo."}
+            fallback = {**block, "caveat": "El reducido número de compañías comparables aconseja "
+                                           "tomar esta lectura como orientativa."}
     if fallback:
         return fallback
     return {"available": False, "reason": "insufficient_universe_for_hhi"}
+
+
+# ── Traducción determinista enum→prosa CF (canon §2) + composición de narrativa por bloque ──
+_SIGNAL_PROSE = {
+    "sector_contraction": "se encuentra en contracción",
+    "growth_momentum": "muestra impulso de crecimiento",
+    "corporate_hub": "es una plaza empresarial de primer nivel, con gran concentración de actividad",
+    "stable_activity": "mantiene una actividad estable",
+    "stable_territory": "mantiene una actividad estable",
+    "high_activity": "muestra una actividad elevada",
+    "low_activity": "muestra una actividad reducida",
+    "declining_activity": "muestra una actividad en descenso",
+}
+_TREND_PROSE = {"down": "a la baja", "up": "al alza", "flat": "estable", "stable": "estable"}
+_CONC_PROSE = {"highly_concentrated": "un mercado muy concentrado",
+               "moderately_concentrated": "un mercado moderadamente concentrado",
+               "unconcentrated": "un mercado poco concentrado y fragmentado"}
+
+
+def _score_word(v) -> Optional[str]:
+    if v is None:
+        return None
+    return "elevado" if v >= 66 else "moderado" if v >= 34 else "reducido"
+
+
+def _pct_num_es(v) -> Optional[str]:
+    """Formatea un valor ya en porcentaje (p.ej. -15.4) a prosa española: '15,4%'."""
+    if not isinstance(v, (int, float)):
+        return None
+    return f"{abs(v):.1f}".replace(".", ",") + "%"
+
+
+def _sector_narrative(s: Dict) -> Optional[str]:
+    name = (s.get("cnae_label") or "").strip()
+    if not name:
+        return None
+    parts = []
+    sig = _SIGNAL_PROSE.get(s.get("signal"))
+    first = f"El sector de {name.lower()} {sig}" if sig else \
+            f"El sector de {name.lower()} se mantiene dentro de sus parámetros habituales"
+    yoy = s.get("national_yoy_pct")
+    if isinstance(yoy, (int, float)) and abs(yoy) >= 0.1:
+        verb = "una caída" if yoy < 0 else "un avance"
+        first += f", con {verb} de actividad del {_pct_num_es(yoy)} en el último año"
+    parts.append(first + ".")
+    dyn = _score_word(s.get("dynamism_score"))
+    trend = _TREND_PROSE.get(s.get("trend_direction"))
+    if dyn and trend:
+        parts.append(f"El dinamismo del sector es {dyn} y su evolución, {trend}.")
+    elif dyn:
+        parts.append(f"El dinamismo del sector es {dyn}.")
+    return " ".join(parts)
+
+
+def _geo_narrative(g: Dict) -> Optional[str]:
+    name = (g.get("geo_name") or "").strip()
+    if not name:
+        return None
+    size = g.get("size_score")
+    if g.get("signal") == "corporate_hub":
+        sizeq = "una plaza empresarial de primer nivel, con gran concentración de actividad"
+    elif size is None:
+        sizeq = "una plaza empresarial"
+    else:
+        sizeq = ("una plaza empresarial de primer nivel" if size >= 80
+                 else "una plaza de tamaño medio" if size >= 40 else "una plaza de menor tamaño")
+    first = f"{name} es {sizeq}"
+    dyn = _score_word(g.get("dynamism_score"))
+    if dyn:
+        first += f" y {dyn} dinamismo"
+    ncc = g.get("net_company_creation")
+    if isinstance(ncc, (int, float)) and ncc != 0:
+        first += f", con creación neta de empresas {'positiva' if ncc > 0 else 'negativa'} en el último ejercicio"
+    return first + "."
+
+
+def _concentration_narrative(c: Dict, sector_name: Optional[str]) -> Optional[str]:
+    if not c.get("available"):
+        return None
+    label = _CONC_PROSE.get(c.get("concentration_label"))
+    if not label:
+        return None
+    head = f"Es {label}"
+    if c.get("concentration_label") == "highly_concentrated":
+        head += ", en manos de unos pocos operadores"
+    elif c.get("concentration_label") == "unconcentrated":
+        head += ", con numerosos operadores independientes"
+    head += "."
+    tail = []
+    if c.get("degraded"):
+        sect = f"del sector {sector_name.lower()}" if sector_name else "del conjunto del sector"
+        tail.append(f"El análisis se ha ampliado al conjunto {sect} por disponibilidad de datos "
+                    "comparables; la lectura de concentración es, por tanto, orientativa.")
+    elif c.get("caveat"):
+        tail.append("El reducido número de compañías comparables aconseja tomar esta lectura como orientativa.")
+    return " ".join([head] + tail)
 
 
 @router.get("/{identifier}/market")
@@ -438,6 +533,15 @@ async def market(identifier: str, _key=Depends(require_service_key)):
                  if geo_doc else {"available": False, "reason": "province_not_resolved"})
     position_block = ({"available": True, **position}
                       if position else {"available": False, "reason": "no_revenue_for_ranking"})
+
+    # Prosa CF por bloque (una sola vez, en Intel — R13). position.narrative viene de ranking().
+    if sector_block.get("available"):
+        sector_block["narrative"] = _sector_narrative(sector_doc)
+    if geo_block.get("available"):
+        geo_block["narrative"] = _geo_narrative(geo_doc)
+    if concentration.get("available"):
+        concentration["narrative"] = _concentration_narrative(
+            concentration, (sector_doc or {}).get("cnae_label"))
 
     blocks = (sector_block, geo_block, concentration, position_block)
     return {

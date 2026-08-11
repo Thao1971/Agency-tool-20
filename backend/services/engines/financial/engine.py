@@ -42,39 +42,81 @@ def _cagr(series_vals: List):
     return round((last / first) ** (1 / n) - 1, 4)
 
 
+def _embed(s: str) -> str:
+    """Encaja una frase completa dentro de otra: cláusula principal (antes de ':'),
+    minúscula inicial y sin punto final."""
+    s = (s or "").strip().rstrip(".")
+    if ": " in s:
+        s = s.split(": ", 1)[0]
+    return (s[0].lower() + s[1:]) if s else s
+
+
+_FEM_ORDINALS = {1: "Primera", 2: "Segunda", 3: "Tercera", 4: "Cuarta", 5: "Quinta",
+                 6: "Sexta", 7: "Séptima", 8: "Octava", 9: "Novena", 10: "Décima"}
+
+
+def _ordinal_fem(n: int) -> str:
+    return _FEM_ORDINALS.get(n) or f"En la posición {n}ª"
+
+
+def _percentile_phrase(p: int) -> str:
+    if p >= 90:
+        return "se sitúa en cabeza por ingresos de su sector"
+    if p >= 70:
+        return "se sitúa en el tramo alto por ingresos de su sector"
+    if p >= 40:
+        return "se sitúa en la zona media por ingresos de su sector"
+    if p >= 15:
+        return "se sitúa en el tramo bajo por ingresos de su sector"
+    return "se sitúa en la cola por ingresos de su sector"
+
+
 def _financial_narrative(quality: Dict, kpis: Dict, evolution: Dict,
                          strengths: list, weaknesses: list, risks: list) -> Dict:
-    """Deterministic Corporate-Finance prose for the 'Lectura financiera de ARROBA'
-    (`assessment`) and the 'Veredicto de ARROBA' (`verdict`). No AI. Real data only."""
+    """Prosa CF determinista para la 'Lectura financiera' (`assessment`) y el 'Veredicto'
+    (`verdict`). Sin IA, solo dato real; sin tecnicismos ni internos (canon CF §2-§3).
+    La nota /100 vive en el anillo de Diagnóstico, no en la frase."""
     score = quality.get("score") or 0
     label = ("Sólida" if score >= 75 else "Aceptable" if score >= 55
              else "Frágil" if score >= 35 else "Débil")
 
-    def pct(x):
-        return f"{round(x * 100, 1)}%" if isinstance(x, (int, float)) else None
+    def pct(x, signed=False):
+        if not isinstance(x, (int, float)):
+            return None
+        s = f"{x * 100:.1f}".replace(".", ",")
+        if signed and x >= 0:
+            s = "+" + s
+        return s + "%"
 
-    parts = [f"Calidad financiera {label.lower()} ({score}/100)."]
+    clauses = []
     m = kpis.get("ebitda_margin")
     if m is not None:
         tone = "holgado" if m > 0.15 else "ajustado" if m < 0.05 else "moderado"
-        parts.append(f"Margen EBITDA {tone} del {pct(m)}.")
+        clauses.append(f"margen EBITDA {tone} del {pct(m)}")
     g = kpis.get("revenue_growth_yoy")
     if g is not None:
-        parts.append(f"Ingresos {'al alza' if g >= 0 else 'a la baja'} ({pct(g)}) interanual.")
+        clauses.append(f"ingresos {'al alza' if g >= 0 else 'a la baja'} ({pct(g, signed=True)} interanual)")
     s = kpis.get("solvency")
     if s is not None:
-        parts.append(f"Autonomía financiera (PN/Activo) del {pct(s)}.")
-    assessment = " ".join(parts)
+        stone = "holgada" if s > 0.5 else "ajustada" if s < 0.2 else "moderada"
+        clauses.append(f"una {stone} autonomía financiera del {pct(s)} (patrimonio neto sobre activo)")
+    if clauses:
+        body = clauses[0] if len(clauses) == 1 else ", ".join(clauses[:-1]) + " y " + clauses[-1]
+        assessment = f"Compañía de calidad financiera {label.lower()}: {body}."
+    else:
+        assessment = f"Compañía de calidad financiera {label.lower()}."
 
     if score >= 75 and not risks:
-        verdict = "Perfil financiero sólido y consistente; candidato atractivo para operaciones corporativas."
+        verdict = ("Perfil financiero sólido y consistente; una compañía atractiva para "
+                   "operaciones corporativas.")
     elif score >= 55:
-        head = strengths[0] if strengths else "fundamentales razonables"
-        tail = f" Vigilar: {risks[0].lower()}." if risks else ""
-        verdict = f"Perfil aceptable apoyado en {head.lower()}.{tail}"
+        head = strengths[0] if strengths else "unos fundamentales razonables"
+        tail = f" Conviene vigilar: {_embed(risks[0])}." if risks else ""
+        verdict = f"Perfil aceptable, apoyado en {_embed(head)}.{tail}"
     else:
-        main = (risks or weaknesses or ["información financiera limitada"])[0]
-        verdict = f"Perfil {label.lower()}: {main.lower()}. Requiere análisis y due diligence adicionales."
+        main = (risks or weaknesses or ["una información financiera limitada"])[0]
+        verdict = (f"Perfil {label.lower()}, condicionado por {_embed(main)}. "
+                   "Requiere análisis y due diligence adicionales.")
 
     return {"label": label, "assessment": assessment, "verdict": verdict,
             "strengths": strengths, "weaknesses": weaknesses, "risks": risks}
@@ -234,7 +276,7 @@ async def ranking(master: Dict, latest: Optional[Dict] = None) -> Dict:
         higher = await db.master_companies.count_documents(
             {"classification.cnae_section": section, "financials.latest.revenue": {"$gt": revenue, "$lte": hi}})
         out["market_position"] = {"rank": higher + 1, "total": market_total,
-                                  "scope": "sector CNAE + banda de tamaño (0,3x–3x ingresos)"}
+                                  "scope": "compañías comparables por sector y tamaño"}
 
     # 3. Locality position (same sector, within municipality; fallback province)
     loc_filter, scope = None, None
@@ -252,21 +294,30 @@ async def ranking(master: Dict, latest: Optional[Dict] = None) -> Dict:
                  "financials.latest.revenue": {"$gt": revenue}})
             out["locality_position"] = {"rank": loc_higher + 1, "total": loc_total, "scope": scope}
 
-    # Human-readable phrases (subject-less, ready for Beta's hero). Only for computed blocks.
+    # Human-readable CF prose (subject-less, ready for Beta's hero). Only for computed blocks.
     if out:
         place = (municipio or provincia or "").title() or None
-        explain = []
-        pct = out.get("sector_revenue_percentile")
-        if pct is not None:
-            explain.append(f"En el percentil {pct} por ingresos de su sector")
+        explain, sentences = [], []
+        pctv = out.get("sector_revenue_percentile")
+        if pctv is not None:
+            ph = _percentile_phrase(pctv)
+            ph = ph[0].upper() + ph[1:] + "."
+            explain.append(ph)
+            sentences.append(ph)
         mp = out.get("market_position")
         if mp:
-            explain.append(f"{mp['rank']}ª de {mp['total']} en su universo de comparables (sector y tamaño)")
+            ph = (f"{_ordinal_fem(mp['rank'])} por ingresos entre {mp['total']} compañías "
+                  "comparables de su sector y tamaño.")
+            explain.append(ph)
+            sentences.append(ph)
         lp = out.get("locality_position")
         if lp and place:
-            explain.append(f"{lp['rank']}ª de {lp['total']} en {place} por ingresos de su sector")
+            ph = f"{_ordinal_fem(lp['rank'])} por ingresos entre las de su sector en {place}."
+            explain.append(ph)
+            sentences.append(ph)
         if explain:
             out["explain"] = explain
+            out["narrative"] = " ".join(sentences)
 
     return out
 
@@ -535,35 +586,35 @@ async def analyze(identifier: str) -> Optional[Dict]:
 
     # strengths
     if (em or 0) > 0.15:
-        strengths.append("Margen EBITDA sólido (>15%)")
+        strengths.append("Margen EBITDA sólido, por encima del 15% de los ingresos.")
     if (g or 0) > 0.1:
-        strengths.append("Crecimiento de ingresos >10% interanual")
+        strengths.append("Crecimiento de ingresos superior al 10% en el último año.")
     if cr is not None and cr >= 1.5:
-        strengths.append("Liquidez holgada (ratio corriente ≥1,5)")
+        strengths.append("Liquidez holgada: el activo corriente cubre con amplitud el pasivo a corto plazo.")
     if ebitda and ebitda > 0 and net_debt <= 0:
-        strengths.append("Caja neta positiva (deuda financiera neta ≤ 0)")
+        strengths.append("Posición de caja neta positiva, sin deuda financiera neta.")
 
     # weaknesses
     if sol is not None and sol < 0.2:
-        weaknesses.append("Baja autonomía financiera (PN/Activo <20%)")
+        weaknesses.append("Baja autonomía financiera: el patrimonio neto representa menos del 20% del activo.")
     if em is not None and em_prev is not None and (em_prev - em) > 0.02:
-        weaknesses.append("Margen EBITDA en caída interanual")
+        weaknesses.append("Margen EBITDA en retroceso respecto al año anterior.")
     if wc is not None and wc < 0:
-        weaknesses.append("Fondo de maniobra negativo (activo corriente < pasivo corriente)")
+        weaknesses.append("Fondo de maniobra negativo: el activo corriente no cubre el pasivo corriente.")
     if roe is not None and (ni or 0) > 0 and roe < 0.05:
-        weaknesses.append("Baja rentabilidad sobre fondos propios (ROE <5%)")
+        weaknesses.append("Rentabilidad sobre fondos propios reducida, por debajo del 5%.")
 
     # risks
     if cr is not None and cr < 1:
-        risks.append("Liquidez ajustada (ratio corriente <1)")
+        risks.append("Liquidez ajustada: el activo corriente no cubre el pasivo a corto plazo.")
     if (ni or 0) < 0:
-        risks.append("Resultado neto negativo")
+        risks.append("Resultado neto negativo en el último ejercicio.")
     if evolution.get("trend") == "deterioration":
-        risks.append("Tendencia de ingresos a la baja")
+        risks.append("Tendencia de ingresos a la baja.")
     if ebitda and ebitda > 0 and net_debt > 0 and (net_debt / ebitda) > 4:
-        risks.append("Apalancamiento elevado (deuda financiera neta/EBITDA >4x)")
+        risks.append("Apalancamiento elevado: la deuda financiera neta supera cuatro veces el EBITDA.")
     if d2e is not None and d2e > 3:
-        risks.append("Endeudamiento alto sobre fondos propios (deuda/PN >3x)")
+        risks.append("Endeudamiento elevado en relación con los fondos propios.")
 
     quality.update(_financial_narrative(quality, kpis, evolution, strengths, weaknesses, risks))
 

@@ -33,6 +33,13 @@
 | ADMIN | Usuarios, Roles, Seguridad, Auditoría |
 
 ## Latest changes (Agosto 2026)
+- **Narrativa CF en la ficha (canon CANON_NARRATIVA_CF_FICHA.md) — prosa de analista + `narrative` por bloque ✅ Preview (2026-08-11)**
+  - Reescritos a prosa CF (sin tecnicismos ni internos, §2-§3 del canon) en `engine.py`: `assessment` (sin "100/100", decimales con coma, frase única "Compañía de calidad financiera sólida: margen EBITDA moderado del 11,3%…"), `verdict` (embebe solo la cláusula principal de strength/risk), y `strengths[]`/`weaknesses[]`/`risks[]` como frases completas de analista. `ranking.explain[]` reescrito (elimina "universo") + nuevo `ranking.narrative` que **funde scope+percentil+posición** en un párrafo, con **bandas de percentil** (≥90 "en cabeza", ≥70 "tramo alto", ≥40 "zona media", ≥15 "tramo bajo", resto "cola") y ordinales femeninos. `market_position.scope` limpiado ("compañías comparables por sector y tamaño").
+  - En `routes/company_ficha.py`: traducción determinista enum→prosa (`signal`/`primary_driver`/`trend_direction`/`concentration_label`) y nuevos campos `narrative` en `sector`/`geo`/`concentration` del `/market` (los enums crudos siguen como metadato, §5). `concentration`: `degraded_reason`/`caveat` reescritos a prosa ("El análisis se ha ampliado al conjunto del sector … es orientativa"), se quitó `hhi_methodology` (DOJ/FTC) del contrato y `total_companies_in_universe`→`companies_in_sector` (evita "universo"). `position.narrative` proviene de `ranking()` (R13, fuente única).
+  - Verificado E2E (ingress) SERVIER/PROCOLUIDE(degradado)/COPISA: narrativas correctas + **grep §6 de la PROSA servida = 0 coincidencias prohibidas**. Enums crudos conservados como metadato para Beta.
+  - Frontera Intel/Beta (§5): Intel entrega prosa en los campos del contrato; Beta reescribe títulos/etiquetas/scope/tooltips y estados vacíos (copy único "Información en preparación · Estamos consolidando este apartado.").
+  - PENDIENTE: **redeploy a prod SOLO con OK del usuario** (pedido explícito: sin deploy sin OK).
+
 - **Agregador Mercado por empresa `GET /company/{id}/market` + propagado al `/ficha` ✅ (2026-08-11)**
   - Nuevo endpoint (patrón ownership/governance/events, X-API-Key, null-safe por bloque) en `routes/company_ficha.py` que une 4 bloques y resuelve internamente CNAE + provincia (el front no cruza nada):
     - `sector` ← `sector_intelligence` leyendo la fila concreta con `find_one` (group CNAE 4 díg. → division 2 díg. → section, primero que exista): size/dynamism/growth/activity scores, trend, primary_driver, signal, active/iberinform companies, market_share, national_yoy_pct.
