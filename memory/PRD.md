@@ -33,6 +33,14 @@
 | ADMIN | Usuarios, Roles, Seguridad, Auditoría |
 
 ## Latest changes (Agosto 2026)
+- **control_graph refactorizado al contrato formal (PARA_INTEL_control_graph.md) ✅ Preview (2026-08-11)**
+  - Shape nuevo (spec 1:1 con el mockup Propiedad): `company{name,cif,locality,role: holding|target|standalone}`, `shareholders[]{name,type: legal|individual,pct,label,cif,is_ubo}`, `ubo{name,type,kind,pct_effective}`, `subsidiaries[]{name,cif,pct,activity,control_label}`, `distribution[]{label,pct,tone}` (tab Distribución), `graph{nodes[{id,label,kind}],edges[{from,to,pct}]}` (tab Grafo), `narrative` (banner), `as_of_year`, `coverage`. Propagado al `/ficha`.
+  - Labels/tiers en prosa CF: `label` accionista ("UBO · sociedad matriz/holding/fondo/control familiar", "autocartera / acciones propias"), `control_label` participada ("control total"/"mayoritaria"/"significativa"/"participación minoritaria"). Sin enums crudos.
+  - **DPD (decisión simplificada Ownership):** flag `?authenticated=` (por defecto **false** = anónimo → oculta TODOS los nombres, deja estructura+%+tipo+tiers: "Accionista principal", "Participada 1", "Beneficiario último"; **true** = nominal). Aplicado en `control_graph` Y en `ownership()` (antes solo anonimizaba personas). Anonimización 100% en backend.
+  - Verificado E2E: MEDITERRANEAN SEARCH (matriz, 34 participadas control total, UBO), SERVIER (auth nominal + anón sin fugas de nombres — grep DPD 0 leaks), LEAF SAN RAFAEL (role=target, degradado). Grep §2/enum en narrative+label+control_label = OK.
+  - **OJO:** SERVIER **sí** tiene 2 participadas (DANVAL, LAB. LESTRAL) → role=holding, no "sin ellas" como dice la spec; usé SAN RAFAEL como leaf degradado.
+  - **Estado prod:** labels + narrative YA live; el nuevo control_graph está en Preview, PENDIENTE de **redeploy del usuario** (no puedo dispararlo yo).
+
 - **Batch de labels ES (pasada de idioma, un solo deploy) ✅ Preview (2026-08-11)**
   - Enums crudos conservados como metadato; añadido label ES hermano:
     - `signal_label` + `primary_driver_label` + `trend_label` → `_sector_card`/`_geo_card` (`company_ficha.py`). Mapas `_SIGNAL_LABELS`/`_DRIVER_LABELS`/`_TREND_LABELS_ES`.

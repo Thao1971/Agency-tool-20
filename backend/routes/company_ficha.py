@@ -125,8 +125,9 @@ def _control_tier(top_pct: Optional[float]) -> Optional[str]:
 
 
 @router.get("/{identifier}/ownership")
-async def ownership(identifier: str, _key=Depends(require_service_key)):
-    """Estructura de propiedad: accionistas, concentración y tramo de control (I-2 #6)."""
+async def ownership(identifier: str, authenticated: bool = False, _key=Depends(require_service_key)):
+    """Estructura de propiedad: accionistas, concentración y tramo de control (I-2 #6). DPD:
+    `authenticated=false` (por defecto) oculta TODOS los nombres (estructura + % + tipo/tier)."""
     master = await _master(identifier)
     if not master:
         raise HTTPException(status_code=404, detail="Company not found")
@@ -147,22 +148,22 @@ async def ownership(identifier: str, _key=Depends(require_service_key)):
 
     shareholders = []
     for r in best.values():
-        is_person, disp = _classify_holder(
+        is_person, _ = _classify_holder(
             r.get("counterparty_name"), bool(r.get("counterparty_has_cif")), r.get("counterparty_cif"))
         shareholders.append({
-            "name": disp,
-            "cif": None if is_person else r.get("counterparty_cif"),
+            "name": r.get("counterparty_name"),
+            "type": "individual" if is_person else "legal",
+            "cif": r.get("counterparty_cif"),
             "pct": r.get("pct"),
             "as_of_year": r.get("year"),
-            "is_person": is_person,
         })
 
     # Fallback to the master snapshot if the normalized layer has nothing.
     if not shareholders:
         for s in ((master.get("ownership") or {}).get("shareholders") or []):
-            is_person, disp = _classify_holder(s.get("name"), bool(s.get("cif")), s.get("cif"))
-            shareholders.append({"name": disp, "cif": None if is_person else s.get("cif"),
-                                 "pct": s.get("pct"), "as_of_year": None, "is_person": is_person})
+            is_person, _ = _classify_holder(s.get("name"), bool(s.get("cif")), s.get("cif"))
+            shareholders.append({"name": s.get("name"), "type": "individual" if is_person else "legal",
+                                 "cif": s.get("cif"), "pct": s.get("pct"), "as_of_year": None})
         seen = set()
         deduped = []
         for s in shareholders:
@@ -177,6 +178,12 @@ async def ownership(identifier: str, _key=Depends(require_service_key)):
     if not shareholders:
         return {"identifier": identifier, "cif": cif, "available": False,
                 "engine_version": ENGINE_VERSION}
+
+    # DPD: en anónimo se ocultan TODOS los nombres (estructura + % + tipo/tier).
+    if not authenticated:
+        for i, s in enumerate(shareholders):
+            s["name"] = "Accionista principal" if i == 0 else f"Accionista {i + 1}"
+            s["cif"] = None
 
     top = shareholders[0]
     top_pct = top.get("pct")
@@ -685,52 +692,80 @@ def _classify_holder(name: Optional[str], has_cif: bool, cif: Optional[str]):
     return False, raw
 
 
-def _control_narrative(company_name, upstream, downstream, group_id) -> str:
-    """Prosa CF: 'Controlada por X (73,4%). Cabecera de N participadas controladas al 100%.'"""
-    def _pct_es(p):
-        return f"{p:.1f}".replace(".", ",").rstrip("0").rstrip(",") + "%" if isinstance(p, (int, float)) else None
+def _control_label(pct) -> Optional[str]:
+    """Tier de control de una participada en prosa (sin umbral crudo)."""
+    if pct is None:
+        return None
+    if pct >= 99.5:
+        return "control total"
+    if pct > 50:
+        return "mayoritaria"
+    if pct >= 10:
+        return "significativa"
+    return "participación minoritaria"
 
+
+def _ubo_kind(name: Optional[str], is_person: bool) -> str:
+    if is_person:
+        return "control familiar"
+    low = (name or "").lower()
+    if "holding" in low:
+        return "holding"
+    if any(t in low for t in ("capital", "fund", "fondo", "partners", "ventures", "invest")):
+        return "fondo"
+    return "sociedad matriz"
+
+
+def _pct_es(p) -> Optional[str]:
+    return f"{p:.1f}".replace(".", ",").rstrip("0").rstrip(",") + "%" if isinstance(p, (int, float)) else None
+
+
+def _control_narrative(role, shareholders, subsidiaries, authenticated) -> str:
+    """Prosa CF (§2), registro analista M&A. Anónimo: sin nombres ('su accionista principal')."""
     parts = []
-    ctrl = next((u for u in upstream if (u.get("pct") or 0) > 50), None)
+    ctrl = next((s for s in shareholders if (s.get("pct") or 0) > 50), None)
     if ctrl:
-        who = "un accionista particular (anónimo)" if ctrl.get("is_person") else ctrl["name"]
-        seg = f"Controlada por {who}"
+        who = ctrl["name"] if authenticated else "su accionista principal"
+        seg = f"Compañía controlada por {who}"
         if ctrl.get("pct") is not None:
-            seg += f" ({_pct_es(ctrl['pct'])})"
+            seg += f" con una participación del {_pct_es(ctrl['pct'])}"
         parts.append(seg + ".")
-    elif upstream:
-        n = len(upstream)
-        parts.append(f"Accionariado repartido entre {n} {'socio' if n == 1 else 'socios'}, "
-                     "sin una posición de control mayoritaria." if n > 1
-                     else f"Participada por {upstream[0]['name'] if not upstream[0].get('is_person') else 'un accionista particular (anónimo)'}.")
-
-    if downstream:
-        n = len(downstream)
-        maj = sum(1 for d in downstream if (d.get("pct") or 0) >= 50)
-        full = sum(1 for d in downstream if (d.get("pct") or 0) >= 99.5)
-        lead = "Cabecera de un grupo" if parts else "Sociedad cabecera de un grupo"
-        seg = f"{lead} con {n} {'participada' if n == 1 else 'participadas'}"
+    elif shareholders:
+        n = len(shareholders)
+        if n == 1:
+            who = shareholders[0]["name"] if authenticated else "un único accionista"
+            parts.append(f"Participada por {who}.")
+        else:
+            parts.append(f"Accionariado repartido entre {n} socios, sin una posición de control mayoritaria.")
+    if subsidiaries:
+        n = len(subsidiaries)
+        full = sum(1 for d in subsidiaries if (d.get("pct") or 0) >= 99.5)
+        maj = sum(1 for d in subsidiaries if (d.get("pct") or 0) > 50)
+        plural = "participada" if n == 1 else "participadas"
         if full == n:
-            seg += ", controladas al 100%"
+            parts.append(f"Cabecera de un grupo con control total en sus {n} {plural} — plataforma "
+                         "consolidada, idónea para integrar más activos.")
         elif maj == n:
-            seg += ", controladas mayoritariamente"
+            parts.append(f"Cabecera de un grupo con control mayoritario en sus {n} {plural}.")
         elif maj:
-            seg += f", {maj} de ellas con control mayoritario"
-        parts.append(seg + ".")
-    elif not parts:
+            parts.append(f"Cabecera de un grupo: {maj} de {n} {plural} bajo control mayoritario.")
+        else:
+            parts.append(f"Mantiene participaciones en {n} {plural}.")
+    if not parts:
         return "Sin estructura de propiedad registrada."
-    else:
-        parts.append("Sin participadas registradas.")
     return " ".join(parts)
 
 
-async def _control_graph_block(master: Dict, max_participadas: int = 100) -> Dict:
+async def _control_graph_block(master: Dict, authenticated: bool = False, max_subs: int = 100) -> Dict:
+    """Bloque `control_graph` (spec PARA_INTEL): accionistas → compañía → participadas + UBO,
+    tres vistas (árbol via shareholders/subsidiaries, distribution[], graph.nodes/edges) + narrative.
+    DPD: authenticated=False oculta TODOS los nombres (estructura + % + tiers)."""
     cif = master["cif_normalized"]
-    company_mid = master["master_id"]
-    company_name = (master.get("identity") or {}).get("legal_name")
+    ident = master.get("identity") or {}
+    loc = master.get("location") or {}
+    company_name = ident.get("legal_name")
     rows = await db.norm_ownership.find({"src_cif": cif}, {"_id": 0}).to_list(1000)
 
-    # Split + dedupe upstream by counterparty, keep latest year / highest pct.
     up_best: Dict[str, Dict] = {}
     down_best: Dict[str, Dict] = {}
     for r in rows:
@@ -746,102 +781,150 @@ async def _control_graph_block(master: Dict, max_participadas: int = 100) -> Dic
                 ((r.get("year") or 0) == (cur.get("year") or 0) and (r.get("pct") or 0) > (cur.get("pct") or 0)):
             bucket[key] = r
 
-    # Resolve counterparty master_ids (click-through) in one batch.
     cps = [r.get("counterparty_cif") for r in list(up_best.values()) + list(down_best.values()) if r.get("counterparty_cif")]
-    mid_by_cif = {}
+    info_by_cif: Dict[str, Dict] = {}
     if cps:
-        async for m in db.master_companies.find({"cif_normalized": {"$in": cps}},
-                                                {"_id": 0, "cif_normalized": 1, "master_id": 1}):
-            mid_by_cif[m["cif_normalized"]] = m["master_id"]
+        async for m in db.master_companies.find(
+                {"cif_normalized": {"$in": cps}},
+                {"_id": 0, "cif_normalized": 1, "master_id": 1, "identity.legal_name": 1,
+                 "classification.cnae_description": 1}):
+            info_by_cif[m["cif_normalized"]] = m
 
-    def _mk(r, is_parent=False):
-        is_person, disp = _classify_holder(
-            r.get("counterparty_name"), bool(r.get("counterparty_has_cif")), r.get("counterparty_cif"))
-        return {"name": disp, "cif": None if is_person else r.get("counterparty_cif"),
-                "master_id": mid_by_cif.get(r.get("counterparty_cif")),
-                "pct": r.get("pct"), "as_of_year": r.get("year"), "is_person": is_person,
-                "relationship": "parent" if is_parent else "shareholder"}
+    years = [r.get("year") for r in rows if r.get("year")]
+    as_of_year = max(years) if years else None
 
-    upstream = [_mk(r, is_parent=(r.get("relationship_type") == "parent_co")) for r in up_best.values()]
-    upstream.sort(key=lambda u: (u["pct"] is not None, u["pct"] or 0), reverse=True)
-    downstream = [{"name": r.get("counterparty_name"), "cif": r.get("counterparty_cif"),
-                   "master_id": mid_by_cif.get(r.get("counterparty_cif")),
-                   "pct": r.get("pct"), "as_of_year": r.get("year")} for r in down_best.values()]
-    downstream.sort(key=lambda d: (d["pct"] is not None, d["pct"] or 0), reverse=True)
-    truncated = len(downstream) > max_participadas
-    downstream = downstream[:max_participadas]
+    shareholders = []
+    for r in up_best.values():
+        is_person, _ = _classify_holder(r.get("counterparty_name"), bool(r.get("counterparty_has_cif")), r.get("counterparty_cif"))
+        cp_cif = r.get("counterparty_cif")
+        info = info_by_cif.get(cp_cif) if cp_cif else None
+        canonical = (info.get("identity") or {}).get("legal_name") if info else None
+        shareholders.append({
+            "_name": canonical or r.get("counterparty_name"),
+            "type": "individual" if is_person else "legal",
+            "pct": r.get("pct"), "cif": cp_cif,
+            "master_id": info.get("master_id") if info else None,
+            "is_ubo": False, "_is_parent": r.get("relationship_type") == "parent_co",
+            "_is_self": bool(cp_cif and cp_cif == cif),
+        })
+    shareholders.sort(key=lambda s: (s["pct"] is not None, s["pct"] or 0), reverse=True)
 
-    if not upstream and not downstream:
+    subsidiaries = []
+    for r in down_best.values():
+        cp_cif = r.get("counterparty_cif")
+        info = info_by_cif.get(cp_cif) if cp_cif else None
+        subsidiaries.append({
+            "_name": ((info.get("identity") or {}).get("legal_name") if info else None) or r.get("counterparty_name"),
+            "cif": cp_cif, "master_id": info.get("master_id") if info else None,
+            "pct": r.get("pct"),
+            "activity": (info.get("classification") or {}).get("cnae_description") if info else None,
+            "control_label": _control_label(r.get("pct")),
+        })
+    subsidiaries.sort(key=lambda d: (d["pct"] is not None, d["pct"] or 0), reverse=True)
+    truncated = len(subsidiaries) > max_subs
+    subsidiaries = subsidiaries[:max_subs]
+
+    if not shareholders and not subsidiaries:
         return {"available": False, "reason": "no_control_graph"}
 
-    # UBO / matriz última: el parent_co declarado; si no hay, el accionista de control (>50%).
+    ubo_src = next((s for s in shareholders if s["_is_parent"]), None) or \
+              next((s for s in shareholders if (s.get("pct") or 0) > 50), None)
+    if ubo_src:
+        ubo_src["is_ubo"] = True
+
+    role = "holding" if subsidiaries else ("target" if shareholders else "standalone")
+
+    def _name(kind, idx, real):
+        if authenticated:
+            return real
+        if kind == "shareholder":
+            return "Accionista principal" if idx == 0 else f"Accionista {idx + 1}"
+        if kind == "subsidiary":
+            return f"Participada {idx + 1}"
+        if kind == "ubo":
+            return "Beneficiario último"
+        return real
+
+    def _sh_label(s):
+        if s["_is_self"]:
+            return "autocartera / acciones propias"
+        if s["is_ubo"]:
+            return f"UBO · {_ubo_kind(s['_name'], s['type'] == 'individual')}"
+        return None
+
+    out_sh = [{
+        "name": _name("shareholder", i, s["_name"]), "type": s["type"], "pct": s["pct"],
+        "label": _sh_label(s), "cif": (s["cif"] if authenticated else None),
+        "master_id": (s["master_id"] if authenticated else None), "is_ubo": s["is_ubo"],
+    } for i, s in enumerate(shareholders)]
+
+    out_subs = [{
+        "name": _name("subsidiary", i, d["_name"]), "cif": (d["cif"] if authenticated else None),
+        "master_id": (d["master_id"] if authenticated else None), "pct": d["pct"],
+        "activity": d["activity"], "control_label": d["control_label"],
+    } for i, d in enumerate(subsidiaries)]
+
     ubo = None
-    for u in upstream:
-        if u["relationship"] == "parent":
-            u["is_ubo"] = True
-            ubo = {"name": u["name"], "cif": u["cif"], "is_person": u["is_person"]}
-            break
-    if ubo is None:
-        ctrl = next((u for u in upstream if (u.get("pct") or 0) > 50), None)
-        if ctrl:
-            ctrl["is_ubo"] = True
-            ubo = {"name": ctrl["name"], "cif": ctrl["cif"], "is_person": ctrl["is_person"]}
-    for u in upstream:
-        u.setdefault("is_ubo", False)
+    if ubo_src:
+        ubo = {"name": (ubo_src["_name"] if authenticated else "Beneficiario último"),
+               "type": ubo_src["type"], "kind": _ubo_kind(ubo_src["_name"], ubo_src["type"] == "individual"),
+               "pct_effective": ubo_src.get("pct")}
 
-    # Graph render: nodes (accionistas → compañía → participadas) + edges (con %).
-    nodes = [{"id": company_mid, "name": company_name, "kind": "company", "cif": cif}]
+    distribution = []
+    total = 0.0
+    for s in out_sh:
+        p = s["pct"]
+        tone = "primary" if (s["is_ubo"] or (p or 0) > 50) else ("muted" if (p or 0) < 5 else "neutral")
+        distribution.append({"label": s["name"], "pct": p, "tone": tone})
+        total += p or 0
+    if total and total < 99:
+        distribution.append({"label": "No identificado", "pct": round(100 - total, 1), "tone": "muted"})
+
+    nodes = [{"id": "company", "label": company_name, "kind": "company"}]
     edges = []
-    for i, u in enumerate(upstream):
-        nid = u["master_id"] or f"up:{i}"
-        nodes.append({"id": nid, "name": u["name"], "kind": "shareholder",
-                      "pct": u["pct"], "is_ubo": u["is_ubo"], "is_person": u["is_person"]})
-        edges.append({"source": nid, "target": company_mid, "pct": u["pct"], "type": "owns"})
-    for i, d in enumerate(downstream):
-        nid = d["master_id"] or f"down:{i}"
-        nodes.append({"id": nid, "name": d["name"], "kind": "participada", "pct": d["pct"]})
-        edges.append({"source": company_mid, "target": nid, "pct": d["pct"], "type": "owns"})
+    for i, s in enumerate(out_sh):
+        nid = f"sh{i + 1}"
+        nodes.append({"id": nid, "label": s["name"], "kind": "ubo" if s["is_ubo"] else "shareholder"})
+        edges.append({"from": nid, "to": "company", "pct": s["pct"]})
+    for i, d in enumerate(out_subs):
+        nid = f"sub{i + 1}"
+        nodes.append({"id": nid, "label": d["name"], "kind": "subsidiary"})
+        edges.append({"from": "company", "to": nid, "pct": d["pct"]})
 
-    top = upstream[0] if upstream else None
     return {
         "available": True,
-        "company": {"master_id": company_mid, "name": company_name, "cif": cif},
-        "upstream": upstream,
-        "downstream": downstream,
+        "as_of_year": as_of_year,
+        "company": {"name": company_name, "cif": cif, "locality": loc.get("municipio"), "role": role},
+        "shareholders": out_sh,
         "ubo": ubo,
-        "group_id": (master.get("ownership") or {}).get("group_id"),
-        "control": {
-            "controlling_shareholder": (top["name"] if top and (top.get("pct") or 0) > 50 else None),
-            "top1_pct": top["pct"] if top else None,
-            "tier": _control_tier(top["pct"]) if top else None,
-        },
-        "nodes": nodes,
-        "edges": edges,
-        "narrative": _control_narrative(company_name, upstream, downstream,
-                                        (master.get("ownership") or {}).get("group_id")),
-        "coverage": {"upstream_count": len(upstream), "downstream_count": len(downstream),
-                     "truncated": truncated},
+        "subsidiaries": out_subs,
+        "distribution": distribution,
+        "graph": {"nodes": nodes, "edges": edges},
+        "narrative": _control_narrative(role, out_sh, out_subs, authenticated),
+        "coverage": {"shareholders": bool(out_sh), "subsidiaries": bool(out_subs),
+                     "ubo": ubo is not None, "truncated": truncated},
         "engine_version": ENGINE_VERSION,
     }
 
 
 @router.get("/{identifier}/control-graph")
-async def control_graph(identifier: str, _key=Depends(require_service_key)):
-    """Grafo de control (Propiedad): accionistas → compañía → participadas, con % en las
-    aristas, flag de UBO/matriz última y narrativa en prosa CF. Null-safe: si no hay
-    participadas, solo upstream; si no hay estructura, available:false. DPD: personas
-    físicas anonimizadas, jurídicas con nombre."""
+async def control_graph(identifier: str, authenticated: bool = False, _key=Depends(require_service_key)):
+    """Grafo de control (Propiedad, spec PARA_INTEL): shareholders → compañía → subsidiaries +
+    UBO + distribution[] + graph{nodes,edges} + narrative CF. Null-safe/degradado. DPD:
+    `authenticated=false` (por defecto) oculta TODOS los nombres (estructura + % + tiers);
+    `authenticated=true` = detalle nominal."""
     master = await _master(identifier)
     if not master:
         raise HTTPException(status_code=404, detail="Company not found")
-    out = await _control_graph_block(master)
+    out = await _control_graph_block(master, authenticated=authenticated)
     return {"identifier": identifier, "cif": master["cif_normalized"], **out}
 
 
 @router.get("/{identifier}/ficha")
-async def ficha(identifier: str, _key=Depends(require_service_key)):
+async def ficha(identifier: str, authenticated: bool = False, _key=Depends(require_service_key)):
     """Agregador de la Ficha: identidad + finanzas + ranking + propiedad + gobierno + eventos
-    en una sola llamada. Cada bloque es null-safe (Beta degrada por bloque)."""
+    en una sola llamada. Cada bloque es null-safe (Beta degrada por bloque). DPD: `authenticated`
+    (por defecto false) oculta los nombres de propiedad (ownership + control_graph)."""
     master = await _master(identifier)
     if not master:
         raise HTTPException(status_code=404, detail="Company not found")
@@ -852,11 +935,11 @@ async def ficha(identifier: str, _key=Depends(require_service_key)):
         "identity": _build_identity(master).model_dump(),
         "finances": finances,
         "ranking": (finances or {}).get("ranking"),
-        "ownership": await ownership(identifier, _key=None),
+        "ownership": await ownership(identifier, authenticated=authenticated, _key=None),
         "governance": await governance(identifier, _key=None),
         "events": await events(identifier, _key=None),
         "signals": await signals(identifier, _key=None),
         "market": await market(identifier, _key=None),
-        "control_graph": await _control_graph_block(master),
+        "control_graph": await _control_graph_block(master, authenticated=authenticated),
         "engine_version": ENGINE_VERSION,
     }
