@@ -34,6 +34,36 @@ ACTIONS_BY_ROLE = {
     None: ["analyze", "compare"],
 }
 
+# ── Pasada de idioma (canon CF, Anexo B): nombre de la tesis en prosa ES.
+# El enum crudo (recommendation_type/recommendation_role) se conserva como metadato. ──
+RECO_TYPE_ES = {
+    "comparable": "Compañía comparable",
+    "buyer": "Comprador potencial",
+    "seller": "Vendedor potencial",
+    "investor": "Inversor potencial",
+    "advisor": "Asesor",
+    "opportunity": "Oportunidad de operación",
+    "match": "Encaje de operación",
+}
+RECO_ROLE_ES = {
+    "strategic_buyer": "Comprador estratégico",
+    "financial_buyer": "Comprador financiero",
+    "roll_up_candidate": "Candidata a roll-up",
+    "acquisition_target": "Objetivo de adquisición",
+    "divestment_candidate": "Candidata a desinversión",
+    "merger_candidate": "Candidata a fusión",
+    "partnership_candidate": "Socio potencial",
+}
+
+
+def _reco_title(cand_name: Optional[str], rtype: str, role: Optional[str]) -> Optional[str]:
+    """Titular de la tesis en prosa: '<nombre> — <rol o tesis>'."""
+    thesis = RECO_ROLE_ES.get(role) or RECO_TYPE_ES.get(rtype)
+    if cand_name and thesis:
+        return f"{cand_name} — {thesis}"
+    return thesis or cand_name
+
+
 
 def _rec_id(target: str, candidate: str, rtype: str) -> str:
     raw = f"{target}|{candidate}|{rtype}|{S.SCORE_METHOD}|{'/'.join(EVIDENCE_VERSION.values())}"
@@ -144,6 +174,9 @@ async def _build_rec(target: Dict, cand: Dict, rtype: str, semantic_score: float
         "candidate": {"entity_type": "company", "master_id": cand["master_id"],
                       "name": (cand.get("identity") or {}).get("legal_name")},
         "recommendation_type": rtype, "recommendation_role": role,
+        "recommendation_type_label": RECO_TYPE_ES.get(rtype),
+        "recommendation_role_label": RECO_ROLE_ES.get(role),
+        "title": _reco_title((cand.get("identity") or {}).get("legal_name"), rtype, role),
         "score": score, "fit_dimensions": fit, "score_method": "derived_from_fit_dimensions",
         "composed_of": [],
         "graph_edges": [{"from": target["master_id"], "to": cand["master_id"],
@@ -287,12 +320,14 @@ async def matching(a: str, b: str) -> Optional[Dict]:
     rec = await _build_rec(ma, mb, "match", sem_score, "merger_candidate", ctx)
     return {"a": {"master_id": ma["master_id"], "name": (ma.get("identity") or {}).get("legal_name")},
             "b": {"master_id": mb["master_id"], "name": (mb.get("identity") or {}).get("legal_name")},
-            "recommendation_type": "match", "match": rec,
+            "recommendation_type": "match",
+            "recommendation_type_label": RECO_TYPE_ES.get("match"), "match": rec,
             "recommendation_version": ENGINE_VERSION, "generated_at": now_iso()}
 
 
 def unavailable(rtype: str) -> Dict:
-    return {"recommendation_type": rtype, "status": "unavailable",
+    return {"recommendation_type": rtype,
+            "recommendation_type_label": RECO_TYPE_ES.get(rtype), "status": "unavailable",
             "reason": "source_not_available", "recommendations": [],
             "recommendation_version": ENGINE_VERSION, "generated_at": now_iso()}
 
@@ -300,7 +335,9 @@ def unavailable(rtype: str) -> Dict:
 def _wrap(target: Dict, rtype: str, recs: List[Dict]) -> Dict:
     return {"target": {"master_id": target["master_id"],
                        "name": (target.get("identity") or {}).get("legal_name")},
-            "recommendation_type": rtype, "status": "available", "count": len(recs),
+            "recommendation_type": rtype,
+            "recommendation_type_label": RECO_TYPE_ES.get(rtype),
+            "status": "available", "count": len(recs),
             "recommendations": recs, "method": S.SCORE_METHOD,
             "recommendation_version": ENGINE_VERSION, "evidence_version": EVIDENCE_VERSION,
             "generated_at": now_iso()}

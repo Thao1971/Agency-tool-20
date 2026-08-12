@@ -289,6 +289,38 @@ async def control_synergy(identifier: str, buyer_identifier: str, _key=Depends(r
             "available": True, "control_synergy": result, "engine_version": ENGINE_VERSION}
 
 
+# ── Pasada de idioma para Señales (canon CF, Anexo B): título en prosa + labels ES.
+# Se conservan los enums crudos (type/category/polarity/severity) como metadato. ──
+_SIGNAL_POLARITY_ES = {"positive": "favorable", "neutral": "informativa",
+                       "negative": "desfavorable"}
+_SIGNAL_ALERT_SEVERITY = {"critical", "warning", "risk"}
+_SIGNAL_CATEGORY_ES = {
+    "financial": "Finanzas", "growth": "Crecimiento", "market": "Mercado",
+    "operational": "Operativo", "opportunity": "Oportunidad",
+    "ownership": "Propiedad", "risk": "Riesgo",
+}
+_SIG_THRESHOLD_RE = re.compile(r"\s*\([<>≥≤][^)]*\)")
+
+
+def _signal_polarity_label(polarity, severity):
+    if polarity == "negative" and (severity or "") in _SIGNAL_ALERT_SEVERITY:
+        return "de alerta"
+    return _SIGNAL_POLARITY_ES.get(polarity)
+
+
+def _signal_title(explanation):
+    """Titular en prosa a partir de la descripción: quita el umbral de máquina
+    ('(> 20%)') y localiza el decimal de los porcentajes ('24.4%'→'24,4%')."""
+    txt = (explanation or "").strip()
+    if not txt:
+        return None
+    txt = _SIG_THRESHOLD_RE.sub("", txt)
+    txt = re.sub(r"(\d)\.(\d+\s*%)", r"\1,\2", txt)
+    txt = re.sub(r"\bvs\.?\s+peers\b", "frente a comparables", txt, flags=re.IGNORECASE)
+    return txt.strip() or None
+
+
+
 @router.get("/{identifier}/signals")
 async def signals(identifier: str, limit: int = 50, _key=Depends(require_service_key)):
     """Cambios/hechos relevantes de la empresa (I-3 'section/signal'): tipo, categoría,
@@ -310,10 +342,12 @@ async def signals(identifier: str, limit: int = 50, _key=Depends(require_service
     sigs = [{
         "type": r.get("signal_type"),
         "category": r.get("category"),
+        "category_label": _SIGNAL_CATEGORY_ES.get(r.get("category")),
         "date": r.get("last_seen_at") or r.get("detected_at"),
         "polarity": r.get("polarity"),
+        "polarity_label": _signal_polarity_label(r.get("polarity"), r.get("severity")),
         "severity": r.get("severity"),
-        "title": r.get("explanation"),
+        "title": _signal_title(r.get("explanation")),
         "confidence": r.get("confidence"),
         "trend": r.get("trend"),
     } for r in rows]
