@@ -217,6 +217,7 @@ async def governance(identifier: str, _key=Depends(require_service_key)):
         "name": r.get("person_name"),
         "role": r.get("role"),
         "role_es": _role_es(r.get("role")),
+        "role_label_es": _role_es(r.get("role")),
         "since": r.get("appointment_date"),
         "year": r.get("year"),
     } for r in best.values()]

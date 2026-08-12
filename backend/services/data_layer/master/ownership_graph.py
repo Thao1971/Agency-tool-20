@@ -13,6 +13,7 @@ from pymongo import UpdateOne
 
 from database import db
 from models import now_iso
+from borme.parser import normalize_company_name
 
 logger = logging.getLogger(__name__)
 BATCH = 1000
@@ -56,9 +57,19 @@ async def _cif_to_master(cifs: List[str]) -> Dict[str, str]:
 
 
 async def ensure_indexes() -> None:
+    # Migration: the old unique key (src,dst,type,year) collapsed every EXTERNAL
+    # counterparty (dst_master_id=None) of the same parent/year into a single row
+    # (e.g. a holding with 34 unresolved investees showed only 1 in /connections).
+    # The key now includes counterparty_key so each distinct counterparty gets its edge.
+    try:
+        await db.master_relationships.drop_index(
+            "src_master_id_1_dst_master_id_1_relationship_type_1_year_1")
+    except Exception:
+        pass
     await db.master_relationships.create_index(
-        [("src_master_id", 1), ("dst_master_id", 1), ("relationship_type", 1), ("year", 1)],
-        unique=True, sparse=True)
+        [("src_master_id", 1), ("dst_master_id", 1), ("relationship_type", 1),
+         ("year", 1), ("counterparty_key", 1)],
+        unique=True, sparse=True, name="rel_unique_cpk")
     await db.master_relationships.create_index("src_master_id")
     await db.master_relationships.create_index("dst_master_id")
     await db.master_relationships.create_index("relationship_type")
@@ -90,6 +101,12 @@ async def rebuild_ownership_graph(heartbeat=None) -> Dict:
             cp_master = m.get(cp_cif) if cp_cif else None
             if not src_master:
                 continue
+            # Disambiguate the counterparty even when it doesn't resolve to a master
+            # (external): without this, N external investees of the same parent/year
+            # collapse into one row on the unique index.
+            cp_key = cp_cif or normalize_company_name(o.get("counterparty_name") or "")
+            if not cp_key:
+                continue
             if direction == "in":
                 a, b = cp_master, src_master           # counterparty --etype--> src
             else:
@@ -98,6 +115,7 @@ async def rebuild_ownership_graph(heartbeat=None) -> Dict:
                 "src_master_id": a, "dst_master_id": b, "relationship_type": etype,
                 "year": o.get("year"), "pct": o.get("pct"),
                 "counterparty_name": o.get("counterparty_name"),
+                "counterparty_key": cp_key,
                 "counterparty_external": cp_master is None,
                 "source": "iberinform", "origin": "ownership", "confidence": 0.95,
                 "created_at": now,
@@ -111,7 +129,8 @@ async def rebuild_ownership_graph(heartbeat=None) -> Dict:
                 if etype in GROUP_EDGE_TYPES and a and b:
                     uf.union(a, b)
             local_ops.append(UpdateOne(
-                {"src_master_id": a, "dst_master_id": b, "relationship_type": etype, "year": o.get("year")},
+                {"src_master_id": a, "dst_master_id": b, "relationship_type": etype,
+                 "year": o.get("year"), "counterparty_key": cp_key},
                 {"$set": doc}, upsert=True))
         if local_ops:
             await db.master_relationships.bulk_write(local_ops, ordered=False)
