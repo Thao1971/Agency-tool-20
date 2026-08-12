@@ -33,6 +33,12 @@
 | ADMIN | Usuarios, Roles, Seguridad, Auditoría |
 
 ## Latest changes (Agosto 2026)
+- **Fix labels ES en /ficha + CIFs muestra ✅ Preview (2026-08-11)**
+  - **Diagnóstico del "1/6":** las 6 familias de labels YA llegan al `/ficha` (verificado en Preview Y prod para Servier/NESGAR/HESPERIA) en sus rutas: `market.sector|geo.{signal_label,primary_driver_label,trend_label}`, `market.concentration.concentration_label_es`, `finances.statements.cash_flow.cash_flow_labels_es`, `governance.governance_role_labels_es`, `identity.is_listed_label_es`. El "1/6" venía de **degradación honesta por datos pobres** en la CIF de prueba (sector sin `signal` → signal_label null; `is_listed` null → label null; sin cash-flow/consejeros → sin esos labels).
+  - **Mejora:** `is_listed_label_es` ahora **siempre poblado** ("Cotizada" si is_listed, si no "No cotizada"; nunca null) en `company_intelligence.py::_build`. Servier /ficha = **6/6 familias**.
+  - **CIFs muestra** (`/app/PARA_INTEL_CIFs_muestra.md`): holdings reales con participadas que existen en master — B28184687 (Servier), A08678823 (BIOSYSTEMS, 18), A28287092 (NESGAR, 27), A61351540 (HESPERIA, 29), B59510453 (MEDITERRANEAN SEARCH, 34); DPD/personas A07040223; leaf A03006897.
+  - **control_graph nuevo shape (shareholders/subsidiaries/distribution/graph) YA está LIVE en prod** (verificado). PENDIENTE: redeploy para el fix de `is_listed_label_es`.
+
 - **control_graph refactorizado al contrato formal (PARA_INTEL_control_graph.md) ✅ Preview (2026-08-11)**
   - Shape nuevo (spec 1:1 con el mockup Propiedad): `company{name,cif,locality,role: holding|target|standalone}`, `shareholders[]{name,type: legal|individual,pct,label,cif,is_ubo}`, `ubo{name,type,kind,pct_effective}`, `subsidiaries[]{name,cif,pct,activity,control_label}`, `distribution[]{label,pct,tone}` (tab Distribución), `graph{nodes[{id,label,kind}],edges[{from,to,pct}]}` (tab Grafo), `narrative` (banner), `as_of_year`, `coverage`. Propagado al `/ficha`.
   - Labels/tiers en prosa CF: `label` accionista ("UBO · sociedad matriz/holding/fondo/control familiar", "autocartera / acciones propias"), `control_label` participada ("control total"/"mayoritaria"/"significativa"/"participación minoritaria"). Sin enums crudos.

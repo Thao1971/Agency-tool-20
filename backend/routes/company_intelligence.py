@@ -118,8 +118,7 @@ def _build(doc: dict) -> CompanyIdentityResponse:
         sources=sources,
         provenance_fields=sorted(list((doc.get("provenance") or {}).keys())),
         is_listed=doc.get("is_listed"),
-        is_listed_label_es=({True: "Cotizada", False: "No cotizada"}.get(doc.get("is_listed"))
-                            if doc.get("is_listed") is not None else None),
+        is_listed_label_es=("Cotizada" if doc.get("is_listed") else "No cotizada"),
         listed_market=doc.get("listed_market"),
     )
     present = {}
