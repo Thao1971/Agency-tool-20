@@ -278,6 +278,18 @@ async def rebuild_competitor_graph_endpoint(limit_codes: int = 300, user=Depends
             "duration_ms": round((time.time() - t0) * 1000, 1), **stats}
 
 
+@router.post("/rebuild-ownership-graph")
+async def rebuild_ownership_graph_endpoint(user=Depends(get_current_user)):
+    """Materialize structural ownership edges (shareholder_of/parent_of/ultimate_parent_of/
+    investee_of) from norm_ownership onto master_relationships, with counterparty_key so
+    external counterparties no longer collapse (fixes /connections showing 1 vs N). Runs
+    synchronously in-process (the data_layer_jobs queue has no worker). Idempotent."""
+    t0 = time.time()
+    stats = await OG.rebuild_ownership_graph()
+    return {"generated_at": now_iso(),
+            "duration_ms": round((time.time() - t0) * 1000, 1), **stats}
+
+
 # ── Jobs (P0.2) — API only enqueues/queries/cancels; heavy work runs in a separate worker ──
 @router.post("/jobs")
 async def create_job(req: JobRequest, user=Depends(get_current_user)):
