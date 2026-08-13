@@ -587,10 +587,9 @@ def _sector_narrative(s: Dict) -> Optional[str]:
     sig = _SIGNAL_PROSE.get(s.get("signal"))
     first = f"El sector de {name.lower()} {sig}" if sig else \
             f"El sector de {name.lower()} se mantiene dentro de sus parámetros habituales"
-    yoy = s.get("national_yoy_pct")
-    if isinstance(yoy, (int, float)) and abs(yoy) >= 0.1:
-        verb = "una caída" if yoy < 0 else "un avance"
-        first += f", con {verb} de actividad del {_pct_num_es(yoy)} en el último año"
+    # NOTA: no se usa national_yoy_pct aquí: es un dato NACIONAL (variación interanual de
+    # empresas creadas, INE) idéntico para todas las divisiones, no una métrica por sector.
+    # Atribuírselo al sector daría "caída del X%" repetida en todas las fichas.
     parts.append(first + ".")
     dyn = _score_word(s.get("dynamism_score"))
     trend = _TREND_PROSE.get(s.get("trend_direction"))
