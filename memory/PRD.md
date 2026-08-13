@@ -33,6 +33,10 @@
 | ADMIN | Usuarios, Roles, Seguridad, Auditoría |
 
 ## Latest changes (Agosto 2026)
+- **market.sector: quitado national_yoy_pct + auditoría de constantes ✅ Preview (2026-08-13)**
+  - Eliminados de `_sector_card` (y de `market.provenance.sector`): `national_yoy_pct` **y `growth_score`**. **Hallazgo de la auditoría:** `growth_score` era TAMBIÉN un constante nacional clonado (=35 en las 285 divisiones; se deriva solo de `national_yoy` + un ajuste que en la práctica es 0), contrario a lo asumido. Ambos fuera del bloque de sector (no se reetiquetan).
+  - **Auditoría completa de `market.sector` (285 divisiones, colección `sector_intelligence`), distinct por campo:** size_score=6, dynamism_score=37, activity_score=29, market_share=30, active_companies=30, iberinform_companies=68 → **varían (per-sector real)**. trend_direction=2, primary_driver=3, signal=2 → derivados reales (baja varianza, no clonados). Solo `national_yoy_pct` (=1) y `growth_score` (=1) eran constantes → eliminados. **Ningún otro campo es constante clonado.**
+  - Verificado E2E (3 sectores): el card ya no trae national_yoy_pct/growth_score y el resto varía. **PENDIENTE: 1 redeploy.**
 - **Bug fijado: "-15,4% interanual" repetido en la Tesis (contexto sectorial) ✅ Preview (2026-08-13)**
   - **RCA:** `market.sector.national_yoy_pct` NO es dato por sector: es un único dato NACIONAL real (INE, variación interanual de empresas creadas = -15,4%) clonado a las 88 divisiones CNAE (`economic_intelligence.py::_aggregate_ine_demography` línea ~207/222; `sector_intelligence_v2.py::_compute_growth_score` usa `demography["yoy_change"]` para todas). NO existe fuente fiable de YoY por sector: el `avg_revenue` por división de `economic_metrics` es ruido (oscila ±99% año a año por muestras minúsculas) → inservible para narrativa.
   - **Fix:** en `_sector_narrative` (`routes/company_ficha.py`) eliminada la cláusula que atribuía ese % nacional al sector ("con una caída de actividad del X% en el último año"). La narrativa sectorial pasa a apoyarse solo en dato realmente per-sector: `dynamism_score` + `trend_direction` (varían por división vía procurement/borme/iberinform counts).

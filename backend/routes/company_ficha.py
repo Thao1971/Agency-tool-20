@@ -383,10 +383,13 @@ async def _province_index():
 
 
 def _sector_card(s: Dict) -> Dict:
+    # Se OMITEN 'national_yoy_pct' y 'growth_score': ambos derivan del mismo dato NACIONAL
+    # (variación interanual de empresas creadas, INE) y salen constantes para todas las
+    # divisiones (no son métricas por sector). El dinamismo/actividad/tamaño sí son per-sector.
     return {k: s.get(k) for k in (
-        "cnae_code", "cnae_label", "cnae_level", "size_score", "dynamism_score", "growth_score",
+        "cnae_code", "cnae_label", "cnae_level", "size_score", "dynamism_score",
         "activity_score", "active_companies", "iberinform_companies", "market_share",
-        "national_yoy_pct", "trend_direction", "primary_driver", "signal")} | {
+        "trend_direction", "primary_driver", "signal")} | {
         "signal_label": _SIGNAL_LABELS.get(s.get("signal")),
         "primary_driver_label": _DRIVER_LABELS.get(s.get("primary_driver")),
         "trend_label": _TREND_LABELS_ES.get(s.get("trend_direction"))}
@@ -679,8 +682,8 @@ async def market(identifier: str, _key=Depends(require_service_key)):
     blocks = (sector_block, geo_block, concentration, position_block)
     mkt_prov = {}
     for _sub, _block, _fields in (
-        ("sector", sector_block, ("size_score", "dynamism_score", "growth_score",
-                                  "activity_score", "market_share", "national_yoy_pct")),
+        ("sector", sector_block, ("size_score", "dynamism_score",
+                                  "activity_score", "market_share")),
         ("geo", geo_block, ("size_score", "dynamism_score", "growth_score", "revenue_growth",
                             "employment_growth", "net_company_creation")),
         ("concentration", concentration, ("hhi",)),
