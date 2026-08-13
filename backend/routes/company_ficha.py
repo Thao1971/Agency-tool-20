@@ -1079,25 +1079,52 @@ async def connections(node_id: str, max_nodes: int = 60, _key=Depends(require_se
     }
 
 
+def _first_auditor(gov: dict):
+    """Nombre del auditor desde el rol Auditor del órgano de gobierno (null si no consta)."""
+    for o in (gov or {}).get("officers", []):
+        role = f"{o.get('role') or ''} {o.get('role_label_es') or ''} {o.get('role_es') or ''}".lower()
+        if "auditor" in role:
+            return o.get("name")
+    return None
+
+
 @router.get("/{identifier}/ficha")
 async def ficha(identifier: str, _key=Depends(require_service_key)):
     """Agregador de la Ficha: identidad + finanzas + ranking + propiedad + gobierno + eventos
     en una sola llamada. Cada bloque es null-safe (Beta degrada por bloque). Nombres reales."""
+    from services import company_summary as CS
     master = await _master(identifier)
     if not master:
         raise HTTPException(status_code=404, detail="Company not found")
     cif = master["cif_normalized"]
     finances = await FE.analyze(cif)
+    identity = _build_identity(master).model_dump()
+    governance_block = await governance(identifier, _key=None)
+    market_block = await market(identifier, _key=None)
+    signals_block = await signals(identifier, _key=None)
+    control_graph_block = await _control_graph_block(master)
+
+    # Resumen (§ redistribución): verified + auditor + descripción enriquecida con flag de origen.
+    identity["verified"] = bool((finances or {}).get("has_financials"))
+    identity["auditor"] = _first_auditor(governance_block)
+    _desc = await CS.resolve_description(master["master_id"], identity, identity.get("activity_es"))
+    identity["description"] = _desc["description"]
+    identity["description_source"] = _desc["description_source"]
+
     return {
         "identifier": identifier, "cif": cif, "master_id": master["master_id"],
-        "identity": _build_identity(master).model_dump(),
+        "identity": identity,
         "finances": finances,
         "ranking": (finances or {}).get("ranking"),
         "ownership": await ownership(identifier, _key=None),
-        "governance": await governance(identifier, _key=None),
+        "governance": governance_block,
         "events": await events(identifier, _key=None),
-        "signals": await signals(identifier, _key=None),
-        "market": await market(identifier, _key=None),
-        "control_graph": await _control_graph_block(master),
+        "signals": signals_block,
+        "market": market_block,
+        "control_graph": control_graph_block,
+        "opportunity": {
+            "thesis": CS.opportunity_thesis(finances, market_block),
+            "chips": CS.opportunity_chips(signals_block, control_graph_block, finances),
+        },
         "engine_version": ENGINE_VERSION,
     }

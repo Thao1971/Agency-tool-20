@@ -19,7 +19,7 @@ ENGINE_VERSION = "financial-intelligence-v1"
 #   verified   = línea tomada directamente de cuentas/registros oficiales (P&L, balance, EFE)
 #   calculated = métrica derivada por ARROBA sobre dato verificado (ratios, márgenes, %iles, CAGR, scores)
 #   inferred   = valor estimado cuando no consta el dato directo (empresa sin cuentas depositadas)
-_PROV_KPI_VERIFIED = {"revenue", "ebit", "net_income"}
+_PROV_KPI_VERIFIED = {"revenue", "ebit", "net_income", "total_assets"}
 _PROV_CALC_STATEMENT_LINES = {"ebitda", "free_cash_flow", "cash_conversion"}
 
 
@@ -155,12 +155,24 @@ def _financial_narrative(quality: Dict, kpis: Dict, evolution: Dict,
             "strengths": strengths, "weaknesses": weaknesses, "risks": risks}
 
 
+def _net_debt(m: Dict) -> Optional[float]:
+    """Deuda neta = deuda financiera - caja. None si no consta la deuda financiera."""
+    fd = m.get("financial_debt")
+    if fd is None:
+        return None
+    return round(fd - (m.get("cash") or 0), 2)
+
+
 def compute_kpis(series: List[Dict], employees: Optional[int]) -> Dict:
     latest = series[0]
     prev = series[1] if len(series) > 1 else {}
+    nd = _net_debt(latest)
     return {
         "revenue": latest.get("revenue"), "ebitda": latest.get("ebitda"),
         "ebit": latest.get("ebit"), "net_income": latest.get("net_income"),
+        "net_debt": nd,
+        "net_debt_ebitda": R._safe_div(nd, latest.get("ebitda")),
+        "total_assets": latest.get("total_assets"),
         "revenue_growth_yoy": _pct_change(latest.get("revenue"), prev.get("revenue")),
         "ebitda_growth_yoy": _pct_change(latest.get("ebitda"), prev.get("ebitda")),
         "revenue_cagr": _cagr([s.get("revenue") for s in series]),
@@ -585,6 +597,16 @@ async def analyze(identifier: str) -> Optional[Dict]:
 
     latest = series[0]
     kpis = compute_kpis(series, employees)
+    _prev_year = series[1] if len(series) > 1 else None
+    kpis_prior = None
+    if _prev_year:
+        _nd_prev = _net_debt(_prev_year)
+        kpis_prior = {
+            "year": _prev_year.get("year"),
+            "revenue": _prev_year.get("revenue"), "ebitda": _prev_year.get("ebitda"),
+            "net_debt": _nd_prev, "net_debt_ebitda": R._safe_div(_nd_prev, _prev_year.get("ebitda")),
+            "total_assets": _prev_year.get("total_assets"), "net_income": _prev_year.get("net_income"),
+        }
     ratios = _ratios_with_trend(series, employees)
     await _ratio_sector_percentiles((master.get("classification") or {}).get("cnae_section"), ratios)
     evolution = compute_evolution(series)
@@ -668,6 +690,7 @@ async def analyze(identifier: str) -> Optional[Dict]:
         "ranking": ranking_block,
         "statements": statements,
         "kpis": kpis,
+        "kpis_prior": kpis_prior,
         "ratios": ratios,
         "provenance": provenance,
         "evolution": evolution,

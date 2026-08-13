@@ -58,6 +58,11 @@ class CompanyIdentityResponse(BaseModel):
     cnae_primary: Optional[CnaeRef] = None
     cnae_secondary: List[CnaeRef] = Field(default_factory=list)
     activity: Optional[str] = Field(None)
+    activity_es: Optional[str] = Field(None, description="Etiqueta CNAE en español (catálogo oficial); el literal EN queda en 'activity'")
+    verified: Optional[bool] = Field(None, description="Cuentas depositadas y verificadas en fuente oficial (has_financials + origen registral/Iberinform)")
+    auditor: Optional[str] = Field(None, description="Nombre del auditor (rol Auditor del órgano de gobierno); null si no consta")
+    linkedin_url: Optional[str] = Field(None, description="URL de LinkedIn solo si viene de enrichment; nunca se construye")
+    description_source: Optional[str] = Field(None, description="Origen del texto de 'description': official|ai|web")
     corporate_purpose: Optional[str] = Field(None)
     objeto_social: Optional[str] = Field(None, description="Alias de corporate_purpose (armonización con /financial-analysis). Texto registral del objeto social.")
     description: Optional[str] = Field(None, description="Solo si existe descripción con soporte; nunca texto inventado")
@@ -74,6 +79,7 @@ class CompanyIdentityResponse(BaseModel):
 
 
 def _build(doc: dict) -> CompanyIdentityResponse:
+    from services.cnae_es import cnae_label_es
     ident = doc.get("identity") or {}
     cls = doc.get("classification") or {}
     loc = doc.get("location") or {}
@@ -109,6 +115,8 @@ def _build(doc: dict) -> CompanyIdentityResponse:
         employees_total=size.get("employees_total"),
         cnae_primary=cnae,
         activity=cls.get("cnae_description"),
+        activity_es=cnae_label_es(cls.get("cnae_code")),
+        linkedin_url=(contact.get("linkedin") or (doc.get("social") or {}).get("linkedin")),
         corporate_purpose=doc.get("objeto_social"),
         objeto_social=doc.get("objeto_social"),
         description=description,

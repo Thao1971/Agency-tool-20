@@ -133,7 +133,35 @@ Devuelve SOLO JSON válido: {{"message": "la respuesta reescrita en español"}}"
     return result
 
 
-async def _call_provider(provider: str, task: str, prompt: str, document_id: str = None) -> Dict:
+async def generate_company_description(objeto_social: str, cnae_es: Optional[str],
+                                       name: Optional[str], provider: str = "nvidia",
+                                       document_id: str = None) -> Dict:
+    """Reformula el OBJETO SOCIAL registral en una descripción CF breve (2-3 frases, ES).
+    FACT-LOCK estricto: la IA SOLO reformula el texto dado; NO añade personas, lugares,
+    cifras, fechas, hechos ni productos que no estén en el objeto social/CNAE. No inventa."""
+    prompt = f"""Reformula el OBJETO SOCIAL de una empresa española en una descripción breve, clara y
+profesional (2-3 frases, en español), apta para una ficha de inteligencia empresarial.
+
+REGLA FUNDAMENTAL (FACT-LOCK): usa EXCLUSIVAMENTE la información del objeto social y la actividad CNAE
+de abajo. NO añadas ni inventes personas, lugares, fechas, cifras, productos, hechos ni juicios que no
+estén explícitos en ese texto. Solo reformula/resume lo dado en prosa legible. Nada de marketing.
+
+EMPRESA: {name or "—"}
+ACTIVIDAD (CNAE, español): {cnae_es or "—"}
+OBJETO SOCIAL (texto registral a reformular):
+{(objeto_social or "").strip()[:1500]}
+
+Devuelve SOLO JSON válido: {{"description": "la descripción reformulada, 2-3 frases en español"}}"""
+    import os
+    _desc_model = os.environ.get("NVIDIA_DESC_MODEL", "meta/llama-3.1-8b-instruct")
+    result = await _call_provider(provider, "company_description", prompt, document_id, model=_desc_model)
+    if isinstance(result, dict) and not result.get("description") and result.get("raw_text"):
+        result["description"] = result["raw_text"].strip()
+    return result
+
+
+async def _call_provider(provider: str, task: str, prompt: str, document_id: str = None,
+                         model: str = None) -> Dict:
     """Call the AI provider and audit the result."""
     now = now_iso()
     audit = {
@@ -151,7 +179,7 @@ async def _call_provider(provider: str, task: str, prompt: str, document_id: str
         elif provider == "claude":
             result = await _call_claude(prompt)
         elif provider == "nvidia":
-            result = await _call_nvidia(prompt)
+            result = await _call_nvidia(prompt, model)
         else:
             result = {"error": f"Unknown provider: {provider}"}
 
@@ -229,12 +257,12 @@ async def _call_claude(prompt: str) -> Dict:
         return {"error": str(e), "_model": "claude-sonnet-4-6"}
 
 
-async def _call_nvidia(prompt: str) -> Dict:
+async def _call_nvidia(prompt: str, model: str = None) -> Dict:
     """Call NVIDIA NIM (OpenAI-compatible endpoint). Requiere NVIDIA_API_KEY.
     Modelo configurable con NVIDIA_MODEL (por defecto un instruct de calidad). Barato/independiente
     para narrativa de volumen (cartera, comparaciones). No altera cifras (fact-lock en el prompt)."""
     import os
-    model = os.environ.get("NVIDIA_MODEL", "meta/llama-3.1-70b-instruct")
+    model = model or os.environ.get("NVIDIA_MODEL", "meta/llama-3.1-8b-instruct")
     api_key = os.environ.get("NVIDIA_API_KEY")
     if not api_key:
         return {"error": "NVIDIA_API_KEY no configurada", "_model": model}
