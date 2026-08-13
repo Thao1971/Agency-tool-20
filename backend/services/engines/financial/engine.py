@@ -15,6 +15,39 @@ from services.engines.financial import market_multiples as MM
 
 ENGINE_VERSION = "financial-intelligence-v1"
 
+# ── Procedencia por métrica (explicabilidad de la ficha). Vocabulario controlado:
+#   verified   = línea tomada directamente de cuentas/registros oficiales (P&L, balance, EFE)
+#   calculated = métrica derivada por ARROBA sobre dato verificado (ratios, márgenes, %iles, CAGR, scores)
+#   inferred   = valor estimado cuando no consta el dato directo (empresa sin cuentas depositadas)
+_PROV_KPI_VERIFIED = {"revenue", "ebit", "net_income"}
+_PROV_CALC_STATEMENT_LINES = {"ebitda", "free_cash_flow", "cash_conversion"}
+
+
+def _prov_statement(key) -> str:
+    return "calculated" if key in _PROV_CALC_STATEMENT_LINES else "verified"
+
+
+def _build_provenance(kpis, ratios, statements, ranking_block) -> Dict:
+    """Mapa de procedencia por bloque/métrica (metadato de CÓMO se obtuvo el número; no
+    es PII → viaja también en anónimo). Hoy solo verified/calculated: ARROBA no estima
+    estados financieros (política 'solo años reales'), así que 'inferred' queda reservado
+    para futuras estimaciones. Se emite junto a los datos, no los sustituye."""
+    prov: Dict = {}
+    if kpis:
+        prov["kpis"] = {k: ("verified" if k in _PROV_KPI_VERIFIED else "calculated") for k in kpis}
+    for blk in ("income_statement", "balance_sheet", "cashflow"):
+        b = (statements or {}).get(blk)
+        if isinstance(b, dict):
+            prov[blk] = {k: _prov_statement(k) for k in b}
+    if ratios:
+        prov["ratios"] = {k: "calculated" for k in ratios}
+    if ranking_block:
+        prov["ranking"] = {k: "calculated" for k in ranking_block
+                           if k in ("sector_revenue_percentile", "market_position", "locality_position")}
+    return prov
+
+
+
 # EV/EBITDA reference multiples by CNAE section (INFERRED — not market-observed).
 # Documented as low-confidence reference until real market/transaction multiples are connected.
 _SECTION_EV_EBITDA = {
@@ -543,6 +576,7 @@ async def analyze(identifier: str) -> Optional[Dict]:
                          "cnae_section": (master.get("classification") or {}).get("cnae_section"),
                          **_identity_descriptors(master)},
             "has_financials": False,
+            "provenance": {},
             "ranking": await ranking(master, {}),
             "valuation": {"method": "insufficient_data", "confidence": 0.0,
                           "hypotheses": ["Sin estados financieros normalizados"], "lineage": {}},
@@ -562,6 +596,8 @@ async def analyze(identifier: str) -> Optional[Dict]:
     statements = M.statements(latest, employees)
     _cf = M.cashflow_statement(series)
     if _cf:
+        for _row in _cf.get("rows", []):
+            _row["provenance"] = _prov_statement(_row.get("key"))
         statements["cash_flow"] = _cf
     else:
         statements["cash_flow"] = None
@@ -619,6 +655,8 @@ async def analyze(identifier: str) -> Optional[Dict]:
     quality.update(_financial_narrative(quality, kpis, evolution, strengths, weaknesses, risks))
 
     overall_conf = round(min(1.0, 0.3 + 0.5 * (quality["score"] / 100) + (0.2 if len(series) >= 2 else 0)), 2)
+    ranking_block = await ranking(master, latest)
+    provenance = _build_provenance(kpis, ratios, statements, ranking_block)
     return {
         "master_id": master["master_id"], "cif_normalized": cif,
         "identity": {"name": (master.get("identity") or {}).get("legal_name"),
@@ -627,10 +665,11 @@ async def analyze(identifier: str) -> Optional[Dict]:
                      "provincia": (master.get("location") or {}).get("provincia"),
                      **_identity_descriptors(master)},
         "has_financials": True,
-        "ranking": await ranking(master, latest),
+        "ranking": ranking_block,
         "statements": statements,
         "kpis": kpis,
         "ratios": ratios,
+        "provenance": provenance,
         "evolution": evolution,
         "financial_quality": quality,
         "comparables": comparables,

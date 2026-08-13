@@ -678,6 +678,19 @@ async def market(identifier: str, _key=Depends(require_service_key)):
             concentration, (sector_doc or {}).get("cnae_label"))
 
     blocks = (sector_block, geo_block, concentration, position_block)
+    mkt_prov = {}
+    for _sub, _block, _fields in (
+        ("sector", sector_block, ("size_score", "dynamism_score", "growth_score",
+                                  "activity_score", "market_share", "national_yoy_pct")),
+        ("geo", geo_block, ("size_score", "dynamism_score", "growth_score", "revenue_growth",
+                            "employment_growth", "net_company_creation")),
+        ("concentration", concentration, ("hhi",)),
+        ("position", position_block, ("sector_revenue_percentile", "market_position",
+                                      "locality_position")),
+    ):
+        m = {f: "calculated" for f in _fields if (_block or {}).get(f) is not None}
+        if m:
+            mkt_prov[_sub] = m
     return {
         "identifier": identifier, "cif": cif, "master_id": master["master_id"],
         "available": any(b.get("available") for b in blocks),
@@ -685,6 +698,7 @@ async def market(identifier: str, _key=Depends(require_service_key)):
         "geo": geo_block,
         "concentration": concentration,
         "position": position_block,
+        "provenance": mkt_prov,
         "coverage": {"sector": sector_block.get("available", False),
                      "geo": geo_block.get("available", False),
                      "concentration": concentration.get("available", False),
