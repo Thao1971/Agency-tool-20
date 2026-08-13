@@ -15,6 +15,10 @@ from models import new_id, now_iso
 
 logger = logging.getLogger(__name__)
 
+# Modelo NVIDIA del tier gratuito para failover (rápido y fiable). Configurable con
+# NVIDIA_MODEL_FALLBACK; se usa cuando el modelo primario (NVIDIA_MODEL) no responde.
+NVIDIA_FALLBACK_MODEL = "meta/llama-3.1-8b-instruct"
+
 
 async def generate_analysis(data: Dict, instruction: str, provider: str = "claude",
                             document_id: str = None) -> Dict:
@@ -153,7 +157,7 @@ OBJETO SOCIAL (texto registral a reformular):
 
 Devuelve SOLO JSON válido: {{"description": "la descripción reformulada, 2-3 frases en español"}}"""
     import os
-    _desc_model = os.environ.get("NVIDIA_DESC_MODEL", "meta/llama-3.1-8b-instruct")
+    _desc_model = os.environ.get("NVIDIA_DESC_MODEL", NVIDIA_FALLBACK_MODEL)
     result = await _call_provider(provider, "company_description", prompt, document_id, model=_desc_model)
     if isinstance(result, dict) and not result.get("description") and result.get("raw_text"):
         result["description"] = result["raw_text"].strip()
@@ -257,16 +261,12 @@ async def _call_claude(prompt: str) -> Dict:
         return {"error": str(e), "_model": "claude-sonnet-4-6"}
 
 
-async def _call_nvidia(prompt: str, model: str = None) -> Dict:
-    """Call NVIDIA NIM (OpenAI-compatible endpoint). Requiere NVIDIA_API_KEY.
-    Modelo configurable con NVIDIA_MODEL (por defecto un instruct de calidad). Barato/independiente
-    para narrativa de volumen (cartera, comparaciones). No altera cifras (fact-lock en el prompt)."""
+async def _nvidia_once(prompt: str, model: str, timeout: float) -> Dict:
+    """Una llamada a NVIDIA NIM (OpenAI-compatible) con un modelo y timeout concretos."""
     import os
-    model = model or os.environ.get("NVIDIA_MODEL", "meta/llama-3.1-8b-instruct")
     api_key = os.environ.get("NVIDIA_API_KEY")
     if not api_key:
         return {"error": "NVIDIA_API_KEY no configurada", "_model": model}
-    timeout = float(os.environ.get("NVIDIA_TIMEOUT", "50"))
     try:
         import httpx
         async with httpx.AsyncClient(timeout=timeout) as client:
@@ -283,8 +283,31 @@ async def _call_nvidia(prompt: str, model: str = None) -> Dict:
         parsed["_model"] = model
         return parsed
     except Exception as e:
-        logger.error(f"NVIDIA call failed: {e!r}")
+        logger.error(f"NVIDIA call failed (model={model}): {e!r}")
         return {"error": str(e) or repr(e), "_model": model}
+
+
+async def _call_nvidia(prompt: str, model: str = None) -> Dict:
+    """NVIDIA NIM con FAILOVER automático a un modelo del tier gratuito que responda.
+    Primario = `model` (arg) o env NVIDIA_MODEL. Si falla/timeout, reintenta con
+    NVIDIA_MODEL_FALLBACK (por defecto meta/llama-3.1-8b-instruct: gratis, rápido, fiable).
+    Configurable: para volver al 70B basta poner NVIDIA_MODEL=meta/llama-3.3-70b-instruct;
+    el failover al 8b lo protege si vuelve a caer. No altera cifras (fact-lock en el prompt)."""
+    import os
+    primary = model or os.environ.get("NVIDIA_MODEL", NVIDIA_FALLBACK_MODEL)
+    fallback = os.environ.get("NVIDIA_MODEL_FALLBACK", NVIDIA_FALLBACK_MODEL)
+    full_timeout = float(os.environ.get("NVIDIA_TIMEOUT", "50"))
+    has_fallback = bool(fallback) and fallback != primary
+    # Con failover disponible, cortamos antes el intento primario para no colgar la request
+    # si el modelo configurado (p. ej. el 70B) está caído en NVIDIA.
+    primary_timeout = float(os.environ.get("NVIDIA_PRIMARY_TIMEOUT", "12")) if has_fallback else full_timeout
+    res = await _nvidia_once(prompt, primary, primary_timeout)
+    if "error" not in res:
+        return res
+    if has_fallback:
+        logger.warning(f"NVIDIA primario '{primary}' no responde; failover a '{fallback}'")
+        return await _nvidia_once(prompt, fallback, full_timeout)
+    return res
 
 
 def _extract_json(text: str) -> Dict:
