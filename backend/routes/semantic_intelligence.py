@@ -71,6 +71,12 @@ async def similar(req: SimilarRequest, _key=Depends(require_service_key)):
 async def search(req: SearchRequest, _key=Depends(require_service_key)):
     if not req.query.strip():
         raise HTTPException(400, "query required")
+    from services.engines.semantic import cache as C
+    rkey = (C.qkey(req.query), req.limit, req.cnae_section)
+    cached = C.result_cache.get(rkey)
+    if cached is not None:
+        return {**cached, "cached": True}
+
     res = await sem_engine.search(req.query, limit=req.limit, section=req.cnae_section)
     rows = res.get("results") or []
     if rows:
@@ -78,6 +84,8 @@ async def search(req: SearchRequest, _key=Depends(require_service_key)):
         summaries = await build_summaries([r["master_id"] for r in rows])
         for r in rows:
             r["summary"] = summaries.get(r["master_id"])
+    res["cached"] = False
+    C.result_cache.put(rkey, res)
     return res
 
 

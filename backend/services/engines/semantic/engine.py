@@ -18,6 +18,7 @@ from services.engines.semantic import embeddings as E
 from services.engines.semantic import ai_extractor as AI
 from services.engines.semantic import vector_search as VS
 from services.engines.semantic import persistence as P
+from services.engines.semantic import cache as C
 
 ENGINE_VERSION = "semantic-intelligence-v1"
 
@@ -168,7 +169,16 @@ async def similar(identifier: str, limit: int = 10, same_section: bool = True) -
 
 
 async def search(query: str, limit: int = 10, section: Optional[str] = None) -> Dict:
-    e = await asyncio.to_thread(E.get_provider().embed, query)
-    rows = await VS.top_k(e["vector"], section, exclude="__query__", k=limit)
+    qk = C.qkey(query)
+    ce = C.query_embedding_cache.get(qk)
+    if ce is not None:
+        vector, model = ce
+    else:
+        e = await asyncio.to_thread(E.get_provider().embed, query)
+        vector, model = e["vector"], e["model"]
+        C.query_embedding_cache.put(qk, (vector, model))
+
+    rows = await VS.top_k(vector, section, exclude="__query__", k=limit)
     return {"query": query, "count": len(rows), "results": rows,
-            "backend": VS.current_backend(), "embedding_model": e["model"], "engine_version": ENGINE_VERSION}
+            "backend": VS.current_backend(), "embedding_model": model,
+            "engine_version": ENGINE_VERSION}

@@ -225,20 +225,37 @@ def dimension_id(dimension: str, label: str) -> str:
     return f"DIM-{dimension}-{slug(label)}"
 
 
+# Alias curados por nodo → resuelven expresiones habituales de lenguaje natural al nodo correcto
+# (evita que "agencias de marketing/viajes" caigan en la categoría genérica "Agencias").
+NODE_ALIASES: Dict[str, List[str]] = {
+    "S03": ["agencias de marketing", "agencia de marketing", "empresas de marketing"],
+    "IND-S04-viajes-y-turismo": ["agencias de viajes", "agencia de viajes",
+                                 "agencias de turismo", "agencia de turismo"],
+    "IND-S05-industria-farmaceutica": ["laboratorio farmaceutico", "laboratorios farmaceuticos",
+                                       "farmaceutica", "farmaceuticas"],
+    "IND-S05-dental": ["clinicas dentales", "clinica dental", "dentistas"],
+    "CAT-S01-auditoria-y-contabilidad-asesoria-fiscal": ["asesorias fiscales", "asesoria fiscal",
+                                                         "gestoria fiscal"],
+}
+
+
 def build_nodes() -> List[Dict]:
     """Genera los documentos de nodo del árbol (sin persistir)."""
     out: List[Dict] = []
     for sid, sec in SEED.items():
         out.append({"id": sid, "level": "sector", "parent_id": None, "label_es": sec["label"],
-                    "aliases": [], "status": "active", "taxonomy_version": TAXONOMY_VERSION})
+                    "aliases": NODE_ALIASES.get(sid, []), "status": "active",
+                    "taxonomy_version": TAXONOMY_VERSION})
         for ind, cats in sec["industries"].items():
             iid = industry_id(sid, ind)
             out.append({"id": iid, "level": "industry", "parent_id": sid, "label_es": ind,
-                        "aliases": [], "status": "active", "taxonomy_version": TAXONOMY_VERSION})
+                        "aliases": NODE_ALIASES.get(iid, []), "status": "active",
+                        "taxonomy_version": TAXONOMY_VERSION})
             for cat in cats:
-                out.append({"id": category_id(sid, ind, cat), "level": "category", "parent_id": iid,
-                            "label_es": cat, "aliases": [], "status": "active",
-                            "taxonomy_version": TAXONOMY_VERSION})
+                cid = category_id(sid, ind, cat)
+                out.append({"id": cid, "level": "category", "parent_id": iid,
+                            "label_es": cat, "aliases": NODE_ALIASES.get(cid, []),
+                            "status": "active", "taxonomy_version": TAXONOMY_VERSION})
     return out
 
 

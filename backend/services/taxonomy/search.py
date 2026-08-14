@@ -30,6 +30,25 @@ _LABEL_IDX = _build_label_index()
 _IS_NODE = {"sector", "industry", "category"}
 
 
+# Overrides deterministas por alias de nodo (frase con límite de palabra, más largo primero).
+# Se comprueban ANTES del emparejamiento difuso → garantizan la resolución de expresiones curadas.
+def _build_alias_overrides():
+    by_id: Dict[str, Dict] = {}
+    for n in REG.build_nodes():
+        by_id[n["id"]] = {"id": n["id"], "kind": n["level"], "label": n["label_es"]}
+    items = []
+    for n in REG.build_nodes():
+        for a in (n.get("aliases") or []):
+            na = _norm(a)
+            if na:
+                items.append((na, by_id[n["id"]]))
+    items.sort(key=lambda x: -len(x[0]))
+    return items
+
+
+_ALIAS_OVERRIDES = _build_alias_overrides()
+
+
 def _stem_token(w: str) -> str:
     """Raíz ligera ES: quita plural (-es/-s) y vocal final de género (-o/-a) para casar
     'farmacéutico'/'farmacéutica'/'farmacéuticas' → 'farmaceutic'. Conserva palabras cortas."""
@@ -83,6 +102,11 @@ def resolve_label(text: str) -> Optional[Dict]:
     t = _norm(text)
     if not t:
         return None
+
+    # Alias curados (determinista): si una expresión conocida aparece como frase, gana.
+    for na, node in _ALIAS_OVERRIDES:
+        if _phrase_in(na, t):
+            return node
 
     tokens = [w for w in t.split() if w and w not in _STOPWORDS]
     if not tokens:
@@ -145,28 +169,41 @@ async def resolve_company_by_name(name: str) -> Optional[Dict]:
 async def search_by_taxonomy(node_id: Optional[str] = None, dimension_id: Optional[str] = None,
                              primary_only: bool = False, limit: int = 50, offset: int = 0) -> Dict:
     """Empresas clasificadas bajo un nodo (sector/industria/categoría) o dimensión (vertical, etc.).
-    primary_only=True → solo cuando ese nodo es la actividad PRINCIPAL (role=primary)."""
+    primary_only=True → solo cuando ese nodo es la actividad PRINCIPAL (role=primary).
+    Devuelve `results` enriquecidos con el `summary` de cada empresa (tabla sin N+1) + paginación
+    de servidor (`count` total real, `limit`, `offset`)."""
     target = node_id or dimension_id
     if not target:
-        return {"count": 0, "company_ids": [], "note": "Indica node_id o dimension_id."}
+        return {"count": 0, "results": [], "company_ids": [], "note": "Indica node_id o dimension_id."}
     q: Dict = {"taxonomy_id": target}
     if node_id and primary_only:
         q["role"] = "primary"
+    from database import db
+    ids: List[str] = []
+    total = 0
+    rows: List[Dict] = []
     try:
-        from database import db
-        ids: List[str] = []
         async for r in db.company_classifications.find(q, {"_id": 0, "company_id": 1}) \
                 .sort("confidence", -1).skip(offset).limit(limit):
             ids.append(r["company_id"])
         total = await db.company_classifications.count_documents(q)
-        sample = []
         if ids:
+            from services.company_card import build_summaries
+            base: Dict[str, Dict] = {}
             async for m in db.master_companies.find(
-                    {"master_id": {"$in": ids[:10]}},
-                    {"_id": 0, "master_id": 1, "identity.legal_name": 1}):
-                sample.append({"company_id": m["master_id"],
-                               "legal_name": (m.get("identity") or {}).get("legal_name")})
+                    {"master_id": {"$in": ids}},
+                    {"_id": 0, "master_id": 1, "cif_normalized": 1,
+                     "identity.legal_name": 1, "classification.cnae_section": 1}):
+                base[m["master_id"]] = m
+            summaries = await build_summaries(ids)
+            for cid in ids:  # preserve confidence order
+                m = base.get(cid) or {}
+                rows.append({"master_id": cid, "cif": m.get("cif_normalized"),
+                             "name": (m.get("identity") or {}).get("legal_name"),
+                             "cnae_section": (m.get("classification") or {}).get("cnae_section"),
+                             "summary": summaries.get(cid)})
     except Exception:
-        ids, total, sample = [], 0, []
+        ids, total, rows = [], 0, []
     return {"taxonomy_id": target, "primary_only": bool(node_id and primary_only),
-            "count": total, "returned": len(ids), "company_ids": ids, "sample": sample}
+            "count": total, "limit": limit, "offset": offset, "returned": len(rows),
+            "results": rows, "company_ids": ids}

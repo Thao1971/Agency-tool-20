@@ -2,6 +2,21 @@
 
 > Registro de cambios de arquitectura de la plataforma Agency Tool (compartida: Valuo.pro + arroba.com + Platform Console).
 
+## 2026-08-14 — F5 Taxonomía: search "todas por sector" enriquecido con summary + resolve_label mejorado ✅
+- **`GET /api/v1/company-taxonomy/search`** ahora devuelve **filas enriquecidas con `summary`** (mismos campos que /search: revenue, ebitda, margin, growth, signal_score/badge, valuation, arroba_score, employees, city, activity_label, updated_at) + **`count` total real** + **`limit`/`offset` (paginación de servidor)** + `resolved` (nodo/dimensión que casó). Mantiene `company_ids` por compatibilidad. `search_by_taxonomy` construye las filas con 1 query de básicos + `build_summaries` (2 queries) → **sin N+1** (independiente del nº de filas).
+- **Nuevo `POST /api/v1/company-taxonomy/summary`** {master_ids:[...]} → fichas-resumen en lote (para pintar cualquier tabla sin N+1).
+- **`resolve_label` — cobertura mejorada** con aliases curados por nodo (`registry.NODE_ALIASES`) + override determinista (frase con límite de palabra, más largo primero) que se comprueba ANTES del difuso. Corrige: "agencias de marketing" → **S03** (antes caía en la categoría genérica "Agencias"); bonus: "agencias de viajes" → Viajes y turismo, "laboratorio farmacéutico" → Industria farmacéutica (eje correcto). Tolera relleno ("busca … en madrid"). Aliases también expuestos en los nodos (`build_nodes` → `aliases`).
+- **Validado (preview, curl)**: `?q=agencias de marketing` → resolved S03, count **2302**, filas con summary, `offset` server-side OK; cobertura de las 5 expresiones: marketing(S03,2302)·dental(233)·fiscal(147)·transporte(S10,2403)·hoteles(905), todas con `summary`. `POST /summary` OK (SERVIER arroba 81).
+- **Archivos**: `services/taxonomy/registry.py` (NODE_ALIASES + build_nodes), `services/taxonomy/search.py` (override + search_by_taxonomy enriquecido + offset), `routes/company_taxonomy.py` (offset, resolved, POST /summary).
+- **PROD**: lee de `company_classifications` (225k en prod) + `master_companies` + `signals` → funciona tras redeploy, sin migración de datos.
+
+
+## 2026-08-14 — Cachés de búsqueda semántica (query-embedding LRU + resultados TTL) ✅
+- `services/engines/semantic/cache.py`: `_LRU` genérico (thread-safe). `query_embedding_cache` (LRU 4096, sin TTL) evita re-llamar a OpenAI en consultas repetidas; `result_cache` (LRU 2048, TTL 60s) sirve respuestas populares al instante.
+- `engine.search` usa el caché de query-embeddings; la ruta `/search` usa el caché de resultados (guarda la respuesta YA enriquecida con `summary`). Respuesta añade flag `cached`.
+- Medido en preview: 1ª (cold) 1.73s → 2ª idéntica **4.5ms** (result-cache) → misma query distinto `limit` **11ms** (embedding-cache, sin llamada OpenAI). Cubre ítems 4 y 5 del REQ de arquitectura de búsqueda.
+
+
 ## 2026-08-14 — Buscador semántico → Atlas Vector Search ($vectorSearch/HNSW) con fallback in-memory ✅
 - **Problema**: en prod la búsqueda tardaba >2 min porque el código desplegado cargaba todo el universo de embeddings y calculaba coseno en Python por request (+OOM del worker).
 - **Tier/soporte**: cluster prod = MongoDB **8.0.29**, `getSearchIndexes()` responde (Atlas Search/Vector Search **disponible**); `hostInfo` restringido → tier compartido, pero soporta Vector Search igualmente.

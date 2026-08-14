@@ -82,18 +82,37 @@ async def peers(company_id: str, k: int = 10, same_primary_only: bool = False,
 @router.get("/search")
 async def search(node_id: Optional[str] = None, dimension_id: Optional[str] = None,
                  q: Optional[str] = None, primary_only: bool = False, limit: int = 50,
-                 _key=Depends(require_service_key)):
-    """Búsqueda por taxonomía (doble modo). `q` resuelve una etiqueta de texto a nodo/dimensión."""
+                 offset: int = 0, _key=Depends(require_service_key)):
+    """Búsqueda por taxonomía (doble modo). `q` resuelve una etiqueta de texto a nodo/dimensión.
+    Devuelve `results` enriquecidos con `summary` + `count`/`limit`/`offset` (paginación de servidor)."""
+    resolved = None
     if q and not (node_id or dimension_id):
         hit = SEARCH.resolve_label(q)
         if not hit:
-            return {"count": 0, "company_ids": [], "note": f"No reconozco '{q}' en la taxonomía."}
+            return {"count": 0, "results": [], "company_ids": [],
+                    "note": f"No reconozco '{q}' en la taxonomía."}
+        resolved = hit
         if hit["kind"] in SEARCH._IS_NODE:
             node_id = hit["id"]
         else:
             dimension_id = hit["id"]
-    return await SEARCH.search_by_taxonomy(node_id=node_id, dimension_id=dimension_id,
-                                           primary_only=primary_only, limit=limit)
+    res = await SEARCH.search_by_taxonomy(node_id=node_id, dimension_id=dimension_id,
+                                          primary_only=primary_only, limit=limit, offset=offset)
+    if resolved:
+        res["resolved"] = resolved
+    return res
+
+
+class SummaryIn(BaseModel):
+    master_ids: List[str] = []
+
+
+@router.post("/summary")
+async def summary_batch(req: SummaryIn, _key=Depends(require_service_key)):
+    """Ficha-resumen en LOTE para una lista de master_id (pinta tablas sin N+1)."""
+    from services.company_card import build_summaries
+    summaries = await build_summaries(req.master_ids)
+    return {"count": len(summaries), "summaries": summaries}
 
 
 
