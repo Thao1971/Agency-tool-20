@@ -44,22 +44,37 @@ async def _ensure_index(force: bool = False) -> None:
     async with _lock:
         if not force and _fresh(model):
             return
-        rows = await P.all_embeddings(model)
-        meta, vecs = [], []
-        for r in rows:
+        # Memory-safe build: preallocate ONE float32 [N, D] matrix and fill row-by-row
+        # from a streamed cursor (never materializes the universe as a Python list).
+        n = await P.count_embeddings(model)
+        meta: List[Dict] = []
+        if n <= 0:
+            _matrix, _meta = np.zeros((0, 1), dtype=np.float32), []
+            _sections = np.array([], dtype=object)
+            _ids = np.array([], dtype=object)
+            _loaded_at, _loaded_model = time.time(), model
+            return
+        m = None
+        i = 0
+        async for r in P.iter_embeddings(model):
             v = (r.get("embedding") or {}).get("vector")
             if not v:
                 continue
+            if m is None:
+                m = np.empty((n, len(v)), dtype=np.float32)
+            if i >= n:
+                break  # count drifted upward; ignore extras
+            m[i] = v
             meta.append({"master_id": r["master_id"], "cif": r.get("cif_normalized"),
                          "name": r.get("identity_name"), "cnae_section": r.get("cnae_section")})
-            vecs.append(v)
-        if vecs:
-            m = np.asarray(vecs, dtype=np.float32)
+            i += 1
+        if m is None or i == 0:
+            m = np.zeros((0, 1), dtype=np.float32)
+        else:
+            m = m[:i]
             norms = np.linalg.norm(m, axis=1, keepdims=True)
             norms[norms == 0] = 1.0
-            m = m / norms
-        else:
-            m = np.zeros((0, 1), dtype=np.float32)
+            m /= norms
         _matrix = m
         _meta = meta
         _sections = np.array([x["cnae_section"] for x in meta], dtype=object)

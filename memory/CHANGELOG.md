@@ -2,6 +2,15 @@
 
 > Registro de cambios de arquitectura de la plataforma Agency Tool (compartida: Valuo.pro + arroba.com + Platform Console).
 
+## 2026-08-14 — Re-embed semántico de PROD + fix de memoria del índice (evita OOM) ✅⚠️
+- **Re-embed PROD ejecutado** (autorizado): `scripts/reembed_semantic_openai.py --force` contra el Atlas de producción (`MONGO_URL`/`DB_NAME` de prod inline, `OPENAI_API_KEY` del `.env`; NO se tocó el `.env` de preview). Resultado: **25.868/25.868 fichas en `text-embedding-3-small`, 0 legacy** (antes solo 3 pilotos openai → por eso prod devolvía siempre IUSTIME/COPISA/SERVIER). 282s.
+- **Búsqueda verificada (preview, mismos datos que prod)**: "agencias de viajes" → VIAJES MARKETING, JULIATOURS, GIRATUR, VILLAR Y LORO (agencias reales, sección N/M). Relevancia correcta.
+- **⚠️ INCIDENCIA PROD (breve, auto-recuperada)**: al lanzar la búsqueda de verificación contra prod, el worker devolvió **520 en todos los endpoints** ~15s y se reinició solo. Causa: el código DESPLEGADO en prod construía el índice en memoria materializando TODO el universo como lista Python (pico ~350-400MB) → **OOM del worker** al cargar 25.868 vectores.
+- **FIX de memoria (en preview, pendiente de redeploy)**: `vector_search._ensure_index` ahora **preasigna UNA matriz `float32` [N,D] (53MB) y la llena fila a fila desde un cursor en streaming** (`persistence.iter_embeddings`/`count_embeddings`) → **RSS pico del proceso 221MB** (medido contra Atlas prod). Además **warm-up en background al arrancar** (`server.py` → `vector_search.reload()`) para no pagar carga en frío en la primera `/search`.
+- **Archivos**: `services/engines/semantic/vector_search.py` (cargador seguro + warm), `persistence.py` (`iter_embeddings`, `count_embeddings`), `server.py` (warm-up en `_run_startup_init`).
+- **ACCIÓN REQUERIDA**: **REDEPLOY de prod** para aplicar el fix de memoria. Hasta entonces, NO ejecutar búsquedas semánticas en prod (cada una provoca un blip de ~15s auto-recuperado). Tras el redeploy, prod servirá las agencias reales sin caerse. Los DATOS de prod ya están correctos (no requieren re-embed de nuevo).
+
+
 ## 2026-08-14 — `summary` enriquecido en cada SearchHit de search + resolve (tabla sin N+1) ✅
 - **Motivo (arroba.com página de resultados)**: pintar la tabla con una sola llamada. `search` y `resolve` ahora devuelven, por hit, un objeto `summary` con: `revenue`, `ebitda`, `ebitda_margin`, `growth_pct` (YoY), `signal_score` (0-100), `signal_badge` (enum), `valuation` {low,mid,high,currency,basis}, `employees`, `arroba_score` (0-100 explicable), `city`, `activity_label`, `updated_at` (+ `arroba_score_detail` con componentes, `market_position_pct`).
 - **Sin N+1**: nuevo `services/company_card.py::build_summaries(master_ids)` usa **2 queries en lote** (`master_companies $in` + `signals $in activas`) + **1 carga de revenues por sección CNAE distinta** (cacheada 600s) → todo lo demás en memoria. Reutiliza `SE._score` (score-v1 desde `signals.dimensions`), `FE.financial_quality` (puro) y los múltiplos de `skills_valuation`.

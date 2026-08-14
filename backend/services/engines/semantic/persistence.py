@@ -61,3 +61,23 @@ async def all_embeddings(model: Optional[str] = None) -> List[Dict]:
                 "cnae_section": 1, "embedding.vector": 1}):
         out.append(d)
     return out
+
+
+async def count_embeddings(model: Optional[str] = None) -> int:
+    q: Dict = {"embedding.vector": {"$exists": True}}
+    if model:
+        q["embedding.model"] = model
+    return await db.semantic_profiles.count_documents(q)
+
+
+async def iter_embeddings(model: Optional[str] = None):
+    """Async generator streaming embedding docs (cursor-batched) for memory-safe index build.
+    Avoids materializing the whole universe as a Python list."""
+    q: Dict = {"embedding.vector": {"$exists": True}}
+    if model:
+        q["embedding.model"] = model
+    cursor = db.semantic_profiles.find(
+        q, {"_id": 0, "master_id": 1, "cif_normalized": 1, "identity_name": 1,
+            "cnae_section": 1, "embedding.vector": 1}).batch_size(1000)
+    async for d in cursor:
+        yield d
