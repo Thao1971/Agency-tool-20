@@ -71,7 +71,14 @@ async def similar(req: SimilarRequest, _key=Depends(require_service_key)):
 async def search(req: SearchRequest, _key=Depends(require_service_key)):
     if not req.query.strip():
         raise HTTPException(400, "query required")
-    return await sem_engine.search(req.query, limit=req.limit, section=req.cnae_section)
+    res = await sem_engine.search(req.query, limit=req.limit, section=req.cnae_section)
+    rows = res.get("results") or []
+    if rows:
+        from services.company_card import build_summaries
+        summaries = await build_summaries([r["master_id"] for r in rows])
+        for r in rows:
+            r["summary"] = summaries.get(r["master_id"])
+    return res
 
 
 @router.get("/profile/schema", responses=_ok(S.SemanticProfileSchemaResponse))

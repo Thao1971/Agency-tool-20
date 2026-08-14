@@ -223,6 +223,7 @@ class SearchHit(_Base):
     name: Optional[str] = None
     cnae_section: Optional[str] = None
     score: Optional[float] = None
+    summary: Optional[dict] = None
 
 
 class SemanticSearchResponse(_Base):

@@ -2,6 +2,17 @@
 
 > Registro de cambios de arquitectura de la plataforma Agency Tool (compartida: Valuo.pro + arroba.com + Platform Console).
 
+## 2026-08-14 — `summary` enriquecido en cada SearchHit de search + resolve (tabla sin N+1) ✅
+- **Motivo (arroba.com página de resultados)**: pintar la tabla con una sola llamada. `search` y `resolve` ahora devuelven, por hit, un objeto `summary` con: `revenue`, `ebitda`, `ebitda_margin`, `growth_pct` (YoY), `signal_score` (0-100), `signal_badge` (enum), `valuation` {low,mid,high,currency,basis}, `employees`, `arroba_score` (0-100 explicable), `city`, `activity_label`, `updated_at` (+ `arroba_score_detail` con componentes, `market_position_pct`).
+- **Sin N+1**: nuevo `services/company_card.py::build_summaries(master_ids)` usa **2 queries en lote** (`master_companies $in` + `signals $in activas`) + **1 carga de revenues por sección CNAE distinta** (cacheada 600s) → todo lo demás en memoria. Reutiliza `SE._score` (score-v1 desde `signals.dimensions`), `FE.financial_quality` (puro) y los múltiplos de `skills_valuation`.
+- **signal_badge** (precedencia M&A): `riesgo` (financial.net_loss/negative_equity/quality_low | risk.*) > `buscando_financiacion` (capital.*) > `comprando` (ownership.consolidator) > `alto_crecimiento` (growth.* | market.outperforms_peers | financial.margin_strong) > `estable`. `null` si la empresa no tiene señales.
+- **valuation**: rango por múltiplos de sección — `EV = EBITDA × EV/EBITDA` (si EBITDA>0), si no `EV = revenue × EV/Revenue`; `{low, mid, high, currency:"EUR", basis}`.
+- **arroba_score** (0-100, determinista, explicable): media ponderada re-normalizada sobre componentes disponibles — financial_quality 40% · growth 20% · market_position (percentil sectorial) 20% · signals 20%. Guarda `components` + `confidence` (suma de pesos disponibles) + `partial`. Si faltan cuentas, calcula con lo que haya y baja confianza; si no hay nada fiable → `null` (la tabla pinta "—").
+- **Archivos**: `services/company_card.py` (nuevo); `routes/semantic_intelligence.py` (search enriquece), `routes/company_intelligence.py` (resolve enriquece + `CompanyResolveMatch.summary`), `routes/engine_schemas.py` (`SearchHit.summary`).
+- **Validado (preview, curl local + URL externa)**: SERVIER resolve → revenue 164M, ebitda 18.5M, margin 11.3%, growth +11.7%, signal 62/**comprando**, valuation ev_ebitda 111–166M, arroba **81** (conf 1.0); empresas sin cuentas → nulls honestos + arroba parcial (conf 0.2-0.8); `basis` conmuta ev_ebitda/ev_revenue. Los 12 campos presentes.
+- **PROD**: lee de `master_companies` + `signals` (ya poblados en prod) → **funciona nada más redeployar el código, sin migración de datos** (a diferencia del re-embed semántico).
+
+
 ## 2026-08-14 — Semantic search: buscador global NL con embeddings reales + `cif` en resultados ✅
 - **Motivo (Beta/arroba.com)**: `semantic-intelligence/search` daba resultados poco fiables (backend `hashing-tf-v1` → "laboratorio farmacéutico" traía empresas de educación) y no devolvía `cif`, imposibilitando abrir la ficha (que navega por CIF).
 - **Causa doble detectada**: (1) embedding sin semántica (bolsa de palabras por hashing); (2) **bug de pool**: en búsqueda global (sin `cnae_section`) `top_k` solo puntuaba un slice ARBITRARIO de 500 fichas (`find().limit(500)` sin orden), no las 25.868.

@@ -168,6 +168,7 @@ class CompanyResolveMatch(BaseModel):
     cnae_section: Optional[str] = None
     match_type: str = Field(..., description="cif_exact | name_exact | name_partial", examples=["cif_exact"])
     score: float = Field(..., description="1.0 exacto; <1.0 parcial", examples=[1.0])
+    summary: Optional[dict] = Field(None, description="Ficha resumida para la tabla de resultados (finanzas, señales, valoración, arroba_score). Ver /search summary.")
 
 
 class CompanyResolveResponse(BaseModel):
@@ -206,7 +207,10 @@ async def resolve(req: CompanyResolveRequest, _key=Depends(require_service_key))
 
     from services.company_resolver import resolve_company_query
     result = await resolve_company_query(cif=req.cif, name=req.name, limit=req.limit)
-    matches = [CompanyResolveMatch(**m) for m in result["matches"]]
+    raw = result["matches"]
+    from services.company_card import build_summaries
+    summaries = await build_summaries([m["master_id"] for m in raw])
+    matches = [CompanyResolveMatch(**m, summary=summaries.get(m["master_id"])) for m in raw]
 
     return CompanyResolveResponse(query={"cif": req.cif, "name": req.name},
                            count=len(matches), matches=matches).model_dump()
