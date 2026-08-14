@@ -97,7 +97,7 @@ async def catalog(_key=Depends(require_service_key)):
             "embedding_version": E.EMBEDDING_VERSION,
             "embedding_provider": E.get_provider().name,
             "embedding_model": E.get_provider().model,
-            "vector_search_backend": VS.BACKEND,
+            "vector_search_backend": VS.current_backend(),
             "dimensions": PB.DIMENSIONS,
             "scope_v1": ["profile", "embedding", "similar", "search", "profile/schema", "catalog"],
             "deferred": ["full Universal Search", "Atlas Vector Search backend",

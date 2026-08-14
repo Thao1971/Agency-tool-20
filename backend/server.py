@@ -688,14 +688,15 @@ async def _run_startup_init():
     except Exception as e:
         logger.warning(f"Signal engine bootstrap failed (non-blocking): {e}")
 
-    # Warm the semantic vector index in the background (memory-safe streamed build)
-    # so the first /search doesn't pay a cold full-universe load.
+    # Warm the semantic vector backend in the background: probe Atlas $vectorSearch
+    # (preferred, no in-memory load); fall back to a memory-safe in-memory index only
+    # where $vectorSearch is unavailable (e.g. local MongoDB in preview).
     try:
         from services.engines.semantic import vector_search as _sem_vs
-        n = await _sem_vs.reload()
-        logger.info(f"Semantic vector index warmed: {n} vectors")
+        info = await _sem_vs.warm()
+        logger.info(f"Semantic vector backend ready: {info}")
     except Exception as e:
-        logger.warning(f"Semantic vector index warm-up failed (non-blocking): {e}")
+        logger.warning(f"Semantic vector backend warm-up failed (non-blocking): {e}")
 
     # Ensure the job queue indexes exist (API only enqueues; the worker processes)
     try:

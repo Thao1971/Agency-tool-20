@@ -2,6 +2,18 @@
 
 > Registro de cambios de arquitectura de la plataforma Agency Tool (compartida: Valuo.pro + arroba.com + Platform Console).
 
+## 2026-08-14 — Buscador semántico → Atlas Vector Search ($vectorSearch/HNSW) con fallback in-memory ✅
+- **Problema**: en prod la búsqueda tardaba >2 min porque el código desplegado cargaba todo el universo de embeddings y calculaba coseno en Python por request (+OOM del worker).
+- **Tier/soporte**: cluster prod = MongoDB **8.0.29**, `getSearchIndexes()` responde (Atlas Search/Vector Search **disponible**); `hostInfo` restringido → tier compartido, pero soporta Vector Search igualmente.
+- **Índice creado en PROD Atlas**: `semantic_vec` (tipo `vectorSearch`, `path=embedding.vector`, `numDimensions=512`, `similarity=cosine`, `filter=cnae_section`). Estado READY/queryable. Creado con el usuario de app (`createSearchIndex` permitido).
+- **Backend nuevo (auto-detección)**: `vector_search.py` reescrito — usa **Atlas `$vectorSearch`** (coseno dentro de Atlas, `numCandidates` ~20×limit, filtro `cnae_section`, exclusión de self por over-fetch) cuando está disponible; **cae a la matriz numpy en memoria** (memory-safe) donde no lo está (Mongo local de preview). `warm()` prueba Atlas al arrancar y, si responde, **NO carga el índice en memoria** (evita el OOM en prod). `current_backend()` reporta `atlas-vectorsearch-v1` / `inmemory-cosine-v2`.
+- **Mismo contrato** `/search` y `/similar` (shape idéntico). Nota: el score de Atlas para coseno es `(1+cos)/2 ∈ [0,1]`, el in-memory es coseno crudo — el ranking es idéntico.
+- **Latencia medida contra prod** (pool caliente): `$vectorSearch` **p50 ~118ms** (p95 ~121ms); embedding OpenAI ~356ms → **~474ms por búsqueda end-to-end** (vs >2 min). Validado por el propio código: search, similar (self excluido), filtro de sección J → todo correcto.
+- **Preview** (Mongo local, sin $vectorSearch): usa fallback in-memory (warm log: `inmemory-cosine-v2, 25868 vectors`), "agencias de viajes" → agencias reales. ✅
+- **Archivos**: `services/engines/semantic/vector_search.py` (reescrito: dispatcher Atlas+in-memory, `warm`, `current_backend`), `engine.py` (`VS.current_backend()`), `routes/semantic_intelligence.py` (catalog backend), `server.py` (warm probe).
+- **ACCIÓN REQUERIDA → REDEPLOY de prod** para activar el path Atlas. El índice `semantic_vec` YA existe en el Atlas de prod, así que tras el redeploy el backend lo autodetecta y lo usa (sin OOM, sin carga en memoria). No hay que recrear índice ni re-embeddear.
+
+
 ## 2026-08-14 — Re-embed semántico de PROD + fix de memoria del índice (evita OOM) ✅⚠️
 - **Re-embed PROD ejecutado** (autorizado): `scripts/reembed_semantic_openai.py --force` contra el Atlas de producción (`MONGO_URL`/`DB_NAME` de prod inline, `OPENAI_API_KEY` del `.env`; NO se tocó el `.env` de preview). Resultado: **25.868/25.868 fichas en `text-embedding-3-small`, 0 legacy** (antes solo 3 pilotos openai → por eso prod devolvía siempre IUSTIME/COPISA/SERVIER). 282s.
 - **Búsqueda verificada (preview, mismos datos que prod)**: "agencias de viajes" → VIAJES MARKETING, JULIATOURS, GIRATUR, VILLAR Y LORO (agencias reales, sección N/M). Relevancia correcta.

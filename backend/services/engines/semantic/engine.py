@@ -163,7 +163,7 @@ async def similar(identifier: str, limit: int = 10, same_section: bool = True) -
     section = (master.get("classification") or {}).get("cnae_section") if same_section else None
     rows = await VS.top_k(vec, section, master["master_id"], k=limit)
     return {"master_id": master["master_id"], "count": len(rows), "similar": rows,
-            "backend": VS.BACKEND, "blocking": {"cnae_section": section},
+            "backend": VS.current_backend(), "blocking": {"cnae_section": section},
             "engine_version": ENGINE_VERSION}
 
 
@@ -171,4 +171,4 @@ async def search(query: str, limit: int = 10, section: Optional[str] = None) -> 
     e = await asyncio.to_thread(E.get_provider().embed, query)
     rows = await VS.top_k(e["vector"], section, exclude="__query__", k=limit)
     return {"query": query, "count": len(rows), "results": rows,
-            "backend": VS.BACKEND, "embedding_model": e["model"], "engine_version": ENGINE_VERSION}
+            "backend": VS.current_backend(), "embedding_model": e["model"], "engine_version": ENGINE_VERSION}
