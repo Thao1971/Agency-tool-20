@@ -4,6 +4,7 @@ Product = Company Semantic Profile (canonical, technology-agnostic, explainable)
 Embeddings/similarity/search are DERIVED tools. Strict Master sourcing. Boundary First.
 """
 
+import asyncio
 import hashlib
 import json
 from typing import Dict, List, Optional
@@ -80,7 +81,7 @@ async def build_profile(identifier: str, enrich: bool = False,
     emb_text = PB.embedding_text(sem_profile)
     emb = None
     if emb_text.strip():
-        e = E.get_provider().embed(emb_text)
+        e = await asyncio.to_thread(E.get_provider().embed, emb_text)
         emb = {"embedding_version": e["embedding_version"], "provider": e["provider"],
                "model": e["model"], "dimension": e["dimension"], "vector": e["vector"],
                "sources": PB.EMBEDDING_SOURCES, "generated_at": now_iso()}
@@ -167,7 +168,7 @@ async def similar(identifier: str, limit: int = 10, same_section: bool = True) -
 
 
 async def search(query: str, limit: int = 10, section: Optional[str] = None) -> Dict:
-    e = E.get_provider().embed(query)
+    e = await asyncio.to_thread(E.get_provider().embed, query)
     rows = await VS.top_k(e["vector"], section, exclude="__query__", k=limit)
     return {"query": query, "count": len(rows), "results": rows,
             "backend": VS.BACKEND, "embedding_model": e["model"], "engine_version": ENGINE_VERSION}

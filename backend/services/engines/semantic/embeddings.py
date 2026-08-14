@@ -7,6 +7,7 @@ profile contract or any consumer. Every embedding records provider/model/version
 """
 
 import math
+import os
 import re
 import unicodedata
 from typing import List, Protocol
@@ -51,7 +52,51 @@ class LocalEmbeddingProvider:
                 "dimension": self.dim, "embedding_version": EMBEDDING_VERSION}
 
 
-_provider: EmbeddingProvider = LocalEmbeddingProvider()
+_OPENAI_DIM = 512
+
+
+def _l2(v: List[float]) -> List[float]:
+    n = math.sqrt(sum(x * x for x in v)) or 1.0
+    return [x / n for x in v]
+
+
+class OpenAIEmbeddingProvider:
+    """Managed semantic embeddings (text-embedding-3-small). L2-normalized vectors."""
+    name = "openai"
+    model = "text-embedding-3-small"
+
+    def __init__(self, dim: int = _OPENAI_DIM):
+        from openai import OpenAI
+        self.dim = dim
+        self.embedding_version = f"openai-3-small-{dim}-v1"
+        self._client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
+
+    def _embed_raw(self, texts: List[str]) -> List[List[float]]:
+        cleaned = [((t or " ").replace("\n", " ").strip() or " ")[:8000] for t in texts]
+        r = self._client.embeddings.create(model=self.model, input=cleaned,
+                                           dimensions=self.dim, encoding_format="float")
+        data = sorted(r.data, key=lambda x: x.index)
+        return [_l2(list(d.embedding)) for d in data]
+
+    def embed(self, text: str) -> dict:
+        vec = self._embed_raw([text])[0]
+        return {"vector": vec, "provider": self.name, "model": self.model,
+                "dimension": self.dim, "embedding_version": self.embedding_version}
+
+    def embed_many(self, texts: List[str]) -> List[List[float]]:
+        return self._embed_raw(texts)
+
+
+def _make_provider() -> EmbeddingProvider:
+    if os.environ.get("OPENAI_API_KEY"):
+        try:
+            return OpenAIEmbeddingProvider(_OPENAI_DIM)
+        except Exception:
+            return LocalEmbeddingProvider()
+    return LocalEmbeddingProvider()
+
+
+_provider: EmbeddingProvider = _make_provider()
 
 
 def get_provider() -> EmbeddingProvider:

@@ -2,6 +2,21 @@
 
 > Registro de cambios de arquitectura de la plataforma Agency Tool (compartida: Valuo.pro + arroba.com + Platform Console).
 
+## 2026-08-14 — Semantic search: buscador global NL con embeddings reales + `cif` en resultados ✅
+- **Motivo (Beta/arroba.com)**: `semantic-intelligence/search` daba resultados poco fiables (backend `hashing-tf-v1` → "laboratorio farmacéutico" traía empresas de educación) y no devolvía `cif`, imposibilitando abrir la ficha (que navega por CIF).
+- **Causa doble detectada**: (1) embedding sin semántica (bolsa de palabras por hashing); (2) **bug de pool**: en búsqueda global (sin `cnae_section`) `top_k` solo puntuaba un slice ARBITRARIO de 500 fichas (`find().limit(500)` sin orden), no las 25.868.
+- **Solución (Opción A1)**: proveedor de embeddings **OpenAI `text-embedding-3-small` (512-d, L2-normalizado)** vía `OPENAI_API_KEY` (clave del usuario en `backend/.env`; la clave Emergent NO soporta embeddings). Fallback automático a local `hashing-tf-v1` si no hay key.
+  - `services/engines/semantic/embeddings.py`: nuevo `OpenAIEmbeddingProvider` (+`embed_many`) y selección de proveedor por env.
+  - `services/engines/semantic/vector_search.py`: reescrito a **`inmemory-cosine-v2`** — carga TODOS los vectores del modelo activo en una matriz numpy cacheada (TTL 300s) y escanea el universo completo; filtra por `embedding.model` activo → degradación segura a vacío si el modelo cambia y aún no se re-embeddeó.
+  - `persistence.all_embeddings(model)`: streamer de todo el universo por modelo.
+  - `engine.search`/`build_profile`: embedding de query/doc vía `asyncio.to_thread` (no bloquea el loop).
+  - `SearchHit`: **añadido `cif`** (schema + runtime; las rutas usan `responses=` doc-only → nada se recorta).
+  - `scripts/reembed_semantic_openai.py`: job batch idempotente (BATCH=128, reintentos con backoff, `--force`).
+- **Re-embed en PREVIEW**: 25.868 fichas re-embeddadas en 117s (~220/s). Coste medido ~2,06M tokens ≈ $0,04.
+- **Validación (preview, curl)**: relevancia correcta en NL — "laboratorio farmacéutico"→farma (Servier, Antibióticos Alcalá), "construcción de carreteras"→sección F (COPISA), "asesoría fiscal"→M, "clínica dental"→Q, "transporte y logística"→H; `/similar` de Servier→otras farma (0.85); `cif` presente en todos; `/catalog` refleja `openai / text-embedding-3-small / inmemory-cosine-v2`.
+- **⚠️ ACCIÓN REQUERIDA EN PROD tras redeploy**: los 25.868 `semantic_profiles` de prod siguen con vectores `hashing-tf-v1`; hasta correr `python scripts/reembed_semantic_openai.py` contra el Atlas de prod (con `OPENAI_API_KEY` en secretos), **la búsqueda en prod devolverá vacío** (degradación segura por filtro de modelo). El re-embed de prod es una operación de datos independiente del deploy de código.
+
+
 ## 2026-08-10 (incidente prod) — 520 por OOM del pod + master_id divergente
 - **520 en prod durante el seed**: el paso `balances` de `prod_seed_eav` carga 555k filas en memoria → satura el pod pequeño de prod → Cloudflare 520 (~45s) → el pod reinicia → mata el subproceso a mitad (run3 quedó congelado en step=balances). Los balances YA estaban sembrados de runs previos (cashflow=246), así que re-ejecutarlos era innecesario y peligroso.
 - **FIX**: (1) endpoint `/reingest-eav` acepta `balances: bool = Query(True)` → `balances=false` salta el paso pesado. (2) `_backfill_ratios` reescrito a STREAMING (un doc + buffer de 500 ops, sin cargar todos los accounts en memoria) → seguro en pods pequeños. Verificado en preview con `balances=false`: **1.3s**, seen=13.481, ratios_backfilled=13.452, master_current_ratio=13.044.

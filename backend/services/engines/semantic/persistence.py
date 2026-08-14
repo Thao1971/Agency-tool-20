@@ -47,3 +47,17 @@ async def candidates_with_embeddings(section: Optional[str], exclude: str, limit
                 "cnae_section": 1, "embedding.vector": 1}).limit(limit):
         out.append(d)
     return out
+
+
+async def all_embeddings(model: Optional[str] = None) -> List[Dict]:
+    """Stream ALL stored embeddings, optionally restricted to a provider `embedding.model`.
+    Powers the in-memory global vector index (full-universe scan)."""
+    q: Dict = {"embedding.vector": {"$exists": True}}
+    if model:
+        q["embedding.model"] = model
+    out = []
+    async for d in db.semantic_profiles.find(
+            q, {"_id": 0, "master_id": 1, "cif_normalized": 1, "identity_name": 1,
+                "cnae_section": 1, "embedding.vector": 1}):
+        out.append(d)
+    return out

@@ -219,6 +219,7 @@ class SemanticSimilarResponse(_Base):
 
 class SearchHit(_Base):
     master_id: str
+    cif: Optional[str] = None
     name: Optional[str] = None
     cnae_section: Optional[str] = None
     score: Optional[float] = None
