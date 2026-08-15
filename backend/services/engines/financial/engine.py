@@ -380,7 +380,21 @@ async def valuation(master: Dict, latest: Dict) -> Dict:
     cnae_code = (master.get("classification") or {}).get("cnae_code")
     revenue, ebitda = latest.get("revenue"), latest.get("ebitda")
     equity = latest.get("equity")
-    net_debt = (latest.get("financial_debt") or 0) - (latest.get("cash") or 0)
+    # Honest net-debt handling: if the balance doesn't report financial debt
+    # (typical of abbreviated/PYME accounts), do NOT silently assume 0 debt and
+    # net the cash — that would inflate equity. Treat net debt as "not applied",
+    # flag it, and lower confidence so the ficha can warn of possible overvaluation.
+    debt_known = latest.get("financial_debt") is not None
+    net_debt = ((latest.get("financial_debt") or 0) - (latest.get("cash") or 0)) if debt_known else 0
+
+    def _nd_hyp() -> str:
+        if debt_known:
+            return f"Deuda neta = deuda financiera - caja = {round(net_debt, 0)}"
+        return ("Deuda financiera no disponible — Equity Value = EV sin ajuste por deuda "
+                "(posible sobrevaloración si la empresa tiene deuda no desglosada)")
+
+    _cadj = 0.0 if debt_known else 0.1  # penaliza la confianza cuando falta la deuda
+
     hypotheses, lineage = [], {"financials_source": "master_companies.financials.latest",
                                "basis": latest.get("basis"), "year": latest.get("year")}
 
@@ -392,29 +406,34 @@ async def valuation(master: Dict, latest: Dict) -> Dict:
             equity_value = ev - net_debt
             hypotheses = [f"Múltiplo EV/EBITDA REAL del M&A Radar (agencias de publicidad, "
                           f"{real['sample_size']} transacciones) = {mult}x (mediana observada)",
-                          f"Deuda neta = deuda financiera - caja = {round(net_debt,0)}"]
+                          _nd_hyp()]
             return {"method": "ev_ebitda", "multiple": mult, "multiple_basis": "market_observed",
                     "enterprise_value": round(ev, 0), "equity_value": round(equity_value, 0),
+                    "net_debt_known": debt_known,
                     "range": {"low": round(ebitda * real.get("ev_ebitda_p25", mult), 0),
                               "high": round(ebitda * real.get("ev_ebitda_p75", mult), 0)},
-                    "confidence": 0.8, "hypotheses": hypotheses, "lineage": {**lineage, "source": real}}
+                    "confidence": round(0.8 - _cadj, 2), "hypotheses": hypotheses,
+                    "lineage": {**lineage, "source": real}}
         mult = _SECTION_EV_EBITDA.get(section, _DEFAULT_EV_EBITDA)
         ev = ebitda * mult
         equity_value = ev - net_debt
         hypotheses = [f"Múltiplo EV/EBITDA sectorial (sección {section}) = {mult}x (REFERENCIA inferida)",
-                      f"Deuda neta = deuda financiera - caja = {round(net_debt,0)}"]
+                      _nd_hyp()]
         return {"method": "ev_ebitda", "multiple": mult, "multiple_basis": "inferred_reference",
                 "enterprise_value": round(ev, 0), "equity_value": round(equity_value, 0),
+                "net_debt_known": debt_known,
                 "range": {"low": round(ev * 0.85, 0), "high": round(ev * 1.15, 0)},
-                "confidence": 0.6, "hypotheses": hypotheses, "lineage": lineage}
+                "confidence": round(0.6 - _cadj, 2), "hypotheses": hypotheses, "lineage": lineage}
     if revenue and revenue > 0:
         mult = _DEFAULT_EV_REVENUE
         ev = revenue * mult
-        hypotheses = [f"Múltiplo EV/Ingresos = {mult}x (REFERENCIA inferida; EBITDA no disponible/≤0)"]
+        hypotheses = [f"Múltiplo EV/Ingresos = {mult}x (REFERENCIA inferida; EBITDA no disponible/≤0)",
+                      _nd_hyp()]
         return {"method": "ev_revenue", "multiple": mult, "multiple_basis": "inferred_reference",
                 "enterprise_value": round(ev, 0), "equity_value": round(ev - net_debt, 0),
+                "net_debt_known": debt_known,
                 "range": {"low": round(ev * 0.7, 0), "high": round(ev * 1.3, 0)},
-                "confidence": 0.4, "hypotheses": hypotheses, "lineage": lineage}
+                "confidence": round(0.4 - _cadj, 2), "hypotheses": hypotheses, "lineage": lineage}
     if equity and equity > 0:
         return {"method": "book_value", "equity_value": round(equity, 0),
                 "confidence": 0.3, "hypotheses": ["Valor en libros (patrimonio neto)"],
@@ -476,7 +495,11 @@ def _valuation_full(val: Dict, latest: Dict, comparables: Dict) -> Dict:
     mult = val.get("multiple")
     rng = val.get("range") or {}
     lo, hi = rng.get("low"), rng.get("high")
-    net_debt = (latest.get("financial_debt") or 0) - (latest.get("cash") or 0)
+    # Honest net-debt handling (mirrors valuation()): if financial debt isn't reported,
+    # don't assume 0 and net the cash — that would inflate equity in the scenarios too.
+    # Only the net-debt treatment changes here; multiples, ranges and scenario structure intact.
+    debt_known = latest.get("financial_debt") is not None
+    net_debt = ((latest.get("financial_debt") or 0) - (latest.get("cash") or 0)) if debt_known else 0
 
     def _mult_for(x):
         return round(mult * x / ev, 2) if (mult and ev) else None

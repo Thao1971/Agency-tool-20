@@ -2,6 +2,13 @@
 
 > Registro de cambios de arquitectura de la plataforma Agency Tool (compartida: Valuo.pro + arroba.com + Platform Console).
 
+## 2026-08-14 — REQ-004b: scoping por sector en skills/search (sector + financiero) ✅⚠️
+- **Aditivo**: `SearchFilters` +campo `master_company_ids: List[str]`; `_build_candidate_query` restringe con `master_company_id: {$in: ids}` (verbatim del zip). Beta resuelve el sector con `company-taxonomy/search` y pasa esos ids junto a los rangos numéricos → intersección ids ∩ numérico.
+- **⚠️ PUENTE DE IDS añadido (desviación necesaria del zip)**: los `company_ids` de taxonomía son `master_id` canónico (`mc_...`), pero `skills/search` lee la colección legacy `companies_master` cuyo `master_company_id` es un **UUID distinto**. Aplicar el zip tal cual daría SIEMPRE 0 resultados. En `search_companies` traduzco `mc_* → cif_normalized (master_companies) → master_company_id UUID (companies_master)` antes de construir la query; ids que no resuelven → centinela `__no_match__` (devuelve 0, nunca todo el universo). Acepta también ids legacy UUID directos.
+- **Validado (preview, curl)**: `pytest` 9/9; scope-only 60 ids taxonomía → 60; "agencias de marketing" ∩ revenue≥1M → 14 (WARNER CHAPPELL 20M…); **ejemplo exacto del REQ** "agencias de marketing + EBITDA>1M + <100 empleados" → 7 (WARNER CHAPPELL 5.4M/18emp, PACICON 1.16M/29…); id inexistente → 0.
+- **Archivos**: `routes/skills.py` (+campo), `services/skills_search.py` (`_build_candidate_query` +scope, `search_companies` +puente de ids). Solo código → requiere REDEPLOY (sin migración de datos).
+
+
 ## 2026-08-14 — Backfill EBITDA + histórico a companies_master (activa ebitda del REQ-004) ✅⚠️
 - Script NUEVO `scripts/backfill_financials_to_companies_master.py` (aditivo, idempotente): `$set financials` en `companies_master` copiando de la canónica `master_companies` por `cif_normalized`. No borra `revenue_latest`/`employees_latest` ni nada.
 - **Ejecutado en PREVIEW y en PROD Atlas** (dry-run→apply): `companies_master.financials.latest.ebitda` 0 → **9.742**, `financials.history` 0 → **13.464**, `revenue_latest` intacto (24.992). Índices creados en ambos: `financials.latest.{revenue,ebitda,employees}`.

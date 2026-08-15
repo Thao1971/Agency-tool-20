@@ -28,6 +28,9 @@ class SearchFilters(BaseModel):
     employees_max: Optional[int] = None
     growth_min: Optional[float] = None    # crecimiento de ingresos YoY ≥ (fracción: 0.2 = 20%)
     province: Optional[str] = None        # provincia / localidad (match parcial, case-insensitive)
+    # Restringe el universo a estos ids (p. ej. las empresas de un sector ya resuelto por
+    # taxonomía en Beta). Acepta master_id canónico (mc_...) o master_company_id legacy (UUID).
+    master_company_ids: List[str] = Field(default_factory=list)
 
 
 class SearchPagination(BaseModel):

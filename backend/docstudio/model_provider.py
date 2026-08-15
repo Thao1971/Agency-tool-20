@@ -66,6 +66,13 @@ async def generate_summary(context: Dict, doc_type: str = "sector_report",
         "sector_report": "Generate an executive summary for a sector intelligence report. Include: overview of the sector, key economic indicators, growth trends, main players dynamics, and outlook.",
         "company_profile": "Generate an executive summary for a company profile. Include: company positioning, financial health assessment, competitive landscape, and strategic outlook.",
         "investment_decision": "You are the secretary of an M&A Investment Committee. Write the narrative for a decision ALREADY taken by the committee. The recommendation, score and band are FIXED and given in the context — do NOT change them, do NOT compute or introduce any figure that is not in the context. Only turn the committee's structured conclusions into an executive summary and an investment thesis.",
+        "market_reading": ("Escribe una LECTURA DE MERCADO de 2-3 frases, en español, para un "
+                           "comprador/analista de M&A. Combina en un texto fluido: la posición de "
+                           "la empresa en su sector (ranking, percentil), el estado del sector "
+                           "(crecimiento, dinamismo, tendencia), el contexto territorial y la "
+                           "concentración del mercado. Empieza por lo más relevante para decidir. "
+                           "Tono ejecutivo y claro, sin lenguaje comercial. Devuelve la lectura en "
+                           "executive_summary; deja recommendations vacío."),
     }
     instruction = templates.get(doc_type, templates["sector_report"])
 

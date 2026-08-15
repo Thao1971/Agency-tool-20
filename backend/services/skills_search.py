@@ -161,6 +161,11 @@ def _build_candidate_query(query: str, has_domain: bool, cluster_id=None,
     if cluster_id is not None:
         q["classification.cluster_id"] = cluster_id
 
+    # Sector scoping (REQ-004b): restrict to a pre-resolved id set.
+    ids = filters.get("master_company_ids") or []
+    if ids:
+        q["master_company_id"] = {"$in": list(ids)}
+
     and_clauses: List[Dict] = list(_num_clauses(filters))
     if query.strip():
         rx = {"$regex": re.escape(query.strip()), "$options": "i"}
@@ -278,6 +283,28 @@ async def search_companies(query: str, filters: Dict, page: int, page_size: int,
     has_domain = filters.get("has_domain", True)
     cluster_id = filters.get("cluster_id")
     is_screen = _num_screen(filters)
+    # REQ-004b id bridge: taxonomy returns canonical master_id (mc_...), but this screener
+    # reads the legacy `companies_master` keyed by UUID `master_company_id`. Translate
+    # mc_* → UUID via cif_normalized so the {$in} sector scope actually intersects.
+    raw_scope = filters.get("master_company_ids") or []
+    if raw_scope:
+        canon = [i for i in raw_scope if isinstance(i, str) and i.startswith("mc_")]
+        legacy = [i for i in raw_scope if not (isinstance(i, str) and i.startswith("mc_"))]
+        uuids: List[str] = []
+        if canon:
+            cifs: List[str] = []
+            async for m in db.master_companies.find(
+                    {"master_id": {"$in": canon}}, {"_id": 0, "cif_normalized": 1}):
+                if m.get("cif_normalized"):
+                    cifs.append(m["cif_normalized"])
+            if cifs:
+                async for d in db.companies_master.find(
+                        {"cif_normalized": {"$in": cifs}}, {"_id": 0, "master_company_id": 1}):
+                    if d.get("master_company_id"):
+                        uuids.append(d["master_company_id"])
+        resolved = uuids + legacy
+        # non-empty request that resolves to nothing → scope to impossible (return empty, not all)
+        filters = {**filters, "master_company_ids": resolved or ["__no_match__"]}
     mongo_q = _build_candidate_query(query, has_domain, cluster_id, filters)
     # A pure financial screen (no lexical query) sorts by revenue desc and scans a
     # bigger pool; lexical/semantic search keeps the confidence-ranked candidate pool.
