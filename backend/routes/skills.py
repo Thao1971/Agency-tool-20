@@ -19,6 +19,15 @@ class SearchFilters(BaseModel):
     category: List[str] = Field(default_factory=list)
     tags: List[str] = Field(default_factory=list)
     has_domain: bool = True
+    # --- Financial / attribute screen (REQ-004) — all optional; euros / fraction / int ---
+    revenue_min: Optional[float] = None   # ingresos ≥ (euros)
+    revenue_max: Optional[float] = None
+    ebitda_min: Optional[float] = None    # EBITDA ≥ (euros)
+    ebitda_max: Optional[float] = None
+    employees_min: Optional[int] = None
+    employees_max: Optional[int] = None
+    growth_min: Optional[float] = None    # crecimiento de ingresos YoY ≥ (fracción: 0.2 = 20%)
+    province: Optional[str] = None        # provincia / localidad (match parcial, case-insensitive)
 
 
 class SearchPagination(BaseModel):
