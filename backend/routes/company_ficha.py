@@ -693,7 +693,7 @@ async def market(identifier: str, _key=Depends(require_service_key)):
         m = {f: "calculated" for f in _fields if (_block or {}).get(f) is not None}
         if m:
             mkt_prov[_sub] = m
-    return {
+    result = {
         "identifier": identifier, "cif": cif, "master_id": master["master_id"],
         "available": any(b.get("available") for b in blocks),
         "sector": sector_block,
@@ -707,6 +707,13 @@ async def market(identifier: str, _key=Depends(require_service_key)):
                      "position": position_block.get("available", False)},
         "engine_version": ENGINE_VERSION,
     }
+    # Lectura de mercado en prosa (IA, fact-lock, cacheada). Fallo -> null (Beta degrada).
+    # `company_summary` (import local: el CS a nivel de módulo es control_synergy).
+    from services import company_summary as _CSUM
+    result["reading_ai"] = await _CSUM.resolve_market_reading(master["master_id"], result)
+    if result["reading_ai"] is not None:
+        result["provenance"]["reading_ai"] = "ai_narrative"
+    return result
 
 
 # ── Propiedad / grafo de control (mockup): accionistas → compañía → participadas ──
