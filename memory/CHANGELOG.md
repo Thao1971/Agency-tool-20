@@ -2,6 +2,16 @@
 
 > Registro de cambios de arquitectura de la plataforma Agency Tool (compartida: Valuo.pro + arroba.com + Platform Console).
 
+## 2026-08-14 — Backfill EBITDA + histórico a companies_master (activa ebitda del REQ-004) ✅⚠️
+- Script NUEVO `scripts/backfill_financials_to_companies_master.py` (aditivo, idempotente): `$set financials` en `companies_master` copiando de la canónica `master_companies` por `cif_normalized`. No borra `revenue_latest`/`employees_latest` ni nada.
+- **Ejecutado en PREVIEW y en PROD Atlas** (dry-run→apply): `companies_master.financials.latest.ebitda` 0 → **9.742**, `financials.history` 0 → **13.464**, `revenue_latest` intacto (24.992). Índices creados en ambos: `financials.latest.{revenue,ebitda,employees}`.
+- **Verificado (preview)**: `skills/search` con `ebitda_min>1M` → **total 237**, `summary.ebitda`/`ebitda_margin` ya NO salen null. ✅
+- **⚠️ TECHO DE DATO — `growth_min` sigue ~vacío**: el histórico ingerido es de **un solo año** para casi todas (dist. master_companies: 11.528 con 0 años, 13.462 con 1 año, **solo 2 con ≥2 años**), tanto en preview como en prod. `growth` necesita ≥2 años → devuelve ~0. **No es bug**: para activarlo hace falta ingerir histórico multi-año.
+- **⚠️ CALIDAD DE DATO**: algunos `ebitda` de la canónica son implausibles (ebitda>revenue → margin>100%, p.ej. CONSILIUM 1.18). Se copia tal cual; problema preexistente de parsing financiero, no del backfill.
+- **Idempotencia**: total para los 9.742 con ebitda (se saltan en re-run); los 3.722 con solo-history se re-escriben idénticos (inofensivo).
+- **Estado filtros REQ-004 tras redeploy**: revenue/employees/province/**ebitda** funcionales; growth limitado por el techo de dato.
+
+
 ## 2026-08-14 — REQ-004: filtro financiero en skills/search (screener numérico) ✅⚠️
 - **Aplicado por DIFF, aditivo** (nada borrado). `POST /api/v1/skills/search` amplía `SearchFilters` con campos opcionales `revenue_min/max`, `ebitda_min/max`, `employees_min/max`, `growth_min` (fracción), `province` (no toca cnae/category/tags/has_domain).
 - `services/skills_search.py`: `_num_clauses` empuja los predicados a Mongo (`$or` sobre `financials.latest.*` y shape legacy `*_latest`); `_build_candidate_query` combina numérico + léxico bajo `$and` (screen puro → sin `$or` léxico ni `domain`, orden por revenue desc, `SCREEN_CAP=2000`); `_passes_filters` añade guardas numéricos (métrica desconocida NO pasa); `growth` se calcula de `financials.history` si falta; cada fila emite `summary` (revenue, ebitda, ebitda_margin, growth_pct, employees, year, signal_score, signal_badge, city) y el bloque emite `total/page/page_size`. `signal_badge` snake_case ES (`alto_crecimiento`/`riesgo`).
