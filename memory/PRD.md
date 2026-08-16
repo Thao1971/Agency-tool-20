@@ -33,6 +33,13 @@
 | ADMIN | Usuarios, Roles, Seguridad, Auditoría |
 
 ## Latest changes (Agosto 2026)
+- **INTEL_todo_no_publicado.zip: filtro `ebitda_margin_min/max` en skills/search + índices + confirmación de endpoints ✅ Preview (2026-08-15)** — el zip era el MISMO consolidado ya aplicado; la única adición genuina que faltaba en vivo era el filtro por margen EBITDA (aplicado por DIFF aditivo, resto del zip iba por detrás del live y no se tocó).
+  - **`routes/skills.py`:** `SearchFilters` gana `ebitda_margin_min`/`ebitda_margin_max` (fracción: 0,30 = 30%).
+  - **`services/skills_search.py`:** 3 adiciones — `_num_screen` reconoce las nuevas claves; `_num_clauses` empuja `financials.latest.ebitda_margin` a Mongo (`rng`); `_passes_filters` añade el guard `_fail_range(_margin_of(doc), ...)`. El helper `_margin_of` y el `summary.ebitda_margin` ya existían.
+  - **Índices Mongo** (`companies_master`, Preview): revenue/ebitda/employees ya existían; creado `financials.latest.ebitda_margin_1`. **Prod (Atlas) necesita el mismo índice** (crear tras redeploy si no existe).
+  - **Endpoints confirmados existentes y registrados** (petición del README): `skills/search` (financiero), `investment-decision/*`, `signal-intelligence/succession-profile/{id}`, `investment-intelligence/{fragmentation,rollup-thesis}` (+ view). Nada que construir.
+  - **Verificado E2E:** `pytest` 9/9; filtro `ebitda_margin_min=0.30` → 0 filas por debajo; rango 0,10–0,20 (ambos bounds) → 0 violaciones. **PENDIENTE: 1 redeploy** a prod + crear índice ebitda_margin en Atlas.
+
 - **`market.reading_ai`: lectura de mercado IA (fact-lock, cacheada) cableada al bloque market ✅ Preview (2026-08-15)** — enganche pedido por el usuario tras aplicar la plantilla `market_reading`.
   - **`services/company_summary.py`:** nuevas `_market_reading_context()` (extrae SOLO el dato material ya calculado del bloque market: scores/labels/narrativas de sector+geo+concentración+posición — fact-lock, nada que la IA no tenga delante) y `resolve_market_reading(master_id, market_block)` → prosa 2-3 frases vía `generate_summary(doc_type="market_reading", fact_lock=True)`. **Caché en Mongo** `market_readings` por `master_id`+hash(contenido material) (se regenera solo si cambia el dato). Fallo/timeout/IA vacía → **None** (y NO cachea el fallo → reintenta). Proveedor configurable `MARKET_READING_PROVIDER` (default `claude`).
   - **`routes/company_ficha.py::market()`:** añade `reading_ai` al bloque (import local `company_summary as _CSUM` porque el `CS` de módulo es `control_synergy`) + `provenance.reading_ai="ai_narrative"` cuando hay texto. Viaja automáticamente en `/ficha` (que ya agrega `market`).

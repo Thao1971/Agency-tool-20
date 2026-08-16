@@ -24,6 +24,8 @@ class SearchFilters(BaseModel):
     revenue_max: Optional[float] = None
     ebitda_min: Optional[float] = None    # EBITDA ≥ (euros)
     ebitda_max: Optional[float] = None
+    ebitda_margin_min: Optional[float] = None  # margen EBITDA ≥ (fracción: 0.30 = 30%)
+    ebitda_margin_max: Optional[float] = None
     employees_min: Optional[int] = None
     employees_max: Optional[int] = None
     growth_min: Optional[float] = None    # crecimiento de ingresos YoY ≥ (fracción: 0.2 = 20%)

@@ -85,6 +85,7 @@ def _num_screen(filters: Dict) -> bool:
     """True if any financial/attribute predicate is set (→ screen mode)."""
     return any(filters.get(k) is not None for k in (
         "revenue_min", "revenue_max", "ebitda_min", "ebitda_max",
+        "ebitda_margin_min", "ebitda_margin_max",
         "employees_min", "employees_max", "growth_min", "province"))
 
 
@@ -141,6 +142,8 @@ def _num_clauses(filters: Dict) -> List[Dict]:
         filters.get("revenue_min"), filters.get("revenue_max"))
     rng("financials.latest.ebitda", None,
         filters.get("ebitda_min"), filters.get("ebitda_max"))
+    rng("financials.latest.ebitda_margin", None,
+        filters.get("ebitda_margin_min"), filters.get("ebitda_margin_max"))
     rng("financials.latest.employees", "employees_latest",
         filters.get("employees_min"), filters.get("employees_max"))
     prov = filters.get("province")
@@ -258,6 +261,8 @@ def _passes_filters(doc: Dict, web: Dict, filters: Dict) -> bool:
     if _fail_range(revenue_of(doc), filters.get("revenue_min"), filters.get("revenue_max")):
         return False
     if _fail_range(_ebitda_of(doc), filters.get("ebitda_min"), filters.get("ebitda_max")):
+        return False
+    if _fail_range(_margin_of(doc), filters.get("ebitda_margin_min"), filters.get("ebitda_margin_max")):
         return False
     if _fail_range(employees_of(doc), filters.get("employees_min"), filters.get("employees_max")):
         return False
