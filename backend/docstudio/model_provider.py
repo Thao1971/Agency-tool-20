@@ -204,8 +204,12 @@ async def _call_provider(provider: str, task: str, prompt: str, document_id: str
         audit["response"] = str(e)[:500]
         audit["status"] = "error"
 
-    # Save audit
-    await db.docstudio_ai_audit.insert_one(audit)
+    # Save audit (best-effort: telemetría; nunca debe romper la generación, y debe tolerar
+    # ejecutarse en un event loop de un hilo worker donde el cliente Motor global no aplica).
+    try:
+        await db.docstudio_ai_audit.insert_one(audit)
+    except Exception:
+        pass
 
     # Remove internal metadata
     result.pop("_model", None)

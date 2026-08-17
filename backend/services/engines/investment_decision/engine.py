@@ -2,6 +2,7 @@
 Determinista: misma entrada ⇒ mismo score, banda y decision_id."""
 
 import os
+import asyncio
 from typing import Dict, List
 from models import now_iso
 from services.engines.investment_decision import ENGINE_VERSION, models as M
@@ -15,6 +16,13 @@ from services.engines.investment_decision.committee import build_committee
 # Provider de la narrativa (Fase 6). Config por entorno: claude (calidad) | nvidia (coste) | openai.
 NARRATIVE_PROVIDER = os.environ.get("IDE_NARRATIVE_PROVIDER", "claude")
 _PROVIDER_KEY = {"claude": "EMERGENT_LLM_KEY", "openai": "EMERGENT_LLM_KEY", "nvidia": "NVIDIA_API_KEY"}
+
+# HARDENING-038d · La narrativa IA es el ÚNICO paso lento del comité (el veredicto
+# determinista —score/banda/10 opiniones/razonamiento— ya está completo antes). Con
+# cap corto, analyze() responde por debajo del cap del proxy de Beta (7.5s) y del edge
+# (~8s): si el LLM no entra en presupuesto, se mantiene la prosa determinista (el
+# comité SIGUE mostrando su veredicto real en el primer clic).
+_NARRATIVE_TIMEOUT_S: float = float(os.environ.get("IDE_NARRATIVE_TIMEOUT_S", "4.0"))
 
 
 def _narrative_enabled() -> bool:
@@ -32,8 +40,17 @@ async def _apply_ai_narrative(consensus: Dict, profile: Dict) -> Dict:
     try:
         from docstudio.model_provider import generate_summary
         ctx = P.narrative_context(consensus, profile)
-        ai = await generate_summary(ctx, doc_type="investment_decision",
-                                    provider=NARRATIVE_PROVIDER, fact_lock=True) or {}
+        # La librería LLM (emergentintegrations) BLOQUEA el event loop pese a ser `async`
+        # (medido: wait_for(4s) directo sobre la corrutina tardaba ~17s en cortar). Se
+        # descarga a un hilo con su propio loop → el loop principal queda LIBRE y el cap
+        # de _NARRATIVE_TIMEOUT_S corta de verdad en presupuesto. Si el LLM no entra a
+        # tiempo, salta TimeoutError (capturado abajo) y se mantiene la prosa determinista.
+        ai = await asyncio.wait_for(
+            asyncio.to_thread(lambda: asyncio.run(
+                generate_summary(ctx, doc_type="investment_decision",
+                                 provider=NARRATIVE_PROVIDER, fact_lock=True))),
+            timeout=_NARRATIVE_TIMEOUT_S,
+        ) or {}
         if ai.get("executive_summary") and "error" not in ai and "raw_text" not in ai:
             consensus["executive_summary"] = ai["executive_summary"]
             if ai.get("conclusion"):
