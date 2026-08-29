@@ -1,8 +1,10 @@
 """Iberinform Processing — Admin endpoints for import and recalculation."""
 
 import asyncio
+import io
 import os
 import shutil
+import tempfile
 import time
 import uuid
 import zipfile
@@ -25,10 +27,9 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/admin/iberinform", tags=["iberinform_admin"])
 
-# Where uploaded monthly deliveries get extracted. One subdirectory per run_id, kept
-# around after processing for audit/debugging (not auto-cleaned — a monthly ~10MB zip
-# is cheap to retain; revisit if this ever needs pruning).
-DELIVERIES_DIR = Path(__file__).resolve().parent.parent / "data" / "iberinform_deliveries"
+# Uploaded deliveries are extracted to EPHEMERAL pod-local scratch (system temp via
+# tempfile), used only for the in-request background load into Mongo and never served
+# back to clients — so no durable/object storage is needed for this transient workflow.
 
 
 @router.post("/generate-synthetic")
@@ -145,14 +146,12 @@ async def upload_delivery(file: UploadFile = File(...), user=Depends(get_current
         raise HTTPException(400, "El fichero esta vacio")
 
     run_id = f"delivery_{uuid.uuid4().hex[:12]}"
-    extract_dir = DELIVERIES_DIR / run_id
-    extract_dir.mkdir(parents=True, exist_ok=True)
+    extract_dir = Path(tempfile.mkdtemp(prefix=f"{run_id}_"))
 
-    zip_path = extract_dir / "_original.zip"
-    zip_path.write_bytes(content)
-
+    # Extrae el zip directamente desde memoria — el archivo subido NUNCA se escribe en el
+    # pod; solo los .tab derivados aterrizan en el scratch temporal para el load a Mongo.
     try:
-        with zipfile.ZipFile(zip_path) as zf:
+        with zipfile.ZipFile(io.BytesIO(content)) as zf:
             zf.extractall(extract_dir)
     except zipfile.BadZipFile:
         shutil.rmtree(extract_dir, ignore_errors=True)

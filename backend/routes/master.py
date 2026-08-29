@@ -318,6 +318,49 @@ async def publication_pipeline(user=Depends(get_current_user)):
     }
 
 
+# ══════════════════════════════════════════
+# LITERAL ROUTES (deben ir ANTES de /{mc_id} para no quedar sombreadas)
+# ══════════════════════════════════════════
+
+@router.get("/audit-log")
+async def list_audit_log(
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    user=Depends(get_current_user)
+):
+    """Global audit log for entity resolution and publication."""
+    total = await db.er_audit_logs.count_documents({})
+    logs = await db.er_audit_logs.find({}, {"_id": 0}).sort("timestamp", -1).skip(offset).limit(limit).to_list(limit)
+    return {"logs": logs, "total": total}
+
+
+@router.get("/er-config")
+async def get_er_config(user=Depends(get_current_user)):
+    """Get current entity resolution thresholds."""
+    cfg = await db.er_config.find_one({"config_id": "default"}, {"_id": 0})
+    from services.entity_resolution import DEFAULTS
+    return {"config": {**DEFAULTS, **(cfg or {})}}
+
+
+@router.put("/er-config")
+async def update_er_config(body: dict, user=Depends(get_current_user)):
+    """Update entity resolution thresholds."""
+    allowed = {"auto_merge_threshold", "conflict_threshold", "cif_exact_score",
+               "domain_exact_score", "legal_name_weight", "commercial_name_weight", "alias_weight"}
+    update = {k: v for k, v in body.items() if k in allowed}
+    if not update:
+        raise HTTPException(400, "No valid fields")
+
+    update["config_id"] = "default"
+    update["updated_at"] = now_iso()
+    update["updated_by"] = user.get("email", user.get("id"))
+
+    await db.er_config.update_one(
+        {"config_id": "default"}, {"$set": update}, upsert=True
+    )
+    return {"status": "updated", "config": update}
+
+
 @router.get("/{mc_id}")
 async def get_master_company(mc_id: str, user=Depends(get_current_user)):
     company = await db.companies_master.find_one({"master_company_id": mc_id}, {"_id": 0})
@@ -432,18 +475,6 @@ async def unpublish_from_valuo(mc_id: str, user=Depends(get_current_user)):
         "performed_by": email, "timestamp": now,
     })
     return {"status": "unpublished"}
-
-
-@router.get("/audit-log")
-async def list_audit_log(
-    limit: int = Query(50, ge=1, le=200),
-    offset: int = Query(0, ge=0),
-    user=Depends(get_current_user)
-):
-    """Global audit log for entity resolution and publication."""
-    total = await db.er_audit_logs.count_documents({})
-    logs = await db.er_audit_logs.find({}, {"_id": 0}).sort("timestamp", -1).skip(offset).limit(limit).to_list(limit)
-    return {"logs": logs, "total": total}
 
 
 @router.post("/bulk-verify")
@@ -591,34 +622,3 @@ async def ingest_all_from_scraper(user=Depends(get_current_user)):
     # Process in batches
     req = IngestFromScraperRequest(agency_result_ids=unlinked_ids[:500])
     return await ingest_from_scraper(req, user)
-
-
-# ══════════════════════════════════════════
-# ER CONFIG
-# ══════════════════════════════════════════
-
-@router.get("/er-config")
-async def get_er_config(user=Depends(get_current_user)):
-    """Get current entity resolution thresholds."""
-    cfg = await db.er_config.find_one({"config_id": "default"}, {"_id": 0})
-    from services.entity_resolution import DEFAULTS
-    return {"config": {**DEFAULTS, **(cfg or {})}}
-
-
-@router.put("/er-config")
-async def update_er_config(body: dict, user=Depends(get_current_user)):
-    """Update entity resolution thresholds."""
-    allowed = {"auto_merge_threshold", "conflict_threshold", "cif_exact_score",
-               "domain_exact_score", "legal_name_weight", "commercial_name_weight", "alias_weight"}
-    update = {k: v for k, v in body.items() if k in allowed}
-    if not update:
-        raise HTTPException(400, "No valid fields")
-
-    update["config_id"] = "default"
-    update["updated_at"] = now_iso()
-    update["updated_by"] = user.get("email", user.get("id"))
-
-    await db.er_config.update_one(
-        {"config_id": "default"}, {"$set": update}, upsert=True
-    )
-    return {"status": "updated", "config": update}

@@ -225,7 +225,7 @@ async def get_analytics(user=Depends(get_current_user)):
 
     # ── Top buyers ──
     buyer_pipeline = [
-        {"$match": {**f, "buyer_name": {"$ne": None}, "buyer_name": {"$ne": ""}}},
+        {"$match": {**f, "buyer_name": {"$nin": [None, ""]}}},
         {"$group": {
             "_id": "$buyer_name",
             "count": {"$sum": 1},
@@ -2347,7 +2347,7 @@ async def soft_delete_transaction(tx_id: str, req: DeleteRequest, user=Depends(g
 
 
 @router.post("/{tx_id}/mark-ready")
-async def mark_ready(tx_id: str, user=Depends(get_current_user)):
+async def mark_ready_manual(tx_id: str, user=Depends(get_current_user)):
     """Manually mark as ready for publishing."""
     now = now_iso()
     email = user.get("email", user["id"])

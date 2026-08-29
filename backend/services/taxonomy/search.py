@@ -30,25 +30,6 @@ _LABEL_IDX = _build_label_index()
 _IS_NODE = {"sector", "industry", "category"}
 
 
-# Overrides deterministas por alias de nodo (frase con límite de palabra, más largo primero).
-# Se comprueban ANTES del emparejamiento difuso → garantizan la resolución de expresiones curadas.
-def _build_alias_overrides():
-    by_id: Dict[str, Dict] = {}
-    for n in REG.build_nodes():
-        by_id[n["id"]] = {"id": n["id"], "kind": n["level"], "label": n["label_es"]}
-    items = []
-    for n in REG.build_nodes():
-        for a in (n.get("aliases") or []):
-            na = _norm(a)
-            if na:
-                items.append((na, by_id[n["id"]]))
-    items.sort(key=lambda x: -len(x[0]))
-    return items
-
-
-_ALIAS_OVERRIDES = _build_alias_overrides()
-
-
 def _stem_token(w: str) -> str:
     """Raíz ligera ES: quita plural (-es/-s) y vocal final de género (-o/-a) para casar
     'farmacéutico'/'farmacéutica'/'farmacéuticas' → 'farmaceutic'. Conserva palabras cortas."""
@@ -92,6 +73,44 @@ _STOPWORDS = {
 }
 
 
+def _strip_stopwords(t: str) -> str:
+    """BUGFIX-2026-08-29 · quita las mismas palabras de relleno que ya usa el
+    emparejamiento por n-gramas mas abajo, pero aplicado tambien al chequeo de
+    ALIAS CURADOS (ver _build_alias_overrides/resolve_label). Antes los alias
+    solo casaban contra la frase tal cual, asi que un alias curado como
+    "agencias de marketing" NO reconocia "agencias marketing" (sin "de") como
+    la misma frase, y la consulta caia al emparejamiento difuso generico -- que
+    para una palabra tan comun como "agencias" puede resolver a la categoria
+    equivocada (ej. "Agencias" de viajes, ver comentario en NODE_ALIASES de
+    registry.py). Si tras quitar relleno no queda nada, devolvemos el texto
+    original (evita vaciar consultas de una sola stopword)."""
+    tokens = [w for w in t.split() if w and w not in _STOPWORDS]
+    return " ".join(tokens) if tokens else t
+
+
+# Overrides deterministas por alias de nodo (frase con límite de palabra, más largo primero).
+# Se comprueban ANTES del emparejamiento difuso → garantizan la resolución de expresiones curadas.
+# Cada entrada guarda la forma normalizada del alias (na) Y su forma sin
+# conectores (na_sw) — ver resolve_label, que compara la consulta contra
+# ambas, así "agencias de marketing" y "agencias marketing" casan con el
+# mismo alias curado sin tener que listar cada variante a mano.
+def _build_alias_overrides():
+    by_id: Dict[str, Dict] = {}
+    for n in REG.build_nodes():
+        by_id[n["id"]] = {"id": n["id"], "kind": n["level"], "label": n["label_es"]}
+    items = []
+    for n in REG.build_nodes():
+        for a in (n.get("aliases") or []):
+            na = _norm(a)
+            if na:
+                items.append((na, _strip_stopwords(na), by_id[n["id"]]))
+    items.sort(key=lambda x: -len(x[0]))
+    return items
+
+
+_ALIAS_OVERRIDES = _build_alias_overrides()
+
+
 def resolve_label(text: str) -> Optional[Dict]:
     """Mapea un texto libre ('salud', 'adtech', 'sector farmacéutico', 'busca empresas de fintech'…)
     a {id, kind, label}. Tolera frases completas: descarta palabras de relleno, prueba n-gramas de
@@ -102,10 +121,13 @@ def resolve_label(text: str) -> Optional[Dict]:
     t = _norm(text)
     if not t:
         return None
+    t_sw = _strip_stopwords(t)
 
     # Alias curados (determinista): si una expresión conocida aparece como frase, gana.
-    for na, node in _ALIAS_OVERRIDES:
-        if _phrase_in(na, t):
+    # Se prueba tanto la frase tal cual como la versión sin conectores (BUGFIX-2026-08-29,
+    # ver _strip_stopwords) para que un alias con "de" reconozca también la consulta sin "de".
+    for na, na_sw, node in _ALIAS_OVERRIDES:
+        if _phrase_in(na, t) or _phrase_in(na_sw, t_sw):
             return node
 
     tokens = [w for w in t.split() if w and w not in _STOPWORDS]

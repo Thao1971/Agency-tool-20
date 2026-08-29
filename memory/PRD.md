@@ -33,6 +33,20 @@
 | ADMIN | Usuarios, Roles, Seguridad, Auditoría |
 
 ## Latest changes (Agosto 2026)
+- **Limpieza de 13 lint bloqueantes (deuda preexistente) para deploy-readiness ✅ Preview (2026-08-29)** — surgieron en el gate de pre-cierre; ninguno relacionado con la taxonomía, todos corregidos de forma quirúrgica y verificados (`py_compile` OK, backend 200):
+  - `routes/master.py`: rutas literales `/audit-log` y `/er-config` (GET+PUT) MOVIDAS por encima de `/{mc_id}` (antes quedaban sombreadas → inalcanzables; ahora resuelven, 401 con auth).
+  - `routes/iberinform_admin.py`: el upload ya NO escribe el archivo subido en disco del pod — se extrae el zip desde memoria (`io.BytesIO`) a scratch temporal (`tempfile.mkdtemp`); solo los `.tab` derivados tocan disco (transitorio, se consumen en el load a Mongo).
+  - `docstudio/composer.py`: F821 `_mar` indefinido → `_mar = kpis.get("ebitda_margin")` (margen de la empresa vs Q3 sectorial).
+  - `editorial/routes.py`: eliminados re-imports redundantes (`dedupe_hash`, `classify_item`) que ya venían del top-level.
+  - `transactions/routes.py`: F601 clave `buyer_name` duplicada → `{"$nin": [None, ""]}`; F811 2ª función `mark_ready` → `mark_ready_manual` (ruta `/{tx_id}/mark-ready` intacta).
+  - `transactions/__init__.py` + `tests/test_batch_classification.py`: `except:` → `except Exception:`.
+
+- **BUGFIX-2026-08-29: resolve_label reconoce forma sin conectores + alias "publicidad" ✅ Preview (2026-08-29)** — aplicado `Intel-290826_deploy_pendiente` (2 archivos: `services/taxonomy/registry.py` + `services/taxonomy/search.py`), copia directa (diff confirmó base idéntica, solo el bugfix; sin contenido live-ahead que perder). `py_compile` OK.
+  - **`registry.py`:** +3 alias en S03 (`agencias/agencia/empresas de publicidad`) — misma familia que "marketing".
+  - **`search.py`:** nuevo `_strip_stopwords()`; `_build_alias_overrides` guarda también la forma sin conectores (`na_sw`); `resolve_label` compara la consulta contra ambas (`_phrase_in(na,t) or _phrase_in(na_sw,t_sw)`) → un alias con "de" reconoce la consulta sin "de" sin listarla a mano.
+  - **Verificado E2E (service-key):** 5 variantes → mismo nodo **S03** (Medios, Marketing y Comunicación), counts coherentes: `agencias marketing`, `agencias de marketing`, `agencias de publicidad`, `agencia de publicidad`, `agencias publicidad`. Sin regresión (controles): `agencias de viajes`→Viajes y turismo, `agencias de seguros`→Seguros (ninguno cae en S03).
+  - **PENDIENTE (acción del usuario):** Save to GitHub → Deploy a prod. **ORDEN CRÍTICO:** desplegar Intel en la misma ventana que Beta o antes (Beta ya revirtió su parche propio; si solo se despliega Beta, la búsqueda seguirá mal en prod).
+
 - **HARDENING-038d: comité rápido en el primer clic (<7,5s) ✅ Preview (2026-08-15)** — aplicado `INTEL_038d_comite_fast_v1.zip` (reemplazo de `investment_decision/engine.py`) PERO con corrección necesaria: **el parche del zip tal cual NO cumplía el objetivo** (medido 17-21s, no <7,5s).
   - **Causa raíz (medida, no supuesta):** la librería LLM `emergentintegrations` BLOQUEA el event loop pese a ser `async`, así que el `asyncio.wait_for(generate_summary(...), 4s)` del zip NO cortaba: tardaba ~17s en disparar el timeout (el temporizador no corre mientras el loop está bloqueado). El veredicto determinista (score/banda/10 opiniones/razonamiento) ya estaba listo en ~0,1s; el único lento es la narrativa IA (~20s con claude).
   - **Fix aplicado:** (1) `engine.py::_apply_ai_narrative` descarga la narrativa a un hilo con su propio loop (`asyncio.wait_for(asyncio.to_thread(lambda: asyncio.run(generate_summary(...))), timeout=_NARRATIVE_TIMEOUT_S)`) → el loop principal queda libre y el cap corta de verdad en presupuesto. (2) `docstudio/model_provider.py::_call_provider` audit ahora best-effort (try/except) porque el cliente Motor global está atado al loop principal y crasheaba en el loop del hilo ("attached to a different loop"). Cap configurable `IDE_NARRATIVE_TIMEOUT_S` (default 4.0).

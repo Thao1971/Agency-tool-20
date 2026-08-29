@@ -227,8 +227,16 @@ def dimension_id(dimension: str, label: str) -> str:
 
 # Alias curados por nodo → resuelven expresiones habituales de lenguaje natural al nodo correcto
 # (evita que "agencias de marketing/viajes" caigan en la categoría genérica "Agencias").
+# BUGFIX-2026-08-29 · añadidas variantes de "publicidad" a S03: "Publicidad" ya
+# es una categoría real dentro de S03 (industria "Agencias creativas", ver
+# SEED más arriba), así que "agencia de publicidad" es la misma familia que
+# "agencia de marketing" y debe resolver al mismo sector, no quedarse sin
+# alias curado. Las variantes sin "de" (p.ej. "agencias marketing") ya no
+# hace falta listarlas a mano — resolve_label/_strip_stopwords en search.py
+# las reconoce automáticamente contra estas mismas entradas.
 NODE_ALIASES: Dict[str, List[str]] = {
-    "S03": ["agencias de marketing", "agencia de marketing", "empresas de marketing"],
+    "S03": ["agencias de marketing", "agencia de marketing", "empresas de marketing",
+            "agencias de publicidad", "agencia de publicidad", "empresas de publicidad"],
     "IND-S04-viajes-y-turismo": ["agencias de viajes", "agencia de viajes",
                                  "agencias de turismo", "agencia de turismo"],
     "IND-S05-industria-farmaceutica": ["laboratorio farmaceutico", "laboratorios farmaceuticos",

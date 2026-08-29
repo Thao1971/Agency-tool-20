@@ -2479,6 +2479,7 @@ async def compose_investment_memo(company_id: str = None, cif: str = None,
     _mar_gap = ""
     try:
         _q = benchmark.get("ebitda_margin", {})
+        _mar = kpis.get("ebitda_margin")
         if _q and _q.get("q3") is not None and _mar is not None and _mar < _q["q3"]:
             _mar_gap = (f" El margen EBITDA actual ({_pct(_mar)}) está por debajo del tercer cuartil del sector "
                         f"({_pct(_q['q3'])}), lo que sugiere recorrido de mejora operativa.")

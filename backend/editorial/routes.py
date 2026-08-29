@@ -157,8 +157,6 @@ async def email_status(user=Depends(get_current_user)):
 async def email_sync(max_emails: int = Query(15), user=Depends(get_current_user)):
     """Sync newsletters from email inbox."""
     from editorial.email_agent import fetch_newsletters
-    from editorial.source_agent import dedupe_hash
-    from editorial.classify_agent import classify_item
     from editorial.compose_agent import compose_bullet, detect_entities
 
     newsletters = fetch_newsletters(max_emails=max_emails)

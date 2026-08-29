@@ -79,7 +79,7 @@ def test_transactions_without_category(api_client):
     for tx in created_txs:
         try:
             api_client.delete(f"{BASE_URL}/api/v1/transactions/{tx['transaction_id']}")
-        except:
+        except Exception:
             pass
 
 

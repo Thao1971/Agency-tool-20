@@ -294,7 +294,7 @@ def calculate_similarity(a: Dict, b: Dict) -> Dict:
             da = datetime.fromisoformat(a["announcement_date"])
             db = datetime.fromisoformat(b["announcement_date"])
             date_dist = abs((da - db).days)
-        except:
+        except Exception:
             pass
 
     type_compat = a.get("transaction_type") == b.get("transaction_type")
