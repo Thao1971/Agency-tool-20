@@ -17,12 +17,16 @@ from services.engines.investment_decision.committee import build_committee
 NARRATIVE_PROVIDER = os.environ.get("IDE_NARRATIVE_PROVIDER", "claude")
 _PROVIDER_KEY = {"claude": "EMERGENT_LLM_KEY", "openai": "EMERGENT_LLM_KEY", "nvidia": "NVIDIA_API_KEY"}
 
-# HARDENING-038d · La narrativa IA es el ÚNICO paso lento del comité (el veredicto
-# determinista —score/banda/10 opiniones/razonamiento— ya está completo antes). Con
-# cap corto, analyze() responde por debajo del cap del proxy de Beta (7.5s) y del edge
-# (~8s): si el LLM no entra en presupuesto, se mantiene la prosa determinista (el
-# comité SIGUE mostrando su veredicto real en el primer clic).
-_NARRATIVE_TIMEOUT_S: float = float(os.environ.get("IDE_NARRATIVE_TIMEOUT_S", "4.0"))
+# HARDENING-038e · La narrativa IA (prosa florida) es el ÚNICO paso lento del comité: el
+# veredicto determinista —score/banda/10 opiniones/razonamiento— ya está completo antes.
+# En vez de bloquear la respuesta con un cap corto, analyze() devuelve el veredicto al
+# INSTANTE y genera la prosa en SEGUNDO PLANO, cacheándola por decision_id (mismo
+# veredicto ⇒ mismo id ⇒ en el siguiente clic la prosa ya está lista). La librería LLM
+# bloquea el event loop, así que la generación se descarga a un hilo (loop principal libre).
+_NARRATIVE_BG_TIMEOUT_S: float = float(os.environ.get("IDE_NARRATIVE_BG_TIMEOUT_S", "120"))
+
+# Guarda en proceso: evita lanzar dos generaciones IA a la vez para el mismo decision_id.
+_narrative_inflight: set = set()
 
 
 def _narrative_enabled() -> bool:
@@ -30,35 +34,48 @@ def _narrative_enabled() -> bool:
     return bool(os.environ.get(_PROVIDER_KEY.get(NARRATIVE_PROVIDER, "")))
 
 
-async def _apply_ai_narrative(consensus: Dict, profile: Dict) -> Dict:
-    """Fase 6 — redacción fact-lock. Solo reescribe executive_summary / investment_thesis a partir
-    de la decisión YA tomada; NUNCA toca score, banda, comité ni razonamiento. Best-effort."""
-    consensus["meta"]["narrative_provider"] = NARRATIVE_PROVIDER
-    consensus["meta"]["narrative_ai"] = False
-    if not _narrative_enabled():
-        return consensus
+async def _generate_narrative(consensus: Dict, profile: Dict) -> Dict:
+    """Genera la prosa IA (fact-lock) SIN cap corto. La librería LLM bloquea el event loop,
+    así que se descarga a un hilo con su propio loop (loop principal libre); una red de
+    seguridad amplia evita hilos colgados para siempre. Devuelve el dict de la IA o {}."""
+    from docstudio.model_provider import generate_summary
+    ctx = P.narrative_context(consensus, profile)
     try:
-        from docstudio.model_provider import generate_summary
-        ctx = P.narrative_context(consensus, profile)
-        # La librería LLM (emergentintegrations) BLOQUEA el event loop pese a ser `async`
-        # (medido: wait_for(4s) directo sobre la corrutina tardaba ~17s en cortar). Se
-        # descarga a un hilo con su propio loop → el loop principal queda LIBRE y el cap
-        # de _NARRATIVE_TIMEOUT_S corta de verdad en presupuesto. Si el LLM no entra a
-        # tiempo, salta TimeoutError (capturado abajo) y se mantiene la prosa determinista.
-        ai = await asyncio.wait_for(
+        return await asyncio.wait_for(
             asyncio.to_thread(lambda: asyncio.run(
                 generate_summary(ctx, doc_type="investment_decision",
                                  provider=NARRATIVE_PROVIDER, fact_lock=True))),
-            timeout=_NARRATIVE_TIMEOUT_S,
+            timeout=_NARRATIVE_BG_TIMEOUT_S,
         ) or {}
-        if ai.get("executive_summary") and "error" not in ai and "raw_text" not in ai:
-            consensus["executive_summary"] = ai["executive_summary"]
-            if ai.get("conclusion"):
-                consensus["investment_thesis"] = ai["conclusion"]
-            consensus["meta"]["narrative_ai"] = True
     except Exception:
-        pass  # degradación limpia: se mantiene la prosa determinista
-    return consensus
+        return {}
+
+
+def _apply_narrative(consensus: Dict, ai: Dict) -> bool:
+    """Aplica la prosa IA al consenso in-place (solo executive_summary / investment_thesis;
+    NUNCA toca score, banda, comité ni razonamiento). Devuelve True si se aplicó."""
+    if ai.get("executive_summary") and "error" not in ai and "raw_text" not in ai:
+        consensus["executive_summary"] = ai["executive_summary"]
+        if ai.get("conclusion"):
+            consensus["investment_thesis"] = ai["conclusion"]
+        consensus["meta"]["narrative_ai"] = True
+        return True
+    return False
+
+
+async def _bg_narrative(record: Dict, profile: Dict) -> None:
+    """Tarea en segundo plano: genera la prosa IA (sin cap) y actualiza la decisión
+    almacenada → cache por decision_id para el siguiente clic. Best-effort, nunca lanza."""
+    did = record["decision_id"]
+    consensus = record["result"]
+    try:
+        ai = await _generate_narrative(consensus, profile)
+        consensus["meta"]["narrative_status"] = "ready" if _apply_narrative(consensus, ai) else "failed"
+        await store.save({**record, "result": consensus})
+    except Exception:
+        pass
+    finally:
+        _narrative_inflight.discard(did)
 
 
 async def analyze(request: Dict) -> Dict:
@@ -104,13 +121,31 @@ async def analyze(request: Dict) -> Dict:
         "buyer_profile": profile["type"], "generated_at": now_iso(),
         "deterministic": True, "source": resolved["source"],
         "status": ("insufficient_data" if resolved["coverage"] < S.MIN_COVERAGE else "ok"),
+        "narrative_provider": NARRATIVE_PROVIDER, "narrative_ai": False,
     }
-    # 4. Capa narrativa (Fase 6, fact-lock) — no altera números ni banda
-    consensus = await _apply_ai_narrative(consensus, profile)
 
-    await store.save({"decision_id": did, "opportunity_id": request.get("opportunity_id"),
-                      "buyer_profile": profile["type"], "result": consensus,
-                      "created_at": now_iso()})
+    # 4. Prosa IA (Fase 6, fact-lock) — NO altera números ni banda. Veredicto INSTANTÁNEO:
+    #    (a) si ya hay prosa cacheada para este decision_id (mismo veredicto), se sirve al
+    #    instante; (b) si no, se devuelve la prosa determinista YA y la IA se genera en
+    #    SEGUNDO PLANO y se cachea por decision_id (Beta sondea GET /decision/{id} hasta
+    #    narrative_status=="ready").
+    record = {"decision_id": did, "opportunity_id": request.get("opportunity_id"),
+              "buyer_profile": profile["type"], "result": consensus, "created_at": now_iso()}
+    cres = ((await store.get(did)) or {}).get("result") or {}
+    if cres.get("meta", {}).get("narrative_ai") and cres.get("executive_summary"):
+        consensus["executive_summary"] = cres["executive_summary"]
+        consensus["investment_thesis"] = cres.get("investment_thesis", consensus["investment_thesis"])
+        consensus["meta"]["narrative_ai"] = True
+        consensus["meta"]["narrative_status"] = "cached"
+    elif _narrative_enabled():
+        consensus["meta"]["narrative_status"] = "generating"
+        await store.save(record)
+        if did not in _narrative_inflight:
+            _narrative_inflight.add(did)
+            asyncio.create_task(_bg_narrative(record, profile))
+    else:
+        consensus["meta"]["narrative_status"] = "deterministic"
+        await store.save(record)
     return consensus
 
 
