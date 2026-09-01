@@ -189,18 +189,6 @@ async def _gather_demography() -> Dict:
     for div_code, share in CNAE_DIVISION_DISTRIBUTION.items():
         data["by_division"][div_code] = round(total * share)
 
-    # Override with actual counts from iberinform_companies if higher
-    ib_pipeline = [
-        {"$group": {"_id": "$cnae_division", "count": {"$sum": 1}}},
-    ]
-    ib_by_cnae = await db.iberinform_companies.aggregate(ib_pipeline).to_list(200)
-    for item in ib_by_cnae:
-        code = str(item["_id"])
-        if code in data["by_division"]:
-            # Keep the DIRCE estimate (it's the national reality)
-            # but record actual Iberinform count for enrichment signal
-            pass
-
     return data
 
 
@@ -259,22 +247,24 @@ async def _gather_borme() -> Dict:
 
 
 async def _gather_iberinform() -> Dict:
-    """Gather Iberinform company data by CNAE."""
+    """Fase 4 (2026-09-01) · Conteo de empresas por CNAE desde `master_companies`
+    (modelo moderno) en vez de `iberinform_companies` (modelo legado). Mismo shape de
+    salida que antes, nada más de este archivo cambia. `avg_revenue` se deja a 0:
+    no se lee en ningún otro punto de este módulo."""
     data = {"by_division": {}, "total": 0}
 
     pipeline = [
-        {"$match": {"cnae_code": {"$exists": True, "$ne": None}}},
+        {"$match": {"classification.cnae_code": {"$exists": True, "$ne": None}}},
         {"$group": {
-            "_id": {"$substr": ["$cnae_code", 0, 2]},
+            "_id": {"$substr": ["$classification.cnae_code", 0, 2]},
             "count": {"$sum": 1},
-            "avg_revenue": {"$avg": {"$ifNull": ["$revenue", 0]}},
         }},
     ]
-    by_cnae = await db.iberinform_companies.aggregate(pipeline).to_list(100)
+    by_cnae = await db.master_companies.aggregate(pipeline).to_list(200)
     for item in by_cnae:
-        data["by_division"][item["_id"]] = {
+        data["by_division"][str(item["_id"])] = {
             "count": item["count"],
-            "avg_revenue": item.get("avg_revenue", 0),
+            "avg_revenue": 0,
         }
     data["total"] = sum(d["count"] for d in data["by_division"].values())
 

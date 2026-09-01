@@ -12,6 +12,8 @@ from models import now_iso
 from services.engines.financial import metrics as M
 from services.engines.financial import ratios_library as R
 from services.engines.financial import market_multiples as MM
+from services.engines.financial import iberinform_ratios as IR
+from services.engines.financial import pgc_account_labels as PGC
 
 ENGINE_VERSION = "financial-intelligence-v1"
 
@@ -702,6 +704,36 @@ async def analyze(identifier: str) -> Optional[Dict]:
     overall_conf = round(min(1.0, 0.3 + 0.5 * (quality["score"] / 100) + (0.2 if len(series) >= 2 else 0)), 2)
     ranking_block = await ranking(master, latest)
     provenance = _build_provenance(kpis, ratios, statements, ranking_block)
+    # Fase 5 (2026-09-01) · ratios oficiales de Iberinform (28 acordados el 24/07).
+    _latest_norm_doc = next(
+        (f for f in norm if f.get("year") == latest.get("year") and f.get("basis") == latest.get("basis")),
+        None,
+    )
+    _raw_iberinform_ratios = (
+        (_latest_norm_doc or {}).get("ratios")
+        if (_latest_norm_doc or {}).get("ratios_source") == "iberinform" else None
+    )
+    iberinform_ratios = IR.curate(_raw_iberinform_ratios)
+
+    # Fase 6 (2026-09-01) · Desglose completo de balance/PyG (~212 partidas verificadas).
+    # Reutiliza el mismo `_latest_norm_doc` de arriba. R15: los códigos sin etiqueta
+    # verificada salen con label_es: null, nunca se inventan.
+    statements["detail"] = PGC.curate_breakdown((_latest_norm_doc or {}).get("accounts"))
+
+    # Fase 6 (2026-09-01) · Cuentas consolidadas de grupo — puramente aditivo: NO cambia
+    # qué basis usa el resto del análisis (individual). Bloque paralelo solo si existen.
+    statements_consolidated = None
+    series_consolidated = M.build_series_strict(norm, basis="consolidated")
+    if series_consolidated:
+        _latest_c = series_consolidated[0]
+        statements_consolidated = M.statements(_latest_c, employees)
+        _latest_c_doc = next(
+            (f for f in norm if f.get("year") == _latest_c.get("year")
+             and f.get("basis") == _latest_c.get("basis")),
+            None,
+        )
+        statements_consolidated["detail"] = PGC.curate_breakdown((_latest_c_doc or {}).get("accounts"))
+
     return {
         "master_id": master["master_id"], "cif_normalized": cif,
         "identity": {"name": (master.get("identity") or {}).get("legal_name"),
@@ -712,9 +744,11 @@ async def analyze(identifier: str) -> Optional[Dict]:
         "has_financials": True,
         "ranking": ranking_block,
         "statements": statements,
+        "statements_consolidated": statements_consolidated,
         "kpis": kpis,
         "kpis_prior": kpis_prior,
         "ratios": ratios,
+        "iberinform_ratios": iberinform_ratios,
         "provenance": provenance,
         "evolution": evolution,
         "financial_quality": quality,

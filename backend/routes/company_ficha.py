@@ -716,6 +716,102 @@ async def market(identifier: str, _key=Depends(require_service_key)):
     return result
 
 
+def _norm_bme_name(s: str) -> str:
+    """Misma normalización que ya usa el matching en vivo de BME para Valuo
+    (services/intelligence_engine/sources/bme.py) — reutilizada tal cual."""
+    s = (s or "").upper()
+    s = re.sub(r"[,\.]", " ", s)
+    s = re.sub(r"\s+", " ", s).strip()
+    return s
+
+
+async def _bme_listing_for(legal_name: Optional[str]) -> Optional[Dict]:
+    """Busca en vivo si la empresa cotiza en BME, por nombre (mismo criterio que el
+    matching de Valuo: prefijo del nombre sin sufijo societario, primeros 12 caracteres)."""
+    if not legal_name:
+        return None
+    name_norm = _norm_bme_name(legal_name)
+    base = re.sub(r"\b(S\s*A|S\s*L|SA|SL|SAU|SLU)\b\s*$", "", name_norm).strip()
+    if len(base) < 3:
+        return None
+    pattern = f"^{re.escape(base[:12])}"
+    return await db.bme_companies.find_one(
+        {"company_name": {"$regex": pattern, "$options": "i"}},
+        {"_id": 0, "company_name": 1, "isin": 1, "ticker": 1, "market_segment": 1,
+         "market_cap": 1, "sector": 1, "share_price": 1, "annual_performance": 1})
+
+
+async def _cnmv_entity_for(nif: Optional[str]) -> Optional[Dict]:
+    """Busca en vivo si la propia empresa está registrada como entidad regulada por
+    la CNMV (gestora/fondo), por NIF exacto (mismo criterio que el matching de Valuo)."""
+    if not nif:
+        return None
+    return await db.cnmv_entities.find_one(
+        {"nif": nif},
+        {"_id": 0, "entity_type": 1, "entity_type_label": 1, "name": 1, "registration_number": 1})
+
+
+@router.get("/{identifier}/capital-markets")
+async def capital_markets(identifier: str, _key=Depends(require_service_key)):
+    """Mercados de capitales (CNMV/BME): si la empresa cotiza en Bolsa (BME), si está
+    registrada como entidad regulada por la CNMV, y compradores institucionales CNMV
+    activos en su CNAE (fondos/gestoras). Bloque nuevo (2026-09-01) — no existía
+    ninguna fuente de este dato en la Ficha hasta ahora. Null-safe por sub-bloque
+    (available), igual que el resto de bloques de esta Ficha."""
+    master = await _master(identifier)
+    if not master:
+        raise HTTPException(status_code=404, detail="Company not found")
+    ident = master.get("identity") or {}
+    cls = master.get("classification") or {}
+    cif_raw = ident.get("cif") or master["cif_normalized"]
+    legal_name = ident.get("legal_name")
+    cnae_code = cls.get("cnae_code")
+
+    listing = await _bme_listing_for(legal_name)
+    listing_block = ({"available": True,
+                       "company_name": listing.get("company_name"),
+                       "isin": listing.get("isin"),
+                       "ticker": listing.get("ticker"),
+                       "market_segment": listing.get("market_segment"),
+                       "market_cap": listing.get("market_cap"),
+                       "share_price": listing.get("share_price"),
+                       "annual_performance": listing.get("annual_performance"),
+                       "sector": listing.get("sector")}
+                      if listing else {"available": False, "reason": "not_listed"})
+
+    entity = await _cnmv_entity_for(cif_raw)
+    regulated_block = ({"available": True,
+                         "entity_type": entity.get("entity_type"),
+                         "entity_type_label": entity.get("entity_type_label"),
+                         "name": entity.get("name"),
+                         "registration_number": entity.get("registration_number")}
+                        if entity else {"available": False, "reason": "not_cnmv_registered"})
+
+    buyers_block = {"available": False, "reason": "no_cnae"}
+    if cnae_code:
+        try:
+            from services.cnmv_investor_intelligence import get_buyers_for_cnae
+            buyers = await get_buyers_for_cnae(cnae_code)
+            total = (buyers.get("total_buyers", 0) or 0) + (buyers.get("total_managers", 0) or 0)
+            buyers_block = {"available": total > 0, "total": total,
+                             "buyers": buyers.get("total_buyers", 0),
+                             "managers": buyers.get("total_managers", 0)}
+            if total == 0:
+                buyers_block["reason"] = "no_buyers_in_cnae"
+        except Exception:
+            buyers_block = {"available": False, "reason": "engine_error"}
+
+    return {
+        "identifier": identifier, "cif": master["cif_normalized"], "master_id": master["master_id"],
+        "available": listing_block["available"] or regulated_block["available"] or buyers_block["available"],
+        "listing": listing_block,
+        "cnmv_regulated": regulated_block,
+        "potential_buyers": buyers_block,
+        "is_public_company": listing_block["available"],
+        "engine_version": ENGINE_VERSION,
+    }
+
+
 # ── Propiedad / grafo de control (mockup): accionistas → compañía → participadas ──
 # DPD: personas físicas anonimizadas; personas jurídicas con nombre (canon + ownership).
 _LEGAL_MARKERS = {
@@ -1110,12 +1206,18 @@ async def ficha(identifier: str, _key=Depends(require_service_key)):
     identity = _build_identity(master).model_dump()
     governance_block = await governance(identifier, _key=None)
     market_block = await market(identifier, _key=None)
+    capital_markets_block = await capital_markets(identifier, _key=None)
     signals_block = await signals(identifier, _key=None)
     control_graph_block = await _control_graph_block(master)
 
     # Resumen (§ redistribución): verified + auditor + descripción enriquecida con flag de origen.
     identity["verified"] = bool((finances or {}).get("has_financials"))
     identity["auditor"] = _first_auditor(governance_block)
+    # Fase 2 (2026-09-01) · alimenta el chip "Cotizada" de cabecera (COMP-1003),
+    # que ya existía en Beta pero nunca recibía dato.
+    identity["is_listed"] = capital_markets_block["listing"]["available"]
+    identity["is_listed_label_es"] = "Cotizada" if identity["is_listed"] else "No cotizada"
+    identity["listed_market"] = capital_markets_block["listing"].get("market_segment")
     _desc = await CS.resolve_description(master["master_id"], identity, identity.get("activity_es"))
     identity["description"] = _desc["description"]
     identity["description_source"] = _desc["description_source"]
@@ -1130,6 +1232,7 @@ async def ficha(identifier: str, _key=Depends(require_service_key)):
         "events": await events(identifier, _key=None),
         "signals": signals_block,
         "market": market_block,
+        "capital_markets": capital_markets_block,
         "control_graph": control_graph_block,
         "opportunity": {
             "thesis": CS.opportunity_thesis(finances, market_block),

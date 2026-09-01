@@ -1337,18 +1337,23 @@ async def save_document_as_template(
 
 @router.get("/financial/company/{company_id}")
 async def financial_analysis_company(company_id: str, user=Depends(get_current_user)):
-    """Run full financial analysis for a company (deterministic, no AI)."""
+    """Run full financial analysis for a company (deterministic, no AI).
+
+    Fase 1 (2026-09-01): deja de leer la colección legacy `iberinform_financials`
+    y delega en el motor financiero canónico moderno (vía docstudio/data_access.py),
+    el mismo que ya usa compose_company_profile(). `company_id` acepta master_id o
+    cif_normalized. Sin caller conocido en Intel/Beta/tests (verificado por grep)."""
     t0 = time.time()
-    from docstudio.financial_engine import analyze_company_financials
+    from docstudio import data_access as DA
 
-    financials = await db.iberinform_financials.find(
-        {"company_id": company_id}, {"_id": 0}
-    ).sort("year", 1).to_list(10)
-
-    if not financials:
+    company = await DA.resolve_company(identifier=company_id)
+    if not company:
         raise HTTPException(404, "No financial data for this company")
 
-    analysis = analyze_company_financials(financials)
+    analysis = await DA.financial_profile(company_id)
+    if not analysis:
+        raise HTTPException(404, "No financial data for this company")
+
     return {**_meta(t0), "company_id": company_id, "analysis": analysis}
 
 
@@ -1368,31 +1373,33 @@ async def compare_company_to_sector(
     cnae_code: str = Query(...),
     user=Depends(get_current_user),
 ):
-    """Compare a company against its sector peers (deterministic, no AI)."""
+    """Compare a company against its sector peers (deterministic, no AI).
+
+    Fase 1 (2026-09-01): el dato de la empresa objetivo deja de venir de
+    `iberinform_financials` (legacy) y pasa a leerse de `master_companies` (vía
+    docstudio/data_access.py). Mismo shape de respuesta que la versión legacy."""
     t0 = time.time()
+    from docstudio import data_access as DA
     from docstudio.financial_engine import (
-        analyze_company_financials, analyze_sector_benchmark,
-        sector_comparison, revenue_per_employee, ebitda_margin as calc_ebitda_margin,
+        analyze_sector_benchmark, revenue_per_employee, gap_vs_benchmark,
     )
 
-    financials = await db.iberinform_financials.find(
-        {"company_id": company_id}, {"_id": 0}
-    ).sort("year", -1).limit(1).to_list(1)
-
-    if not financials:
+    company = await DA.resolve_company(identifier=company_id)
+    latest = (company.get("financials") or {}).get("latest") if company else None
+    if not latest:
         raise HTTPException(404, "No financial data")
 
-    latest = financials[0]
+    employees = (company.get("size") or {}).get("employees_total")
     benchmark = await analyze_sector_benchmark(cnae_code)
 
     company_metrics = {
         "revenue": latest.get("revenue"),
         "ebitda": latest.get("ebitda"),
-        "employees": latest.get("employees"),
+        "employees": employees,
         "ebitda_margin": latest.get("ebitda_margin"),
     }
-    rev = latest.get("revenue", 0)
-    emp = latest.get("employees", 0)
+    rev = latest.get("revenue") or 0
+    emp = employees or 0
     if rev and emp:
         company_metrics["revenue_per_employee"] = revenue_per_employee(rev, emp)
 
@@ -1402,7 +1409,6 @@ async def compare_company_to_sector(
         for metric in ["revenue", "ebitda", "ebitda_margin", "revenue_per_employee"]:
             q = benchmark.get(metric, {})
             if q and company_metrics.get(metric) is not None:
-                from docstudio.financial_engine import gap_vs_benchmark
                 company_metrics[f"{metric}_vs_median"] = gap_vs_benchmark(
                     company_metrics[metric], q.get("median", 0)
                 )

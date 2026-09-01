@@ -210,24 +210,36 @@ async def _gather_procurement() -> Dict:
 
 
 async def _gather_iberinform() -> Dict:
-    """Iberinform company data by province."""
+    """Fase 4 (2026-09-01) · Conteo de empresas por provincia desde `master_companies`
+    (modelo moderno) en vez de `iberinform_companies` (modelo legado). Mismo shape de
+    salida (`by_province` con claves = código INE). `master_companies.location.provincia`
+    es nombre libre — se resuelve con `resolve_borme_province`. R15: los nombres que no
+    resuelvan no se descartan en silencio, quedan en el log."""
     data = {"by_province": {}, "total": 0}
 
     pipeline = [
-        {"$match": {"province_code": {"$exists": True, "$ne": None}}},
-        {"$group": {
-            "_id": "$province_code",
-            "count": {"$sum": 1},
-            "avg_revenue": {"$avg": {"$ifNull": ["$revenue", 0]}},
-        }},
+        {"$match": {"location.provincia": {"$exists": True, "$nin": [None, ""]}}},
+        {"$group": {"_id": "$location.provincia", "count": {"$sum": 1}}},
     ]
-    by_prov = await db.iberinform_companies.aggregate(pipeline).to_list(60)
-    for item in by_prov:
-        data["by_province"][str(item["_id"])] = {
-            "count": item["count"],
-            "avg_revenue": item.get("avg_revenue", 0),
-        }
+    by_name = await db.master_companies.aggregate(pipeline).to_list(3000)
+    unmapped: Dict[str, int] = {}
+    for item in by_name:
+        name = (item["_id"] or "").strip()
+        code = resolve_borme_province(name)
+        if code:
+            cur = data["by_province"].get(code, {"count": 0, "avg_revenue": 0})
+            cur["count"] += item["count"]
+            data["by_province"][code] = cur
+        else:
+            unmapped[name] = unmapped.get(name, 0) + item["count"]
     data["total"] = sum(d["count"] for d in data["by_province"].values())
+    if unmapped:
+        logger.warning(
+            "geo_intelligence._gather_iberinform: %d nombres de provincia de "
+            "master_companies no resuelven a código INE (%d empresas en total) — "
+            "no se cuentan en dynamism_score. Detalle: %s",
+            len(unmapped), sum(unmapped.values()), unmapped,
+        )
     return data
 
 

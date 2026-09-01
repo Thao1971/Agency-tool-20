@@ -80,6 +80,23 @@ def build_series(norm_fin_docs: List[Dict], basis: str = "individual") -> List[D
     return out
 
 
+def build_series_strict(norm_fin_docs: List[Dict], basis: str) -> List[Dict]:
+    """Fase 6 (2026-09-01) · Igual que `build_series()` pero SIN el fallback a
+    cualquier otro basis: devuelve `[]` si no hay ningún documento con ese `basis`
+    exacto. Uso: exponer explícitamente las cuentas consolidadas de grupo como
+    bloque aparte, sin heredar individual por error."""
+    docs = [f for f in norm_fin_docs if f.get("basis") == basis]
+    docs = sorted(docs, key=lambda f: (f.get("year") or 0), reverse=True)
+    out = []
+    for f in docs:
+        m = _year_metrics(f.get("accounts") or {})
+        m["year"] = f.get("year")
+        m["basis"] = f.get("basis")
+        m["fiscal_close_date"] = f.get("fiscal_close_date")
+        out.append(m)
+    return out
+
+
 def statements(latest: Dict, employees: Optional[int]) -> Dict:
     """Structured income statement + balance sheet for the latest year. Cashflow N/A (individual)."""
     return {

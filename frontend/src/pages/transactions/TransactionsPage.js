@@ -427,7 +427,7 @@ export default function TransactionsPage() {
       </div>
 
       {/* 4 Main Views */}
-      <Tabs value={view} onValueChange={(v) => { setView(v); setOffset(0); }}>
+      <Tabs value={view} onValueChange={(v) => { setView(v); setPage(0); }}>
         <div className="flex items-center gap-2">
           <TabsList className="bg-zinc-900 border border-zinc-800 p-1">
             <TabsTrigger value="all" className="data-[state=active]:bg-zinc-800 data-[state=active]:text-zinc-50 text-zinc-400 text-[10px]" data-testid="view-all">
