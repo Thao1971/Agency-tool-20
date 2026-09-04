@@ -1,16 +1,62 @@
 """Public Procurement — Routes for contract ingestion, CPV scope, and company matching."""
 
 from fastapi import APIRouter, HTTPException, Depends, Query, UploadFile, File
-from typing import Optional
+from typing import Optional, Dict
 from database import db
 from models import new_id, now_iso
 from auth_utils import get_current_user
 from services.procurement_connector import parse_and_ingest_csv, INITIAL_CPV_SCOPE
 import logging
+import time
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/public-procurement", tags=["public_procurement"])
+
+
+# ══════════════════════════════════════════
+# CACHE + total-count sin escaneo
+# ──────────────────────────────────────────
+# Alerta real de Atlas ("Query Targeting", scanned/returned 7.100,7 en Arroba-pro):
+# la causa era `count_documents({})` sin índice repetido cada 5-10 min en /status,
+# /overview (pública) y /validation-report — cada uno un COLLSCAN completo de 659k+
+# contratos. Arreglo: (1) `_total_contracts()` usa estimated_document_count() (lee
+# metadatos de la colección, sin escaneo) con fallback honesto a count_documents({});
+# (2) cache en memoria con TTL por ruta, invalidada al ingerir (/sync, /sync-placsp).
+# Los conteos FILTRADOS internos (matched/pending/agregados) NO se tocan: siguen igual,
+# solo se cachea la respuesta completa de cada endpoint.
+_STATUS_CACHE: Dict = {"data": None, "ts": 0.0, "ttl": 60}
+_OVERVIEW_CACHE: Dict = {"data": None, "ts": 0.0, "ttl": 600}
+_VALIDATION_CACHE: Dict = {"data": None, "ts": 0.0, "ttl": 600}
+
+
+async def _total_contracts() -> int:
+    """Total de contratos SIN COLLSCAN: estimated_document_count() lee los metadatos
+    de la colección. Fallback a count_documents({}) si el driver/servidor no lo soporta."""
+    try:
+        return await db.public_procurement_contracts.estimated_document_count()
+    except Exception:
+        return await db.public_procurement_contracts.count_documents({})
+
+
+def _cache_get(cache: Dict):
+    if cache["data"] is not None and (time.time() - cache["ts"]) < cache["ttl"]:
+        return cache["data"]
+    return None
+
+
+def _cache_set(cache: Dict, data):
+    cache["data"] = data
+    cache["ts"] = time.time()
+    return data
+
+
+def _invalidate_procurement_caches():
+    """Se llama tras cada ingesta para que /status, /overview y /validation-report
+    reflejen los nuevos contratos en la siguiente petición (no esperan al TTL)."""
+    for c in (_STATUS_CACHE, _OVERVIEW_CACHE, _VALIDATION_CACHE):
+        c["data"] = None
+        c["ts"] = 0.0
 
 
 # ══════════════════════════════════════════
@@ -19,7 +65,10 @@ router = APIRouter(prefix="/api/v1/public-procurement", tags=["public_procuremen
 
 @router.get("/status")
 async def procurement_status(user=Depends(get_current_user)):
-    total = await db.public_procurement_contracts.count_documents({})
+    cached = _cache_get(_STATUS_CACHE)
+    if cached is not None:
+        return cached
+    total = await _total_contracts()
     matched = await db.public_procurement_contracts.count_documents({"matched_company_id": {"$ne": None}})
     pending = await db.public_procurement_contracts.count_documents({"review_status": "pending_review"})
     visible = await db.public_procurement_contracts.count_documents({"visible_in_valuo": True})
@@ -34,7 +83,7 @@ async def procurement_status(user=Depends(get_current_user)):
     last_sync = await db.procurement_sync_logs.find_one({}, {"_id": 0, "synced_at": 1}, sort=[("synced_at", -1)])
     last_log = await db.procurement_sync_logs.find_one({}, {"_id": 0}, sort=[("synced_at", -1)])
 
-    return {
+    return _cache_set(_STATUS_CACHE, {
         "provider": "public_procurement",
         "name": "Contratacion Publica",
         "total_contracts": total,
@@ -45,13 +94,16 @@ async def procurement_status(user=Depends(get_current_user)):
         "cpv_codes_active": cpv_active,
         "last_sync_at": last_sync.get("synced_at") if last_sync else None,
         "last_sync_stats": last_log,
-    }
+    })
 
 
 @router.get("/overview")
 async def procurement_overview():
     """Comprehensive overview for the Contratacion Publica page. Public endpoint."""
-    total = await db.public_procurement_contracts.count_documents({})
+    cached = _cache_get(_OVERVIEW_CACHE)
+    if cached is not None:
+        return cached
+    total = await _total_contracts()
     if total == 0:
         return {"total_contracts": 0}
 
@@ -112,7 +164,7 @@ async def procurement_overview():
     # Last sync
     last_sync = await db.procurement_sync_logs.find_one({}, {"_id": 0}, sort=[("synced_at", -1)])
 
-    return {
+    return _cache_set(_OVERVIEW_CACHE, {
         "total_contracts": total,
         "total_amount_eur": round(amount.get("total", 0), 2),
         "avg_amount_eur": round(amount.get("avg", 0), 2),
@@ -130,7 +182,7 @@ async def procurement_overview():
         "field_coverage": {k: {"count": v, "pct": round(v / total * 100, 1)} for k, v in fields.items()},
         "economic_intelligence": {"metrics": econ_metrics, "signals": econ_signals},
         "last_sync": last_sync,
-    }
+    })
 
 
 # ══════════════════════════════════════════
@@ -248,6 +300,7 @@ async def sync_procurement(file: UploadFile = File(...), user=Depends(get_curren
     source_url = f"upload:{file.filename}"
 
     result = await parse_and_ingest_csv(csv_text, source_url, email)
+    _invalidate_procurement_caches()
     return result
 
 
@@ -271,7 +324,9 @@ async def sync_placsp_endpoint(
     if years:
         year_list = [int(y.strip()) for y in years.split(",")]
 
-    return await sync_placsp(years=year_list, dataset=dataset, max_files=max_files)
+    result = await sync_placsp(years=year_list, dataset=dataset, max_files=max_files)
+    _invalidate_procurement_caches()
+    return result
 
 
 # ══════════════════════════════════════════
@@ -281,7 +336,10 @@ async def sync_placsp_endpoint(
 @router.get("/validation-report")
 async def validation_report(user=Depends(get_current_user)):
     """Full validation report for procurement data quality."""
-    total = await db.public_procurement_contracts.count_documents({})
+    cached = _cache_get(_VALIDATION_CACHE)
+    if cached is not None:
+        return cached
+    total = await _total_contracts()
     matched = await db.public_procurement_contracts.count_documents({"matched_company_id": {"$ne": None}})
     pending = await db.public_procurement_contracts.count_documents({"review_status": "pending_review"})
     unmatched = await db.public_procurement_contracts.count_documents({"review_status": "unmatched"})
@@ -340,7 +398,7 @@ async def validation_report(user=Depends(get_current_user)):
     companies_with = await db.public_procurement_contracts.aggregate(companies_pipeline).to_list(1)
     companies_count = companies_with[0]["total"] if companies_with else 0
 
-    return {
+    return _cache_set(_VALIDATION_CACHE, {
         "summary": {
             "total_contracts": total,
             "matched": matched,
@@ -363,7 +421,7 @@ async def validation_report(user=Depends(get_current_user)):
         "top_awardees": [{"name": a["_id"], "contracts": a["count"], "amount": round(a["total"], 2), "matched": a.get("matched") is not None} for a in top_awardees],
         "top_buyers": [{"name": b["_id"], "contracts": b["count"], "amount": round(b["total"], 2)} for b in top_buyers],
         "top_cpvs": [{"cpv": c["_id"], "contracts": c["count"], "amount": round(c["total"], 2)} for c in top_cpvs],
-    }
+    })
 
 
 # ══════════════════════════════════════════

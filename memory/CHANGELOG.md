@@ -2,6 +2,13 @@
 
 > Registro de cambios de arquitectura de la plataforma Agency Tool (compartida: Valuo.pro + arroba.com + Platform Console).
 
+## 2026-06 — FIX Atlas "Query Targeting" en `routes/procurement.py` (cache + estimated_document_count) ✅ (solo PREVIEW)
+- **Bug**: alerta real de Atlas (`Arroba-pro`, scanned/returned 7.100,7) por `count_documents({})` sin índice repetido cada 5-10 min en `/status`, `/overview` (pública) y `/validation-report` — cada uno un COLLSCAN completo de 678k+ contratos (`public_procurement_contracts`).
+- **Cambio (traslado de un fix hecho en el checkout local de Daniel, no estaba en /app)**: `_total_contracts()` usa `estimated_document_count()` (metadatos, sin escaneo) con fallback a `count_documents({})`; cache en memoria con TTL por ruta (status 60s, overview/validation-report 600s) vía `_cache_get`/`_cache_set`; `_invalidate_procurement_caches()` llamado al final de `/sync` y `/sync-placsp`. Los conteos FILTRADOS internos (matched/pending/agregados) NO se tocan.
+- **Verificado**: `py_compile` OK; único `count_documents({})` restante = fallback interno de `_total_contracts()` (más 3 en comentarios); smoke E2E → `/overview`, `/status`, `/validation-report` devuelven total 678.125 y conteos filtrados intactos. **NO** desplegado (Daniel dispara el deploy).
+- **FIX taxonomía tolerante a conectores + alias "publicidad" (`search.py`/`registry.py`)**: verificado que YA estaba aplicado en /app (parte del pack Fase 0-6), SIN drift — `_strip_stopwords` + `resolve_label` (literal + sin conectores) y los 3 alias de S03 ("agencias/agencia/empresas de publicidad") coinciden con la versión de Daniel. No requirió cambios.
+
+
 ## 2026-06 — FIX signo periodos medios en `iberinform_ratios.py` (Fase 5) ✅ (solo PREVIEW)
 - **Bug**: los ratios de "periodo medio" (días) que dependen de cuentas de coste (aprovisionamientos 40400, guardadas en negativo en BD) salían negativos en el módulo nuevo de Fase 5 `services/engines/financial/iberinform_ratios.py`, que hace passthrough de los 28 ratios oficiales de Iberinform sin normalizar signo. Misma raíz que el fix que Daniel aplicó en `ratios_library.py` (ratios propios de arroba).
 - **Cambio**: whitelist `POSITIVE_PERIOD_CODES = {"SF021","SF022","SF023"}` (cobro/pago/aprovisionamiento); `curate()` aplica `abs(val)` SOLO a esos tres. Alcance = opción (a) confirmada por Daniel (SF021 incluido por robustez aunque divida por ingresos). NO se tocan márgenes (REN005/006/007), ROA/ROE (REN001/003), variación de ventas (REN010) ni fondo de maniobra (PRO001) — pueden ser legítimamente negativos.
