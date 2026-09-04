@@ -69,6 +69,52 @@ PIPELINE_VERSION = "ingest-tab-v1"
 _ACCOUNT_CODES = set(ACCOUNT_MAP.keys())
 
 
+# La entrega real de 25.000 empresas trae en Datos_RATIOS.tab los nombres de ratio en
+# inglés descriptivo (p.ej. "Interest coverage", "Working capital"), NO los códigos
+# cortos (SF021, SF022…) que se asumieron del fixture de una sola empresa. Sin traducir,
+# ingest_ratios_file() guardaría norm_financials.ratios con claves no localizables por la
+# UI de Fase 5 (iberinform_ratios.py mapea por código). Este mapa traduce nombre EN →
+# código canónico; los ratios no mapeados se guardan tal cual (regla "guardar todo").
+RATIO_NAME_TO_CODE = {
+    # Tier 1
+    "Interest coverage": "SF025",
+    "Average payment deadline": "SF021",  # periodo medio de cobro (nombre ambiguo, ver IBERINFORM_RATIOS_PRIORITY.md)
+    "Average payment term": "SF022",      # periodo medio de pago
+    "Average supply term": "SF023",
+    "Working capital": "PRO001",
+    "Coefficient of immediate liquidity": "SF003",  # entrega real dice "Coefficient of immediate liquidity", no solo "Immediate liquidity"
+    "Treasury coefficient": "SF004",
+    "Quality of the debt": "SF008",
+    "Long-term debt ratio": "SF009",
+    "Short-term debt ratio": "SF010",
+    # Tier 2
+    "Personnel expenses per employee": "EFI008",
+    "Sales per employee": "EFI006",
+    "Productivity": "PRO002",
+    "Leverage": "PRO005",
+    "Active rotation": "EFI001",
+    "Rotation of the working capital": "EFI003",  # entrega real añade "the"
+    # Tier 3
+    "Ebitda / sales": "REN007",
+    "Net margin": "REN005",
+    "Margin on sales": "REN006",
+    "Economic profitability": "REN001",
+    "Financial profit": "REN003",
+    "Sales variation": "REN010",
+    "Solvency ratio": "SF001",
+    "Debt ratio A": "SF006",
+    "Debt ratio B": "SF007",
+    "Coefficient of guarantee": "SF011",
+    # Tier 4 (excluidos de exposición en documentos, pero se guardan igual - ver
+    # IBERINFORM_RATIOS_PRIORITY.md)
+    "Financing stocks": "SF019",
+    "Availability ratio": "SF024",
+    # R01 (Rating) y S01 (Solvency) no aparecen en la entrega real - sin entrada aquí,
+    # si algún día Iberinform los incluye llegarían con su nombre EN sin traducir
+    # (ver fallback abajo) hasta que se añadan a este mapa.
+}
+
+
 def _stream_tab_rows(path: str):
     enc = detect_encoding(path)
     with open(path, encoding=enc, errors="replace", newline="") as fh:
@@ -365,7 +411,11 @@ async def ingest_ratios_file(path: str, source_version: str, job_id: str, basis:
         if val is None:
             continue
         cif_by_norm[cifn] = cif
-        ratios_by[(cifn, year)][code] = val
+        # Traduce nombre EN -> código canónico cuando lo conocemos; si Iberinform manda
+        # un ratio nuevo que no está en el mapa, se guarda con su nombre tal cual (nunca
+        # se descarta - "guardar todo" sigue siendo la regla).
+        canon_code = RATIO_NAME_TO_CODE.get(code, code)
+        ratios_by[(cifn, year)][canon_code] = val
 
     now = now_iso()
     for (cifn, year), ratios in ratios_by.items():

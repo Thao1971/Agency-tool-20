@@ -2,6 +2,12 @@
 
 > Registro de cambios de arquitectura de la plataforma Agency Tool (compartida: Valuo.pro + arroba.com + Platform Console).
 
+## 2026-06 — FIX `RATIO_NAME_TO_CODE` en `iberinform_tab_ingest.py` (previo a re-ingesta 25k) ✅ (solo PREVIEW)
+- **Bug silencioso**: la entrega real de 25.000 empresas trae en `Datos_RATIOS.tab` los nombres de ratio en inglés descriptivo ("Interest coverage", "Working capital"…), NO los códigos cortos (SF021, SF022…) que se asumieron del fixture de una sola empresa. Sin traducir, `ingest_ratios_file()` poblaría `norm_financials.ratios` con claves no localizables por la UI de Fase 5 (`iberinform_ratios.py` mapea por código) → rompería en silencio la tarjeta de ratios.
+- **Cambio (traslado de fix del checkout local de Daniel, no estaba en /app)**: dict `RATIO_NAME_TO_CODE` (28 entradas nombre EN → código, Tier 1-4) tras `_ACCOUNT_CODES`; en `ingest_ratios_file()`, `canon_code = RATIO_NAME_TO_CODE.get(code, code)` antes de guardar y se usa `canon_code` como clave. Ratios no mapeados se conservan tal cual (regla "guardar todo").
+- **Verificado**: `py_compile` OK; los 28 nombres EN traducen a código; nombre no mapeado ("Some Brand New Ratio") se conserva; 26/28 códigos casan con la UI de Fase 5 (SF019/SF024 son Tier 4, excluidos de exposición a propósito pero almacenados). **NO** desplegado. Es el último fix antes de que Daniel lance la re-ingesta real de 25k.
+
+
 ## 2026-06 — FIX Atlas "Query Targeting" en `routes/procurement.py` (cache + estimated_document_count) ✅ (solo PREVIEW)
 - **Bug**: alerta real de Atlas (`Arroba-pro`, scanned/returned 7.100,7) por `count_documents({})` sin índice repetido cada 5-10 min en `/status`, `/overview` (pública) y `/validation-report` — cada uno un COLLSCAN completo de 678k+ contratos (`public_procurement_contracts`).
 - **Cambio (traslado de un fix hecho en el checkout local de Daniel, no estaba en /app)**: `_total_contracts()` usa `estimated_document_count()` (metadatos, sin escaneo) con fallback a `count_documents({})`; cache en memoria con TTL por ruta (status 60s, overview/validation-report 600s) vía `_cache_get`/`_cache_set`; `_invalidate_procurement_caches()` llamado al final de `/sync` y `/sync-placsp`. Los conteos FILTRADOS internos (matched/pending/agregados) NO se tocan.
