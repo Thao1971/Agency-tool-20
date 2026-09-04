@@ -65,6 +65,15 @@ IBERINFORM_RATIOS: Dict[str, Tuple[str, str, int]] = {
 # contra el diccionario oficial de Iberinform.
 UNVERIFIED_CODES = {"SF021", "SF022", "SF023", "SF006", "SF007"}
 
+# Periodos medios (métricas de "días"): conceptualmente NUNCA pueden ser negativos.
+# SF022/SF023 dividen por aprovisionamientos (cuenta de coste, guardada en negativo en
+# BD → arrastran el signo); SF021 divide por ingresos y hoy no está afectado por este
+# bug, pero se trata igual por robustez (misma lógica que ratios_library.py: un periodo
+# medio es siempre no-negativo por definición). Se normaliza con abs() en `curate()`.
+# NO se toca ningún otro ratio: márgenes, ROA/ROE, variación de ventas (REN010) y fondo
+# de maniobra (PRO001) SÍ pueden ser legítimamente negativos y deben pasar tal cual.
+POSITIVE_PERIOD_CODES = {"SF021", "SF022", "SF023"}
+
 
 def curate(raw_ratios: Optional[Dict[str, float]]) -> Optional[Dict[str, Dict]]:
     """`raw_ratios`: dict código Iberinform -> valor, tal cual llega de
@@ -80,6 +89,8 @@ def curate(raw_ratios: Optional[Dict[str, float]]) -> Optional[Dict[str, Dict]]:
     for code, (name, label_es, tier) in IBERINFORM_RATIOS.items():
         val = raw_ratios.get(code)
         if val is not None:
+            if code in POSITIVE_PERIOD_CODES:
+                val = abs(val)
             out[name] = {
                 "value": val,
                 "label_es": label_es,

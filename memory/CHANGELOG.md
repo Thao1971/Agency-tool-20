@@ -2,6 +2,14 @@
 
 > Registro de cambios de arquitectura de la plataforma Agency Tool (compartida: Valuo.pro + arroba.com + Platform Console).
 
+## 2026-06 — FIX signo periodos medios en `iberinform_ratios.py` (Fase 5) ✅ (solo PREVIEW)
+- **Bug**: los ratios de "periodo medio" (días) que dependen de cuentas de coste (aprovisionamientos 40400, guardadas en negativo en BD) salían negativos en el módulo nuevo de Fase 5 `services/engines/financial/iberinform_ratios.py`, que hace passthrough de los 28 ratios oficiales de Iberinform sin normalizar signo. Misma raíz que el fix que Daniel aplicó en `ratios_library.py` (ratios propios de arroba).
+- **Cambio**: whitelist `POSITIVE_PERIOD_CODES = {"SF021","SF022","SF023"}` (cobro/pago/aprovisionamiento); `curate()` aplica `abs(val)` SOLO a esos tres. Alcance = opción (a) confirmada por Daniel (SF021 incluido por robustez aunque divida por ingresos). NO se tocan márgenes (REN005/006/007), ROA/ROE (REN001/003), variación de ventas (REN010) ni fondo de maniobra (PRO001) — pueden ser legítimamente negativos.
+- **NO** se documenta/expone "proveedores prepagados" en tooltips (instrucción explícita). **NO** se despliega a producción — solo preview.
+- **Verificado**: unit `curate()` con negativos → SF021/22/23 = 45/60/30 positivos, resto intacto; smoke E2E ficha real Servier (`mc_36c100bcee4a`, inyección temporal + restauración de BD) → avg_collection=45, avg_payment=60, avg_supply=30, net_margin=-3.2 (correcto). Doc: `memory/PENDING_FIXES/FIX_SIGNO_PERIODOS_MEDIOS_IBERINFORM.md`.
+- **Nota datos**: 0 docs con `ratios_source:"iberinform"` en BD todavía → re-ingesta .tab de 25k sigue pendiente; el fix ya está listo para cuando se ingeste.
+
+
 ## 2026-08-14 — REQ-004b: scoping por sector en skills/search (sector + financiero) ✅⚠️
 - **Aditivo**: `SearchFilters` +campo `master_company_ids: List[str]`; `_build_candidate_query` restringe con `master_company_id: {$in: ids}` (verbatim del zip). Beta resuelve el sector con `company-taxonomy/search` y pasa esos ids junto a los rangos numéricos → intersección ids ∩ numérico.
 - **⚠️ PUENTE DE IDS añadido (desviación necesaria del zip)**: los `company_ids` de taxonomía son `master_id` canónico (`mc_...`), pero `skills/search` lee la colección legacy `companies_master` cuyo `master_company_id` es un **UUID distinto**. Aplicar el zip tal cual daría SIEMPRE 0 resultados. En `search_companies` traduzco `mc_* → cif_normalized (master_companies) → master_company_id UUID (companies_master)` antes de construir la query; ids que no resuelven → centinela `__no_match__` (devuelve 0, nunca todo el universo). Acepta también ids legacy UUID directos.
