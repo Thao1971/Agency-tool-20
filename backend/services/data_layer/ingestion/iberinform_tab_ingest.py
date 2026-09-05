@@ -56,7 +56,7 @@ from typing import Dict, Optional, Tuple
 from database import db
 from models import now_iso
 from services.data_layer.normalize import normalize_cif, name_key, build_aliases, division_of, resolve_section
-from services.data_layer.ingestion.csv_stream import detect_encoding, file_stats
+from services.data_layer.ingestion.csv_stream import detect_encoding
 from services.data_layer.ingestion.account_map import parse_amount, derive_metrics, ACCOUNT_MAP
 from services.data_layer.ingestion.bulk import BulkUpserter
 from services.data_layer.ingestion.iberinform_ingest import _manifest_base, _finish_manifest, ensure_indexes
@@ -123,6 +123,68 @@ def _stream_tab_rows(path: str):
             yield row
 
 
+# ── TabSource: abstrae UN Datos_*.tab, ya sea en disco (PathTabSource) o dentro de un
+# zip leído por streaming desde R2 (ZipTabSource). Da a las ingest_*_file() las 3 cosas
+# que necesitan (manifiesto, cabecera y filas) sin que sepan de dónde vienen los bytes.
+# Así la MISMA lógica de ingesta sirve para el flujo de disco de siempre y para el nuevo
+# de R2, sin materializar el zip ni los .tab descomprimidos en disco. ──
+class PathTabSource:
+    def __init__(self, path: str):
+        self.path = path
+        self.name = os.path.basename(path)
+
+    def manifest_base(self, source_version, job_id, target):
+        return _manifest_base(self.path, source_version, job_id, target)
+
+    def header(self):
+        enc = detect_encoding(self.path)
+        with open(self.path, encoding=enc, errors="replace", newline="") as fh:
+            return csv.DictReader(fh, delimiter="\t").fieldnames
+
+    def rows(self):
+        yield from _stream_tab_rows(self.path)
+
+
+class ZipTabSource:
+    def __init__(self, delivery, base: str):
+        self.delivery = delivery
+        self.name = base
+
+    def manifest_base(self, source_version, job_id, target):
+        # Mismo shape que iberinform_ingest._manifest_base, pero SIN abrir disco: el
+        # checksum es el CRC-32 y los bytes el file_size del directorio central del zip
+        # (checksum distinto al sha256 del flujo de disco — solo es trazabilidad de linaje).
+        checksum, nbytes = self.delivery.member_stats(self.name)
+        return {
+            "source_file_id": str(uuid.uuid4()),
+            "file_name": self.name,
+            "source_version": source_version,
+            "checksum": f"crc32:{checksum}",
+            "bytes": nbytes,
+            "ingestion_job_id": job_id,
+            "target_collection": target,
+            "lineage": {"layer": "raw->normalized", "produces": target},
+            "pipeline_version": PIPELINE_VERSION,
+            "started_at": now_iso(),
+            "status": "running",
+        }
+
+    def header(self):
+        with self.delivery.open_text(self.name) as fh:
+            return csv.DictReader(fh, delimiter="\t").fieldnames
+
+    def rows(self):
+        with self.delivery.open_text(self.name) as fh:
+            reader = csv.DictReader(fh, delimiter="\t")
+            for row in reader:
+                yield row
+
+
+def _as_src(path_or_src):
+    """Los callers antiguos pasan una ruta str; los nuevos (R2) pasan ya un TabSource."""
+    return PathTabSource(path_or_src) if isinstance(path_or_src, str) else path_or_src
+
+
 def _s(row: Dict, key: str) -> str:
     v = row.get(key)
     return str(v).strip() if v is not None else ""
@@ -134,15 +196,16 @@ def _int(v: str) -> Optional[int]:
 
 
 # ── GENERALES → norm_company (+ parent_co ownership edge) ──────────────
-async def ingest_generales_file(path: str, source_version: str, job_id: str) -> Dict:
-    man = _manifest_base(path, source_version, job_id, "norm_company")
+async def ingest_generales_file(src, source_version: str, job_id: str) -> Dict:
+    src = _as_src(src)
+    man = src.manifest_base(source_version, job_id, "norm_company")
     up_company = BulkUpserter(db.norm_company)
     up_own = BulkUpserter(db.norm_ownership)
     rows = 0
     parent_edges = 0
     now = now_iso()
 
-    for r in _stream_tab_rows(path):
+    for r in src.rows():
         rows += 1
         cif = _s(r, "REG_NUMBER")
         cifn = normalize_cif(cif)
@@ -208,8 +271,9 @@ async def ingest_generales_file(path: str, source_version: str, job_id: str) -> 
 
 
 # ── BALANCES → norm_financials (EAV pivot, FULL: every balance/P&L/cash-flow line) ──
-async def ingest_balances_file(path: str, source_version: str, job_id: str, basis: str = "individual") -> Dict:
-    man = _manifest_base(path, source_version, job_id, "norm_financials")
+async def ingest_balances_file(src, source_version: str, job_id: str, basis: str = "individual") -> Dict:
+    src = _as_src(src)
+    man = src.manifest_base(source_version, job_id, "norm_financials")
     up = BulkUpserter(db.norm_financials)
     rows = 0
     # (cif_normalized, year) -> {account_code: value}. We keep the FULL EAV — every
@@ -223,7 +287,7 @@ async def ingest_balances_file(path: str, source_version: str, job_id: str, basi
     acc: Dict[Tuple[str, int], Dict[str, float]] = defaultdict(dict)
     cif_by_norm: Dict[str, str] = {}
 
-    for r in _stream_tab_rows(path):
+    for r in src.rows():
         rows += 1
         cif = _s(r, "REG_NUMBER")
         code = _s(r, "BALANCE_SHEET_ITEM")
@@ -257,12 +321,13 @@ async def ingest_balances_file(path: str, source_version: str, job_id: str, basi
 
 
 # ── ACCIONISTAS → norm_ownership (relationship_type="shareholder") ─────
-async def ingest_accionistas_file(path: str, source_version: str, job_id: str) -> Dict:
-    man = _manifest_base(path, source_version, job_id, "norm_ownership")
+async def ingest_accionistas_file(src, source_version: str, job_id: str) -> Dict:
+    src = _as_src(src)
+    man = src.manifest_base(source_version, job_id, "norm_ownership")
     up = BulkUpserter(db.norm_ownership)
     rows = 0
     now = now_iso()
-    for r in _stream_tab_rows(path):
+    for r in src.rows():
         rows += 1
         src_cif = normalize_cif(r.get("REG_NUMBER"))
         if not src_cif:
@@ -289,12 +354,13 @@ async def ingest_accionistas_file(path: str, source_version: str, job_id: str) -
 
 
 # ── PARTICIPADAS → norm_ownership (relationship_type="investee_co") ────
-async def ingest_participadas_file(path: str, source_version: str, job_id: str) -> Dict:
-    man = _manifest_base(path, source_version, job_id, "norm_ownership")
+async def ingest_participadas_file(src, source_version: str, job_id: str) -> Dict:
+    src = _as_src(src)
+    man = src.manifest_base(source_version, job_id, "norm_ownership")
     up = BulkUpserter(db.norm_ownership)
     rows = 0
     now = now_iso()
-    for r in _stream_tab_rows(path):
+    for r in src.rows():
         rows += 1
         src_cif = normalize_cif(r.get("REG_NUMBER"))
         if not src_cif:
@@ -321,12 +387,13 @@ async def ingest_participadas_file(path: str, source_version: str, job_id: str) 
 
 
 # ── ORG_SOCIALES / RESTO_ORG_SOCIALES / APODERADOS → norm_officers ─────
-async def ingest_officers_file(path: str, source_version: str, job_id: str) -> Dict:
-    man = _manifest_base(path, source_version, job_id, "norm_officers")
+async def ingest_officers_file(src, source_version: str, job_id: str) -> Dict:
+    src = _as_src(src)
+    man = src.manifest_base(source_version, job_id, "norm_officers")
     up = BulkUpserter(db.norm_officers)
     rows = 0
     now = now_iso()
-    for r in _stream_tab_rows(path):
+    for r in src.rows():
         rows += 1
         cifn = normalize_cif(r.get("REG_NUMBER"))
         role = _s(r, "CORPORATE_BODY_POSITION") or None
@@ -371,22 +438,20 @@ def _resolve_col(fieldnames, candidates) -> Optional[str]:
 
 
 # ── RATIOS → norm_financials.ratios (merge into the same company-year doc) ──
-async def ingest_ratios_file(path: str, source_version: str, job_id: str, basis: str = "individual") -> Dict:
+async def ingest_ratios_file(src, source_version: str, job_id: str, basis: str = "individual") -> Dict:
     """Ingest Datos_RATIOS.tab — Iberinform's 31 precomputed ratios per company-year —
     merging them into the matching norm_financials document as a `ratios` map
     (code -> value). Stores ALL ratios raw (curation to 28 for documents is a read-layer
     concern, see memory/IBERINFORM_RATIOS_PRIORITY.md). Column names are resolved
     tolerantly (see `_resolve_col`) and asserted; if the code column can't be found the
     manifest records an error rather than silently ingesting nothing."""
-    man = _manifest_base(path, source_version, job_id, "norm_financials")
+    src = _as_src(src)
+    man = src.manifest_base(source_version, job_id, "norm_financials")
     up = BulkUpserter(db.norm_financials)
     rows = 0
 
     # peek header
-    enc = detect_encoding(path)
-    with open(path, encoding=enc, errors="replace", newline="") as fh:
-        reader = csv.DictReader(fh, delimiter="\t")
-        fields = reader.fieldnames
+    fields = src.header()
     col_cif = _resolve_col(fields, ["REG_NUMBER", "NIF", "ES_NIF"])
     col_code = _resolve_col(fields, ["RATIO_ITEM", "RATIO_CODE", "RATIO_ID", "RATIO", "ES_Account_number"])
     col_year = _resolve_col(fields, ["RATIO_YEAR", "YEAR", "BALANCE_SHEET_YEAR", "Year"])
@@ -399,7 +464,7 @@ async def ingest_ratios_file(path: str, source_version: str, job_id: str, basis:
 
     ratios_by: Dict[Tuple[str, Optional[int]], Dict[str, float]] = defaultdict(dict)
     cif_by_norm: Dict[str, str] = {}
-    for r in _stream_tab_rows(path):
+    for r in src.rows():
         rows += 1
         cif = _s(r, col_cif)
         code = _s(r, col_code)
@@ -433,18 +498,16 @@ async def ingest_ratios_file(path: str, source_version: str, job_id: str, basis:
 
 
 # ── SUCURSALES / OTRAS_DIRECCIONES → norm_company.branches / alt_addresses ──
-async def ingest_addresses_file(path: str, source_version: str, job_id: str,
+async def ingest_addresses_file(src, source_version: str, job_id: str,
                                 field: str = "branches") -> Dict:
     """Ingest branch / alternate-address rows and attach them to the company as a list
     (`branches` or `alt_addresses`). Stores the whole row raw so nothing is lost; the
     exact `.tab` columns are resolved tolerantly against the first real delivery."""
-    man = _manifest_base(path, source_version, job_id, "norm_company")
+    src = _as_src(src)
+    man = src.manifest_base(source_version, job_id, "norm_company")
     up = BulkUpserter(db.norm_company)
     rows = 0
-    enc = detect_encoding(path)
-    with open(path, encoding=enc, errors="replace", newline="") as fh:
-        reader = csv.DictReader(fh, delimiter="\t")
-        fields = reader.fieldnames
+    fields = src.header()
     col_cif = _resolve_col(fields, ["REG_NUMBER", "NIF", "ES_NIF"])
     if not col_cif:
         msg = f"No se pudo resolver REG_NUMBER; cabecera: {fields}"
@@ -452,7 +515,7 @@ async def ingest_addresses_file(path: str, source_version: str, job_id: str,
         return {"file": man["file_name"], "rows": 0, "error": msg}
 
     by_cif: Dict[str, list] = defaultdict(list)
-    for r in _stream_tab_rows(path):
+    for r in src.rows():
         rows += 1
         cifn = normalize_cif(r.get(col_cif))
         if not cifn:
@@ -491,20 +554,11 @@ def list_ingestable(directory: str) -> list:
     return [f for f in sorted(os.listdir(directory)) if f in _FILE_MAP]
 
 
-async def ingest_tab_directory(directory: str, source_version: Optional[str] = None) -> Dict:
-    """Ingest all recognized Datos_*.tab files in `directory` into the Normalized layer.
-
-    Company file processed first (cheap and gives an early signal if REG_NUMBER
-    parsing is off); order among the rest doesn't matter — all are independent
-    upserts keyed by their own natural keys.
-    """
-    await ensure_indexes()
-    job_id = str(uuid.uuid4())
-    source_version = source_version or f"iberinform_tab_{uuid.uuid4().hex[:8]}"
-
+async def _ingest_present(present: Dict[str, object], source_version: str, job_id: str) -> list:
+    """Núcleo común de orquestación: `present` mapea nombre base -> TabSource (disco o
+    zip). Company file primero; RATIOS después de BALANCES para fusionar en los mismos
+    documentos empresa-año. Sirve igual al flujo de disco y al de streaming R2."""
     results = []
-    present = {f: os.path.join(directory, f) for f in os.listdir(directory) if f in _FILE_MAP}
-
     if "Datos_GENERALES.tab" in present:
         results.append(await ingest_generales_file(present["Datos_GENERALES.tab"], source_version, job_id))
     if "Datos_BALANCES.tab" in present:
@@ -523,5 +577,35 @@ async def ingest_tab_directory(directory: str, source_version: Optional[str] = N
         results.append(await ingest_addresses_file(present["Datos_SUCURSALES.tab"], source_version, job_id, field="branches"))
     if "Datos_OTRAS_DIRECCIONES.tab" in present:
         results.append(await ingest_addresses_file(present["Datos_OTRAS_DIRECCIONES.tab"], source_version, job_id, field="alt_addresses"))
+    return results
 
+
+async def ingest_tab_directory(directory: str, source_version: Optional[str] = None) -> Dict:
+    """Ingest all recognized Datos_*.tab files in `directory` into the Normalized layer.
+
+    Company file processed first (cheap and gives an early signal if REG_NUMBER
+    parsing is off); order among the rest doesn't matter — all are independent
+    upserts keyed by their own natural keys.
+    """
+    await ensure_indexes()
+    job_id = str(uuid.uuid4())
+    source_version = source_version or f"iberinform_tab_{uuid.uuid4().hex[:8]}"
+
+    present = {f: PathTabSource(os.path.join(directory, f))
+               for f in os.listdir(directory) if f in _FILE_MAP}
+    results = await _ingest_present(present, source_version, job_id)
+    return {"ingestion_job_id": job_id, "source_version": source_version, "files": results}
+
+
+async def ingest_tab_delivery(delivery, source_version: Optional[str] = None) -> Dict:
+    """Igual que `ingest_tab_directory` pero leyendo los .tab por STREAMING desde un
+    `ZipDelivery` de R2 (services/data_layer/ingestion/r2_delivery.py), sin materializar
+    el zip ni su contenido en disco. Cada .tab reconocido se envuelve en un ZipTabSource
+    que descomprime al vuelo el miembro correspondiente."""
+    await ensure_indexes()
+    job_id = str(uuid.uuid4())
+    source_version = source_version or f"iberinform_tab_{uuid.uuid4().hex[:8]}"
+
+    present = {f: ZipTabSource(delivery, f) for f in _FILE_MAP if delivery.has(f)}
+    results = await _ingest_present(present, source_version, job_id)
     return {"ingestion_job_id": job_id, "source_version": source_version, "files": results}

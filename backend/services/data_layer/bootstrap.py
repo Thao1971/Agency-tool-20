@@ -234,9 +234,9 @@ async def run_bootstrap(source: Optional[str] = None, rebuild_intelligence: bool
         raise
 
 
-async def run_bootstrap_tab(directory: str, rebuild_intelligence: bool = True,
+async def run_bootstrap_tab(directory: str = None, rebuild_intelligence: bool = True,
                              canonical_n: int = 50, run_id: Optional[str] = None,
-                             source_version: Optional[str] = None) -> Dict:
+                             source_version: Optional[str] = None, delivery=None) -> Dict:
     """Same reconstruction chain as `run_bootstrap()`, but for Daniel's real 2026-07
     Iberinform delivery format (10 tab-separated Datos_*.tab files) instead of the
     original Valu8 CSV format. Only step 1 (ingestion) differs — everything downstream
@@ -246,21 +246,30 @@ async def run_bootstrap_tab(directory: str, rebuild_intelligence: bool = True,
     Use this instead of run_bootstrap() when `source` points at a directory containing
     Datos_GENERALES.tab / Datos_BALANCES.tab / etc. (see
     services/data_layer/ingestion/iberinform_tab_ingest.py for the full format mapping).
+
+    `delivery` (ZipDelivery de R2): si se pasa, la INGESTA se hace por streaming desde el
+    zip en R2 en vez de leer `directory` del disco (todo lo demás, aguas abajo, es idéntico
+    — lee de las colecciones norm_*, no del disco). Ver r2_delivery.py.
     """
-    from services.data_layer.ingestion.iberinform_tab_ingest import ingest_tab_directory
+    from services.data_layer.ingestion.iberinform_tab_ingest import (
+        ingest_tab_directory, ingest_tab_delivery)
     from services.data_layer.master.master_builder import rebuild_master
     from services.data_layer.master.ownership_graph import rebuild_ownership_graph
 
     run_id = run_id or f"bootstrap_tab_{uuid.uuid4().hex[:12]}"
+    source_label = directory or (delivery.key if delivery is not None else "?")
     steps: List[Dict] = []
     t0 = time.time()
-    await _set(run_id, {"run_id": run_id, "status": "running", "source": directory,
+    await _set(run_id, {"run_id": run_id, "status": "running", "source": source_label,
                         "bootstrap_version": BOOTSTRAP_VERSION, "pipeline": "tab",
                         "started_at": now_iso(), "steps": []},
                unset=_STALE_TERMINAL_FIELDS)
-    logger.info(f"[bootstrap-tab {run_id}] start · source={directory}")
+    logger.info(f"[bootstrap-tab {run_id}] start · source={source_label}")
     try:
-        await _step(run_id, steps, "ingestion", ingest_tab_directory(directory, source_version=source_version))
+        ingestion = (ingest_tab_delivery(delivery, source_version=source_version)
+                     if delivery is not None
+                     else ingest_tab_directory(directory, source_version=source_version))
+        await _step(run_id, steps, "ingestion", ingestion)
         await _step(run_id, steps, "master_builder", rebuild_master(scope="full", force=True))
         await _step(run_id, steps, "ownership_graph", rebuild_ownership_graph())
         if rebuild_intelligence:

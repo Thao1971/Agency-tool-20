@@ -14,6 +14,10 @@ SOURCE_PRIORITY = {"iberinform": 100, "web": 50, "bme": 60, "manual": 200}
 PROVENANCE_FIELDS = [
     "legal_name", "commercial_name", "cnae_code", "cnae_description",
     "web", "domain", "provincia", "municipio", "employees_total", "capital_social",
+    # Fase 0 (2026-09-01) · campos de registro proyectados a master_companies. master_builder
+    # los lee vía canonical(prov[...]); deben gestionarse con provenance como el resto o
+    # prov[...] daría KeyError cuando llegan a None (bug latente hasta el primer rebuild).
+    "domicilio", "sit_mercantil", "audited", "balance_model", "last_balance_year",
 ]
 
 

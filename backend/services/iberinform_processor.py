@@ -321,7 +321,7 @@ async def _update_companies_master(companies: List[Dict]) -> int:
     return updated
 
 
-async def process_real_iberinform_tab_directory(directory: str, source_version: str = "real-2026-07") -> Dict:
+async def process_real_iberinform_tab_directory(directory: str = None, source_version: str = "real-2026-07", delivery=None) -> Dict:
     """Process a real Iberinform delivery (Datos_GENERALES.tab + Datos_BALANCES.tab)
     into the LEGACY iberinform_companies / iberinform_financials / companies_master
     collections — the ones still read by Sector/Geo/Cross Intelligence, DocStudio,
@@ -342,16 +342,31 @@ async def process_real_iberinform_tab_directory(directory: str, source_version: 
     has two parallel company data models today, this function only fills the legacy
     one. Upserts by CIF (does not wipe existing data), so re-running with a bigger
     or updated delivery is safe.
+
+    `delivery` (ZipDelivery de R2): si se pasa, GENERALES/BALANCES se leen por STREAMING
+    desde el zip en R2 (sin disco) en vez de desde `directory`. Ver r2_delivery.py.
     """
     import csv
     import os
     from pymongo import UpdateOne
     from services.data_layer.ingestion.account_map import parse_amount, derive_metrics, ACCOUNT_MAP
 
-    generales_path = os.path.join(directory, "Datos_GENERALES.tab")
-    balances_path = os.path.join(directory, "Datos_BALANCES.tab")
-    if not os.path.isfile(generales_path):
-        return {"status": "error", "message": f"No se encontro {generales_path}"}
+    generales_path = os.path.join(directory, "Datos_GENERALES.tab") if directory else None
+    balances_path = os.path.join(directory, "Datos_BALANCES.tab") if directory else None
+    has_generales = delivery.has("Datos_GENERALES.tab") if delivery is not None else bool(generales_path and os.path.isfile(generales_path))
+    has_balances = delivery.has("Datos_BALANCES.tab") if delivery is not None else bool(balances_path and os.path.isfile(balances_path))
+    if not has_generales:
+        return {"status": "error", "message": f"No se encontro Datos_GENERALES.tab ({generales_path or delivery.key})"}
+
+    def _open_generales():
+        if delivery is not None:
+            return delivery.open_text("Datos_GENERALES.tab", encoding="latin-1")
+        return open(generales_path, encoding="latin-1", errors="replace", newline="")
+
+    def _open_balances():
+        if delivery is not None:
+            return delivery.open_text("Datos_BALANCES.tab", encoding="utf-8")
+        return open(balances_path, encoding="utf-8", errors="replace", newline="")
 
     now = now_iso()
     account_codes = set(ACCOUNT_MAP.keys())
@@ -361,8 +376,8 @@ async def process_real_iberinform_tab_directory(directory: str, source_version: 
     # file carries ~900 possible line items per company-year, no need to keep them
     # all in memory for a 25k-company batch). ──
     fin_by_cif: Dict[str, Dict[int, Dict[str, float]]] = {}
-    if os.path.isfile(balances_path):
-        with open(balances_path, encoding="utf-8", errors="replace", newline="") as fh:
+    if has_balances:
+        with _open_balances() as fh:
             reader = csv.DictReader(fh, delimiter="\t")
             for row in reader:
                 cif = (row.get("REG_NUMBER") or "").strip()
@@ -375,12 +390,12 @@ async def process_real_iberinform_tab_directory(directory: str, source_version: 
                     continue
                 fin_by_cif.setdefault(cif, {}).setdefault(int(year_f), {})[code] = val
     else:
-        logger.warning(f"process_real_iberinform_tab_directory: {balances_path} not found — companies will have no financials")
+        logger.warning("process_real_iberinform_tab_directory: Datos_BALANCES.tab not found — companies will have no financials")
 
     # ── Company file (GENERALES) ──
     companies: List[Dict] = []
     fiscal_years: List[Dict] = []
-    with open(generales_path, encoding="latin-1", errors="replace", newline="") as fh:
+    with _open_generales() as fh:
         reader = csv.DictReader(fh, delimiter="\t")
         for row in reader:
             cif = (row.get("REG_NUMBER") or "").strip()

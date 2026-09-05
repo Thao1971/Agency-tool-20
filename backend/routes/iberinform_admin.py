@@ -192,6 +192,102 @@ async def list_deliveries(limit: int = Query(10, ge=1, le=50), user=Depends(get_
     return {"runs": runs}
 
 
+# ══════════════════════════════════════════
+# ENTREGAS DESDE R2 (streaming, sin subir el zip por HTTP)
+# ──────────────────────────────────────────
+# Para entregas grandes (9,8 GB, futuras decenas de GB) que no caben por un POST de
+# navegador ni en el disco de 9,8 GB del pod: Daniel sube el .zip a Cloudflare R2 por su
+# cuenta (rclone/aws-cli) y el backend lo INGIERE leyéndolo por STREAMING desde el bucket
+# (rangos HTTP, sin materializar el zip ni los .tab en disco). Mismo flujo, mismo modelo
+# de progreso en iberinform_delivery_runs y mismo polling GET /upload-delivery/{run_id}.
+
+
+async def _run_delivery_from_r2(run_id: str, object_key: str) -> None:
+    """Idéntico en fases y progreso a `_run_delivery`, pero la fuente es un .zip en R2
+    leído por streaming (no un directorio en disco). Carga ambas mitades (legacy
+    companies_master + moderna master_companies/ratios) alimentando las mismas
+    funciones de ingesta, ahora vía ZipDelivery."""
+    from services.data_layer.ingestion.r2_delivery import ZipDelivery
+    t0 = time.time()
+    steps = []
+
+    async def _set(patch):
+        await db.iberinform_delivery_runs.update_one({"run_id": run_id}, {"$set": patch}, upsert=True)
+
+    delivery = None
+    try:
+        delivery = ZipDelivery(object_key)
+        if not delivery.has("Datos_GENERALES.tab"):
+            raise RuntimeError(
+                f"El objeto R2 '{object_key}' no contiene Datos_GENERALES.tab — no parece "
+                "una entrega de Iberinform reconocible.")
+
+        legacy = await process_real_iberinform_tab_directory(source_version=run_id, delivery=delivery)
+        steps.append({"step": "legacy_ingest", "status": "ok" if legacy.get("status") != "error" else "error", "result": legacy})
+        await _set({"steps": steps})
+        if legacy.get("status") == "error":
+            raise RuntimeError(f"legacy ingest failed: {legacy.get('message')}")
+
+        sector_result = await compute_sector_intelligence_v2()
+        geo_result = await compute_geo_intelligence()
+        steps.append({"step": "legacy_intelligence", "status": "ok",
+                      "result": {"sector_total": sector_result.get("total"), "geo_total": geo_result.get("total")}})
+        await _set({"steps": steps})
+
+        from services.data_layer import bootstrap as bootstrap_svc
+        modern = await bootstrap_svc.run_bootstrap_tab(
+            run_id=f"{run_id}_modern", source_version=run_id, delivery=delivery)
+        steps.append({"step": "modern_ingest", "status": "ok" if modern.get("status") != "failed" else "error", "result": modern})
+
+        status = "completed" if all(s["status"] == "ok" for s in steps) else "completed_with_errors"
+        await _set({"status": status, "finished_at": now_iso(),
+                    "duration_s": round(time.time() - t0, 1), "steps": steps})
+        logger.info(f"[iberinform R2 delivery {run_id}] {status} in {round(time.time()-t0,1)}s")
+    except Exception as e:  # noqa: BLE001 — persisted, never crashes the background task
+        steps.append({"step": "error", "status": "error", "error": str(e)})
+        await _set({"status": "failed", "finished_at": now_iso(),
+                    "duration_s": round(time.time() - t0, 1), "error": str(e), "steps": steps})
+        logger.error(f"[iberinform R2 delivery {run_id}] failed: {e}")
+    finally:
+        if delivery is not None:
+            try:
+                delivery.close()
+            except Exception:
+                pass
+
+
+@router.get("/storage-deliveries")
+async def list_storage_deliveries(prefix: str = Query("", description="Filtro de prefijo opcional"),
+                                  user=Depends(get_current_user)):
+    """Lista los .zip disponibles en el bucket R2 (los que Daniel haya subido con
+    rclone/aws-cli), para elegir cuál ingerir con /process-from-storage."""
+    from services.data_layer.ingestion.r2_delivery import list_zip_deliveries
+    try:
+        deliveries = list_zip_deliveries(prefix=prefix)
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(502, f"No se pudo listar el bucket R2: {e}")
+    return {"deliveries": deliveries, "count": len(deliveries)}
+
+
+@router.post("/process-from-storage")
+async def process_from_storage(object_key: str = Query(..., description="Key del .zip en el bucket R2"),
+                               user=Depends(get_current_user)):
+    """Ingiere una entrega de Iberinform leyéndola por STREAMING desde R2 (sin subirla por
+    HTTP ni materializarla en disco). Corre en background con el mismo modelo de progreso
+    que /upload-delivery; sondea GET /upload-delivery/{run_id}."""
+    if not object_key.lower().endswith(".zip"):
+        raise HTTPException(400, "object_key debe apuntar a un .zip")
+
+    run_id = f"delivery_{uuid.uuid4().hex[:12]}"
+    await db.iberinform_delivery_runs.insert_one({
+        "run_id": run_id, "status": "running", "filename": object_key,
+        "source": "r2", "object_key": object_key, "started_at": now_iso(), "steps": [],
+    })
+    asyncio.create_task(_run_delivery_from_r2(run_id, object_key))
+    return {"run_id": run_id, "status": "started",
+            "poll": f"/api/v1/admin/iberinform/upload-delivery/{run_id}"}
+
+
 @router.post("/purge-synthetic")
 async def purge_synthetic(user=Depends(get_current_user)):
     """Remove the synthetic Iberinform dataset once real data has been loaded and
