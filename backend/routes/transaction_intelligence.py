@@ -60,6 +60,15 @@ class TxRef(BaseModel):
     transaction_id: str
 
 
+class DealAsideRequest(BaseModel):
+    """Beta's ficha (`CompanyFichaLayoutV2`, columna derecha) calls this with the
+    company being viewed + the logged-in user, and gets back exactly the shape its
+    `DealAsideCard` renders (see `lib/companies/deal-aside.ts` adapter en Beta)."""
+    target_master_id: str
+    user_id: Optional[str] = None
+    organization_id: Optional[str] = None
+
+
 class DocumentRequest(BaseModel):
     transaction_id: str
     doc_key: Optional[str] = None
@@ -221,6 +230,11 @@ async def workspace(req: TxRef, _key=Depends(require_service_key)):
     if res is None:
         raise HTTPException(404, "transaction not found")
     return res
+
+
+@router.post("/deal-aside", responses=_ok(S.DealAsideResponse))
+async def deal_aside(req: DealAsideRequest, _key=Depends(require_service_key)):
+    return await TX.deal_aside_view(req.target_master_id, req.user_id, req.organization_id)
 
 
 @router.get("/catalog", responses=_ok(S.TransactionCatalogResponse))

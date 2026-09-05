@@ -76,6 +76,47 @@ async def get_transaction(transaction_id: str) -> Optional[Dict]:
     return await db.tx_transactions.find_one({"transaction_id": transaction_id}, {"_id": 0})
 
 
+async def find_active_transaction_for_target(target_master_id: str,
+                                              organization_id: Optional[str] = None) -> Optional[Dict]:
+    """Company (+org) -> most relevant transaction, for the ficha's deal aside
+    (columna derecha, "próxima acción"). Prefers the most recently updated
+    NON-terminal transaction (an open deal); falls back to the most recent
+    terminal one so a closed deal still explains itself instead of the UI
+    just going blank. Returns None when the company has no transaction at all
+    (by far the common case today — most companies have none)."""
+    q: Dict = {"target_master_id": target_master_id}
+    if organization_id:
+        q["organization_id"] = organization_id
+    txns = await db.tx_transactions.find(q, {"_id": 0}).sort("updated_at", -1).to_list(20)
+    if not txns:
+        return None
+    active = [t for t in txns if t["state"] not in W.TERMINAL_STATES]
+    return active[0] if active else txns[0]
+
+
+def party_role(txn: Dict, user_id: Optional[str]) -> Optional[str]:
+    """Best-effort: this user's role among the transaction's `parties`.
+
+    NOTE (flag for Intel): `parties` has no fixed shape anywhere in this
+    codebase today — it is never asserted on in any test, and every existing
+    caller only ever writes it through verbatim (`create_transaction`,
+    `create_from_thesis(..., parties, ...)`). This assumes entries shaped
+    like `{"user_id": ..., "role": ...}`, with `role` one of the values
+    already used in `TRANSITIONS[*]["authorized"]` (buyer/seller/advisor/
+    investor/platform). Confirm this against however parties actually get
+    populated in production before relying on it — if the real shape differs
+    (e.g. `org_id` instead of `user_id`, or roles nested under membership),
+    only this function needs to change; nothing else in this module assumes
+    a specific shape.
+    """
+    if not user_id:
+        return None
+    for p in txn.get("parties") or []:
+        if p.get("user_id") == user_id:
+            return p.get("role")
+    return None
+
+
 # ── State machine runtime (DTX3) ──
 async def _guard_ok(txn: Dict, guard: str) -> bool:
     if guard == "has_thesis":

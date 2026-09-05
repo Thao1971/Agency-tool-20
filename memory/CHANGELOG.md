@@ -2,6 +2,15 @@
 
 > Registro de cambios de arquitectura de la plataforma Agency Tool (compartida: Valuo.pro + arroba.com + Platform Console).
 
+## 2026-06 — Pack de 5 fixes backend (autorizado por Daniel) ✅ (solo PREVIEW)
+- **#1 `taxonomy/registry.py`** (alias "publicidad" en S03): YA aplicado en este pod (marcador presente). Sin cambios.
+- **#2 `taxonomy/search.py`** (`_strip_stopwords` + tolerancia a conectores): YA aplicado. Verificado: "agencias marketing"/"agencia de publicidad"/"agencias de publicidad" → S03; "agencias de viajes" → viajes (sin regresión).
+- **#3 `routes/procurement.py`** (cache + `estimated_document_count`): YA aplicado (marcador `_total_contracts` presente).
+- **#4 `services/engines/financial/ratios_library.py`** (fix signo DPO/Días existencias/CCC): APLICADO AHORA (no estaba — confirmado bug en Servier). Añadida `_mag()` (valor absoluto del coste como denominador); DPO/inventory_days/CCC usan `_mag(supplies)`. Verificado con datos reales de Servier B28184687: DPO=8.1, Días existencias=128.7, CCC=165.0 (positivos, antes -8.1/-128.7/-76.2).
+- **#5 endpoint `POST /api/v1/transaction-intelligence/deal-aside`**: APLICADO AHORA (4 ficheros: `store.py` `find_active_transaction_for_target`+`party_role`; `engine.py` `deal_aside_view`; `routes/transaction_intelligence.py` request+endpoint; `engine_schemas.py` `DealAsideResponse`). Verificado: empresa sin tx → `{"active":false}`; con tx de prueba → persona/stage/checklist coherentes (advisor→"asesor", side buy→"comprador"), next_action con título. Anclajes sin drift.
+- **Pregunta abierta #5 (forma de `parties`)**: la suposición `{"user_id":..., "role":...}` NO está confirmada en el código — `parties` se pasa verbatim en todos los callers, sin esquema ni test que fije su forma. `party_role()` es best-effort y solo hay que tocar esa función si la forma real difiere.
+
+
 ## 2026-06 — Rebuild pesado de entregas Iberinform AISLADO en subproceso ✅ (solo PREVIEW)
 - **Problema**: `_run_delivery`/`_run_delivery_from_r2` corrían el flujo completo (legacy + Sector/Geo + `run_bootstrap_tab`: rebuild_master full + ownership + señales + índice semántico) como `asyncio.create_task` DENTRO del event loop del backend → una reingesta de 25k (~15-20 min) ralentizaba el resto de peticiones a intel.arroba.com.
 - **Cambio**: nuevo `scripts/run_delivery_worker.py` (subproceso aislado, mismo enfoque que `scripts/prod_seed_eav`) que ejecuta las 3 fases idénticas y reporta progreso a la MISMA colección `iberinform_delivery_runs` (mismo shape steps/status). `iberinform_admin.py`: `upload-delivery` y `process-from-storage` ahora lanzan el subproceso vía `asyncio.create_subprocess_exec` (`_launch_delivery_worker`, modos `dir`/`r2`) en vez de correr in-process; eliminados `_run_delivery` y `_run_delivery_from_r2`. Mismo polling `GET /upload-delivery/{run_id}` → UI intacta.

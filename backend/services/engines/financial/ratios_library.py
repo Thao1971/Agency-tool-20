@@ -11,6 +11,24 @@ def _safe_div(a, b):
     return round(a / b, 4)
 
 
+def _mag(x):
+    """Magnitud absoluta, preservando None.
+
+    Bug real encontrado y confirmado en produccion (2026-09-04, Servier B28184687):
+    las cuentas de P&L de coste (grupo 6xxxx, p.ej. 40400 Aprovisionamientos) se
+    guardan en signo neto (ingresos positivos, costes negativos), mientras que las
+    partidas de balance con las que se combinan en estos ratios (existencias 12200,
+    proveedores 32510) se guardan como importes positivos. DPO y dias de existencias
+    dividen por "supplies" (40400): al ser negativo, el ratio sale con signo
+    invertido (dias negativos), lo cual no tiene lectura economica valida (no puede
+    haber dias de pago o de stock negativos). Se confirmo con datos reales de
+    produccion que el signo de 40400 es negativo de forma sistematica (muestreado
+    en varias empresas, no solo Servier), asi que el bug es universal, no un caso
+    aislado. Fix: usar la magnitud (valor absoluto) del coste como denominador.
+    """
+    return None if x is None else abs(x)
+
+
 # key: (name, category, formula, explanation, compute(metrics, employees))
 _DEFS = {
     "ebitda_margin": ("Margen EBITDA", "profitability", "EBITDA / Ingresos",
@@ -61,14 +79,14 @@ _DEFS = {
             "Días que tarda en cobrar a clientes.",
             lambda m, e: _safe_div(m.get("trade_debtors"), m.get("revenue")) and
                          round(_safe_div(m.get("trade_debtors"), m.get("revenue")) * 365, 1)),
-    "dpo": ("Periodo medio de pago (días)", "working_capital", "Proveedores / Aprovisionamientos × 365",
+    "dpo": ("Periodo medio de pago (días)", "working_capital", "Proveedores / |Aprovisionamientos| × 365",
             "Días que tarda en pagar a proveedores.",
-            lambda m, e: _safe_div(m.get("suppliers"), m.get("supplies")) and
-                         round(_safe_div(m.get("suppliers"), m.get("supplies")) * 365, 1)),
-    "inventory_days": ("Días de existencias", "working_capital", "Existencias / Aprovisionamientos × 365",
+            lambda m, e: _safe_div(m.get("suppliers"), _mag(m.get("supplies"))) and
+                         round(_safe_div(m.get("suppliers"), _mag(m.get("supplies"))) * 365, 1)),
+    "inventory_days": ("Días de existencias", "working_capital", "Existencias / |Aprovisionamientos| × 365",
                        "Días de stock sobre el consumo.",
-                       lambda m, e: _safe_div(m.get("inventories"), m.get("supplies")) and
-                                    round(_safe_div(m.get("inventories"), m.get("supplies")) * 365, 1)),
+                       lambda m, e: _safe_div(m.get("inventories"), _mag(m.get("supplies"))) and
+                                    round(_safe_div(m.get("inventories"), _mag(m.get("supplies"))) * 365, 1)),
     "cash_conversion_cycle": ("Ciclo de conversión de caja (días)", "working_capital",
                               "PMC + Días existencias − PMP",
                               "Días netos que el circulante inmoviliza caja.",
@@ -85,8 +103,8 @@ _DEFS = {
 def _ccc(m: Dict):
     """Cash conversion cycle = DSO + inventory days − DPO (days). None if inputs missing."""
     dso = _safe_div(m.get("trade_debtors"), m.get("revenue"))
-    inv = _safe_div(m.get("inventories"), m.get("supplies"))
-    dpo = _safe_div(m.get("suppliers"), m.get("supplies"))
+    inv = _safe_div(m.get("inventories"), _mag(m.get("supplies")))
+    dpo = _safe_div(m.get("suppliers"), _mag(m.get("supplies")))
     if dso is None or dpo is None:
         return None
     return round((dso + (inv or 0) - dpo) * 365, 1)

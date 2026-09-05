@@ -160,6 +160,54 @@ async def prepare_document(transaction_id: str, doc_type: str, actor: str = "pla
             "engine_version": ENGINE_VERSION}
 
 
+# side (buy/sell/capital/partnership) of the workflow -> persona shown in
+# Beta's deal aside. `advisor` overrides `side` regardless of workflow.
+_SIDE_TO_PERSONA = {"buy": "comprador", "sell": "vendedor",
+                    "capital": "capital", "partnership": "asesor"}
+_ROLE_PERSONA_OVERRIDE = {"advisor": "asesor"}
+
+
+async def deal_aside_view(target_master_id: str, user_id: Optional[str] = None,
+                          organization_id: Optional[str] = None) -> Dict:
+    """Aggregate for Beta's `DealAsideCard` (columna derecha de la ficha,
+    "próxima acción"): persona + next action + checklist de STAGES_V1, para
+    una empresa + un usuario concretos. Un solo dato nuevo, cero motor nuevo
+    — compone `next_action()` (ya existe y ya está expuesto) con la única
+    pieza que faltaba (`OS.find_active_transaction_for_target`).
+
+    `{"active": false}` es la respuesta normal para la inmensa mayoría de
+    empresas hoy (sin operación activa) — el frontend ya degrada a su card
+    "Pendiente" genérico en ese caso, así que este endpoint es seguro de
+    exponer y llamar de inmediato, no rompe nada mientras no haya datos.
+    """
+    txn = await OS.find_active_transaction_for_target(target_master_id, organization_id)
+    if not txn:
+        return {"active": False, "engine_version": ENGINE_VERSION, "generated_at": now_iso()}
+
+    role = OS.party_role(txn, user_id)
+    tmpl = W.template(txn["workflow_version"]) or {}
+    persona = _ROLE_PERSONA_OVERRIDE.get(role) or _SIDE_TO_PERSONA.get(tmpl.get("side"), "anonimo")
+
+    steps = [
+        {"label": s["stage"].replace("_", " ").title(),
+         "state": "done" if s["state"] == "completed" else ("cur" if s["state"] == "active" else "todo")}
+        for s in txn["stages"]
+    ]
+
+    return {
+        "active": True,
+        "persona": persona,
+        "role": role,
+        "transaction_id": txn["transaction_id"],
+        "stage": txn["current_stage"],
+        "state": txn["state"],
+        "next_action": await next_action(txn["transaction_id"]),
+        "steps": steps,
+        "engine_version": ENGINE_VERSION, "evidence_version": EVIDENCE_VERSION,
+        "generated_at": now_iso(),
+    }
+
+
 async def workspace(transaction_id: str) -> Optional[Dict]:
     """Transaction Workspace domain model (DTX12) + Universal Timeline (DTX11)."""
     txn = await OS.get_transaction(transaction_id)

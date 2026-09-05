@@ -538,6 +538,20 @@ class NextActionResponse(_Base):
     generated_at: Optional[str] = None
 
 
+class DealAsideResponse(_Base):
+    active: Optional[bool] = None
+    persona: Optional[str] = None
+    role: Optional[str] = None
+    transaction_id: Optional[str] = None
+    stage: Optional[str] = None
+    state: Optional[str] = None
+    next_action: Optional[NextActionResponse] = None
+    steps: Optional[List[Dict[str, Any]]] = None
+    engine_version: Optional[str] = None
+    evidence_version: Optional[EvidenceVersionRef] = None
+    generated_at: Optional[str] = None
+
+
 class TransactionRiskResponse(_Base):
     transaction_id: str
     stage: Optional[str] = None
