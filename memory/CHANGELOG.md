@@ -2,6 +2,13 @@
 
 > Registro de cambios de arquitectura de la plataforma Agency Tool (compartida: Valuo.pro + arroba.com + Platform Console).
 
+## 2026-06 — Rebuild pesado de entregas Iberinform AISLADO en subproceso ✅ (solo PREVIEW)
+- **Problema**: `_run_delivery`/`_run_delivery_from_r2` corrían el flujo completo (legacy + Sector/Geo + `run_bootstrap_tab`: rebuild_master full + ownership + señales + índice semántico) como `asyncio.create_task` DENTRO del event loop del backend → una reingesta de 25k (~15-20 min) ralentizaba el resto de peticiones a intel.arroba.com.
+- **Cambio**: nuevo `scripts/run_delivery_worker.py` (subproceso aislado, mismo enfoque que `scripts/prod_seed_eav`) que ejecuta las 3 fases idénticas y reporta progreso a la MISMA colección `iberinform_delivery_runs` (mismo shape steps/status). `iberinform_admin.py`: `upload-delivery` y `process-from-storage` ahora lanzan el subproceso vía `asyncio.create_subprocess_exec` (`_launch_delivery_worker`, modos `dir`/`r2`) en vez de correr in-process; eliminados `_run_delivery` y `_run_delivery_from_r2`. Mismo polling `GET /upload-delivery/{run_id}` → UI intacta.
+- **Verificado E2E**: fixture .zip a R2 → `process-from-storage` → subproceso OS separado (`run_delivery_worker`, confirmado por `ps`), event loop del backend responde en 0,11s mientras corre, progreso (legacy_ingest/legacy_intelligence) reportado por el subproceso vía el mismo polling. Limpieza total tras la prueba. **NO** desplegado.
+- **Env vars producción (soporte)**: las 4 claves R2 del `.env` de preview NO se copian solas a producción; hay que añadirlas manualmente en la pantalla de Deploy (env vars) antes de "Deploy Now" (o post-deploy desde Home). Son secretos user-managed, no auto-gestionados como MONGO_URL.
+
+
 ## 2026-06 — Ingesta Iberinform por STREAMING desde Cloudflare R2 (sin disco) ✅ (solo PREVIEW)
 - **Problema**: las entregas reales pesan ~9,8 GB (futuras decenas de GB) y no caben por un POST de navegador ni en el disco persistente de 9,8 GB del pod. Emergent no ofrece object storage nativo (confirmado con soporte), así que se usa un bucket propio en Cloudflare R2.
 - **Nuevo** `services/data_layer/ingestion/r2_delivery.py`: cliente boto3 para el endpoint S3-compatible de R2 (credenciales por env R2_ACCOUNT_ID/R2_ACCESS_KEY_ID/R2_SECRET_ACCESS_KEY/R2_BUCKET_NAME); `S3RangeReader` (fichero seekable respaldado por HTTP Range GETs, ventana 8 MB → memory-bounded) para que `zipfile` lea el directorio central y cada miembro sin bajar el zip entero; `ZipDelivery` (abre el zip por streaming, resuelve miembros aunque estén anidados, descompresión al vuelo miembro a miembro); `list_zip_deliveries()`.

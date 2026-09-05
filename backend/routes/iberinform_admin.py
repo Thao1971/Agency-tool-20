@@ -78,55 +78,21 @@ def _find_data_dir(root: str) -> Optional[str]:
     return None
 
 
-async def _run_delivery(run_id: str, data_dir: str, source_version: str) -> None:
-    """Background task: load one monthly delivery into BOTH schemas.
-
-    Legacy (companies_master, used by Sector/Geo Intelligence + Valuo) and modern
-    (master_companies, used by Control&Synergy/Roll-up/Fragmentacion/Watchlist/grafo)
-    are both fed from the same 10 .tab files — see process_real_iberinform_tab_directory
-    and services/data_layer/bootstrap.run_bootstrap_tab. Both are upsert-based, so
-    re-running (or running a later delivery) never duplicates a company. Recalculates
-    Sector/Geo Intelligence at the end so the legacy-schema screens reflect the new data.
-
-    Known limitation, not fixed here: neither pipeline removes a company/relationship
-    that existed in a previous delivery but is absent from this one (e.g. a company
-    Iberinform stops covering, or a shareholder relationship that ended) — upserts only
-    add/update, they never delete. Fine for the common case (most companies persist
-    delivery to delivery) but worth knowing before treating record counts as exact.
-    """
-    t0 = time.time()
-    steps = []
-
-    async def _set(patch):
-        await db.iberinform_delivery_runs.update_one({"run_id": run_id}, {"$set": patch}, upsert=True)
-
-    try:
-        legacy = await process_real_iberinform_tab_directory(data_dir, source_version=source_version)
-        steps.append({"step": "legacy_ingest", "status": "ok" if legacy.get("status") != "error" else "error", "result": legacy})
-        await _set({"steps": steps})
-        if legacy.get("status") == "error":
-            raise RuntimeError(f"legacy ingest failed: {legacy.get('message')}")
-
-        sector_result = await compute_sector_intelligence_v2()
-        geo_result = await compute_geo_intelligence()
-        steps.append({"step": "legacy_intelligence", "status": "ok",
-                      "result": {"sector_total": sector_result.get("total"), "geo_total": geo_result.get("total")}})
-        await _set({"steps": steps})
-
-        from services.data_layer import bootstrap as bootstrap_svc
-        modern = await bootstrap_svc.run_bootstrap_tab(
-            directory=data_dir, run_id=f"{run_id}_modern", source_version=source_version)
-        steps.append({"step": "modern_ingest", "status": "ok" if modern.get("status") != "failed" else "error", "result": modern})
-
-        status = "completed" if all(s["status"] == "ok" for s in steps) else "completed_with_errors"
-        await _set({"status": status, "finished_at": now_iso(),
-                    "duration_s": round(time.time() - t0, 1), "steps": steps})
-        logger.info(f"[iberinform delivery {run_id}] {status} in {round(time.time()-t0,1)}s")
-    except Exception as e:  # noqa: BLE001 — persisted, never crashes the background task
-        steps.append({"step": "error", "status": "error", "error": str(e)})
-        await _set({"status": "failed", "finished_at": now_iso(),
-                    "duration_s": round(time.time() - t0, 1), "error": str(e), "steps": steps})
-        logger.error(f"[iberinform delivery {run_id}] failed: {e}")
+async def _launch_delivery_worker(run_id: str, mode: str, data_dir: str = None, object_key: str = None) -> None:
+    """Lanza scripts/run_delivery_worker.py como SUBPROCESO AISLADO (no en el event loop
+    del backend) para que el rebuild pesado (rebuild_master completo + ownership + señales
+    + índice semántico) de una entrega de 25k+ no bloquee el resto de peticiones. El
+    subproceso reporta progreso a `iberinform_delivery_runs` (mismo shape y mismo polling
+    que antes). Mismo enfoque que /reingest-eav (scripts/prod_seed_eav)."""
+    env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
+    args = [_sys.executable, "-m", "scripts.run_delivery_worker", "--run-id", run_id, "--mode", mode]
+    if mode == "dir":
+        args += ["--data-dir", data_dir]
+    else:
+        args += ["--object-key", object_key]
+    await asyncio.create_subprocess_exec(
+        *args, cwd=str(BACKEND_DIR), env=env,
+        stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL)
 
 
 @router.post("/upload-delivery")
@@ -172,7 +138,7 @@ async def upload_delivery(file: UploadFile = File(...), user=Depends(get_current
         "size_bytes": len(content), "started_at": now_iso(), "steps": [],
     })
 
-    asyncio.create_task(_run_delivery(run_id, data_dir, source_version=run_id))
+    asyncio.create_task(_launch_delivery_worker(run_id, "dir", data_dir=data_dir))
 
     return {"run_id": run_id, "status": "started",
             "poll": f"/api/v1/admin/iberinform/upload-delivery/{run_id}"}
@@ -198,62 +164,9 @@ async def list_deliveries(limit: int = Query(10, ge=1, le=50), user=Depends(get_
 # Para entregas grandes (9,8 GB, futuras decenas de GB) que no caben por un POST de
 # navegador ni en el disco de 9,8 GB del pod: Daniel sube el .zip a Cloudflare R2 por su
 # cuenta (rclone/aws-cli) y el backend lo INGIERE leyéndolo por STREAMING desde el bucket
-# (rangos HTTP, sin materializar el zip ni los .tab en disco). Mismo flujo, mismo modelo
-# de progreso en iberinform_delivery_runs y mismo polling GET /upload-delivery/{run_id}.
-
-
-async def _run_delivery_from_r2(run_id: str, object_key: str) -> None:
-    """Idéntico en fases y progreso a `_run_delivery`, pero la fuente es un .zip en R2
-    leído por streaming (no un directorio en disco). Carga ambas mitades (legacy
-    companies_master + moderna master_companies/ratios) alimentando las mismas
-    funciones de ingesta, ahora vía ZipDelivery."""
-    from services.data_layer.ingestion.r2_delivery import ZipDelivery
-    t0 = time.time()
-    steps = []
-
-    async def _set(patch):
-        await db.iberinform_delivery_runs.update_one({"run_id": run_id}, {"$set": patch}, upsert=True)
-
-    delivery = None
-    try:
-        delivery = ZipDelivery(object_key)
-        if not delivery.has("Datos_GENERALES.tab"):
-            raise RuntimeError(
-                f"El objeto R2 '{object_key}' no contiene Datos_GENERALES.tab — no parece "
-                "una entrega de Iberinform reconocible.")
-
-        legacy = await process_real_iberinform_tab_directory(source_version=run_id, delivery=delivery)
-        steps.append({"step": "legacy_ingest", "status": "ok" if legacy.get("status") != "error" else "error", "result": legacy})
-        await _set({"steps": steps})
-        if legacy.get("status") == "error":
-            raise RuntimeError(f"legacy ingest failed: {legacy.get('message')}")
-
-        sector_result = await compute_sector_intelligence_v2()
-        geo_result = await compute_geo_intelligence()
-        steps.append({"step": "legacy_intelligence", "status": "ok",
-                      "result": {"sector_total": sector_result.get("total"), "geo_total": geo_result.get("total")}})
-        await _set({"steps": steps})
-
-        from services.data_layer import bootstrap as bootstrap_svc
-        modern = await bootstrap_svc.run_bootstrap_tab(
-            run_id=f"{run_id}_modern", source_version=run_id, delivery=delivery)
-        steps.append({"step": "modern_ingest", "status": "ok" if modern.get("status") != "failed" else "error", "result": modern})
-
-        status = "completed" if all(s["status"] == "ok" for s in steps) else "completed_with_errors"
-        await _set({"status": status, "finished_at": now_iso(),
-                    "duration_s": round(time.time() - t0, 1), "steps": steps})
-        logger.info(f"[iberinform R2 delivery {run_id}] {status} in {round(time.time()-t0,1)}s")
-    except Exception as e:  # noqa: BLE001 — persisted, never crashes the background task
-        steps.append({"step": "error", "status": "error", "error": str(e)})
-        await _set({"status": "failed", "finished_at": now_iso(),
-                    "duration_s": round(time.time() - t0, 1), "error": str(e), "steps": steps})
-        logger.error(f"[iberinform R2 delivery {run_id}] failed: {e}")
-    finally:
-        if delivery is not None:
-            try:
-                delivery.close()
-            except Exception:
-                pass
+# (rangos HTTP, sin materializar el zip ni los .tab en disco). El trabajo pesado corre en
+# SUBPROCESO AISLADO (scripts/run_delivery_worker.py), con el mismo modelo de progreso en
+# iberinform_delivery_runs y mismo polling GET /upload-delivery/{run_id}.
 
 
 @router.get("/storage-deliveries")
@@ -283,7 +196,7 @@ async def process_from_storage(object_key: str = Query(..., description="Key del
         "run_id": run_id, "status": "running", "filename": object_key,
         "source": "r2", "object_key": object_key, "started_at": now_iso(), "steps": [],
     })
-    asyncio.create_task(_run_delivery_from_r2(run_id, object_key))
+    asyncio.create_task(_launch_delivery_worker(run_id, "r2", object_key=object_key))
     return {"run_id": run_id, "status": "started",
             "poll": f"/api/v1/admin/iberinform/upload-delivery/{run_id}"}
 
