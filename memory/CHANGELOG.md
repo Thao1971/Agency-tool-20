@@ -2,6 +2,12 @@
 
 > Registro de cambios de arquitectura de la plataforma Agency Tool (compartida: Valuo.pro + arroba.com + Platform Console).
 
+## 2026-06 — Credencial R2 rotada + revalidación completa (pre-deploy) ✅ (solo PREVIEW)
+- La clave R2 anterior (`…71f9`) quedó revocada en Cloudflare → todas las ops daban `SignatureDoesNotMatch`. Daniel emitió nueva; actualizado `R2_SECRET_ACCESS_KEY` en `backend/.env` (mismo Access Key ID `639f2a2b…` y cuenta `bb3a45…`).
+- Revalidado: list/put/head/get/delete R2 OK; `GET /storage-deliveries` → 200 listando la entrega real `Muestra_25000_base.zip` (9,8 MB) que Daniel ya subió.
+- **Estado pre-deploy verificado en vivo**: streaming R2 (legacy+moderno), aislamiento del rebuild en subproceso, y pack de 5 fixes (taxonomía/búsqueda/procurement/ratios/deal-aside) → todos aplicados, compilan (16 ficheros), backend+frontend RUNNING, sin errores. Listo para deploy. **Recordatorio**: meter las 4 vars R2 (con el secret NUEVO) en la config de Deploy antes de "Deploy Now".
+
+
 ## 2026-06 — Pack de 5 fixes backend (autorizado por Daniel) ✅ (solo PREVIEW)
 - **#1 `taxonomy/registry.py`** (alias "publicidad" en S03): YA aplicado en este pod (marcador presente). Sin cambios.
 - **#2 `taxonomy/search.py`** (`_strip_stopwords` + tolerancia a conectores): YA aplicado. Verificado: "agencias marketing"/"agencia de publicidad"/"agencias de publicidad" → S03; "agencias de viajes" → viajes (sin regresión).
