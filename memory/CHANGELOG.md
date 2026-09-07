@@ -2,6 +2,17 @@
 
 > Registro de cambios de arquitectura de la plataforma Agency Tool (compartida: Valuo.pro + arroba.com + Platform Console).
 
+
+## 2026-06 (jun) — Aplicado paquete "Intel-290826-deploy-pendiente" (autorizado por Daniel) ✅ (solo PREVIEW)
+- Daniel subió el zip `Intel-290826_deploy_pendiente_*.zip`. Al comparar contra el pod, 5 ficheros ya estaban idénticos (search.py, registry.py, ratios_library.py, transaction/engine.py, transaction_intelligence.py). El pod iba POR DELANTE del zip en 3 ficheros, así que se aplicó de forma **quirúrgica** (no sobrescribir) para no regresar código ya presente:
+  - **`services/skills_search.py`** — añadido fix de territorio + tildes: `_strip_accents()`/`_diacritic_insensitive_regex()` (regex insensible a tildes á/é/í/ó/ú/ü, ñ intacta), tabla `_CCAA_TO_PROVINCES` (17 CCAA) + `_resolve_territory_provinces()`. `_build_candidate_query()` ahora añade `location.provincia`/`location.municipio`/`province_name` al `$or` léxico y expande CCAA→provincias. **Conservado el bloque REQ-004b id bridge** (mc_→UUID) que el pod ya tenía y el zip no.
+  - **`services/taxonomy/classify.py`** — añadido SOLO el índice compuesto `[role:1, taxonomy_id:1, confidence:-1]` en `ensure_indexes()` (Atlas Performance Advisor). Se conservaron los keyword-seeds ampliados y `CLASSIFIER_VERSION v1.3` del pod.
+  - **`routes/procurement.py`** — `procurement_overview()` lanza sus ~15 counts/aggregates/distinct con `asyncio.gather()` (mismos resultados, en paralelo) sobre la caché+TTL ya existente.
+  - **NO tocados** `routes/engine_schemas.py` (pod tiene campos extra `cif`/`summary`) ni `transaction_os/store.py` (solo diferían en una línea en blanco).
+- **Verificación (testing_agent, iteration_16 — 100% backend, 6/6):** búsqueda territorio con `has_domain=false` → 'Malaga' (sin tilde), 'Málaga', 'Andalucía' y 'Castilla la mancha' devuelven resultados (expansión CCAA confirmada: Andalucía casa provincias andaluzas). `/public-procurement/overview` → 200 con 15 claves + 11 en field_coverage; caché 3,91s→0,07s (~55x). Nota: el default `has_domain=true` da ~0 en este pod de preview (solo 2 empresas con dominio) — es el estado de datos del pod, NO un bug. `/public-procurement/status` requiere auth (no se probó sin credenciales; su fix de caché es interno).
+- **Sin desplegar**: queda en preview hasta que Daniel suba con "Save to GitHub → Deploy".
+
+
 ## 2026-06 — Credencial R2 rotada + revalidación completa (pre-deploy) ✅ (solo PREVIEW)
 - La clave R2 anterior (`…71f9`) quedó revocada en Cloudflare → todas las ops daban `SignatureDoesNotMatch`. Daniel emitió nueva; actualizado `R2_SECRET_ACCESS_KEY` en `backend/.env` (mismo Access Key ID `639f2a2b…` y cuenta `bb3a45…`).
 - Revalidado: list/put/head/get/delete R2 OK; `GET /storage-deliveries` → 200 listando la entrega real `Muestra_25000_base.zip` (9,8 MB) que Daniel ya subió.

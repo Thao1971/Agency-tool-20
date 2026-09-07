@@ -28,6 +28,74 @@ def _tokens(text: str) -> set:
     return {t for t in _WORD_RE.split((text or "").lower()) if t}
 
 
+# --- Diacritic-insensitive matching (Bug: "Andalucía" con tilde -> 0
+# resultados, "Andalucia" sin tilde -> resultados incompletos) --------------
+_VOWEL_FOLD = str.maketrans("áéíóúü", "aeiouu")
+
+
+def _strip_accents(s: str) -> str:
+    return (s or "").lower().translate(_VOWEL_FOLD)
+
+
+_VOWEL_CLASS = {"a": "[aá]", "e": "[eé]", "i": "[ií]", "o": "[oó]", "u": "[uúü]"}
+
+
+def _diacritic_insensitive_regex(text: str) -> str:
+    """Build a regex pattern that matches \`text\` whether the query or the
+    stored data carries a Spanish vowel accent (á/é/í/ó/ú/ü). Every vowel is
+    expanded into a class covering both forms; everything else is escaped
+    literally. Consonants (incl. ñ) are left untouched on purpose — folding
+    ñ→n would create false matches (e.g. "ano"/"año" are different words)."""
+    folded = _strip_accents(text)
+    return "".join(_VOWEL_CLASS.get(ch, re.escape(ch)) for ch in folded)
+
+
+# --- Territory search (Bug: buscar "Andalucía" no encuentra empresas cuyo
+# \`location.provincia\` guarda la provincia literal, p.ej. "Sevilla") --------
+# Comunidades autónomas -> provincias. Solo se listan las formas que no son
+# ambiguas con el nombre de una provincia/ciudad homónima (p.ej. se excluye
+# "madrid"/"valencia"/"murcia" a secas: al ser CCAA de provincia única ya
+# encuentran resultados por coincidencia literal, y expandirlas invitaría a
+# falsos positivos si alguna vez dejan de serlo).
+_CCAA_TO_PROVINCES: Dict[str, List[str]] = {
+    "andalucia": ["Almería", "Cádiz", "Córdoba", "Granada", "Huelva", "Jaén", "Málaga", "Sevilla"],
+    "aragon": ["Huesca", "Teruel", "Zaragoza"],
+    "asturias": ["Asturias"],
+    "principado de asturias": ["Asturias"],
+    "baleares": ["Baleares", "Illes Balears"],
+    "islas baleares": ["Baleares", "Illes Balears"],
+    "canarias": ["Las Palmas", "Santa Cruz de Tenerife"],
+    "islas canarias": ["Las Palmas", "Santa Cruz de Tenerife"],
+    "cantabria": ["Cantabria"],
+    "castilla la mancha": ["Albacete", "Ciudad Real", "Cuenca", "Guadalajara", "Toledo"],
+    "castilla y leon": ["Ávila", "Burgos", "León", "Palencia", "Salamanca", "Segovia", "Soria", "Valladolid", "Zamora"],
+    "cataluna": ["Barcelona", "Girona", "Lleida", "Tarragona"],
+    "catalunya": ["Barcelona", "Girona", "Lleida", "Tarragona"],
+    "comunidad valenciana": ["Alicante", "Castellón", "Valencia"],
+    "pais valenciano": ["Alicante", "Castellón", "Valencia"],
+    "extremadura": ["Badajoz", "Cáceres"],
+    "galicia": ["A Coruña", "Lugo", "Ourense", "Pontevedra"],
+    "comunidad de madrid": ["Madrid"],
+    "region de murcia": ["Murcia"],
+    "navarra": ["Navarra"],
+    "comunidad foral de navarra": ["Navarra"],
+    "pais vasco": ["Álava", "Guipúzcoa", "Vizcaya"],
+    "euskadi": ["Álava", "Guipúzcoa", "Vizcaya"],
+    "la rioja": ["La Rioja"],
+    "rioja": ["La Rioja"],
+    "ceuta": ["Ceuta"],
+    "melilla": ["Melilla"],
+}
+
+
+def _resolve_territory_provinces(text: str) -> List[str]:
+    """If \`text\` names a comunidad autónoma (accent/case-insensitive),
+    return its constituent provincias so a territory-level search also
+    matches companies whose location only stores the literal province."""
+    key = _strip_accents((text or "").strip())
+    return _CCAA_TO_PROVINCES.get(key, [])
+
+
 def _resolve_name(doc: Dict, web: Dict) -> Optional[str]:
     return name_of(doc)
 
@@ -148,7 +216,7 @@ def _num_clauses(filters: Dict) -> List[Dict]:
         filters.get("employees_min"), filters.get("employees_max"))
     prov = filters.get("province")
     if prov:
-        rx = {"$regex": re.escape(str(prov)), "$options": "i"}
+        rx = {"$regex": _diacritic_insensitive_regex(str(prov)), "$options": "i"}
         clauses.append({"$or": [
             {"location.provincia": rx}, {"location.municipio": rx}, {"province_name": rx},
         ]})
@@ -171,8 +239,9 @@ def _build_candidate_query(query: str, has_domain: bool, cluster_id=None,
 
     and_clauses: List[Dict] = list(_num_clauses(filters))
     if query.strip():
-        rx = {"$regex": re.escape(query.strip()), "$options": "i"}
-        lexical = {"$or": [
+        q_stripped = query.strip()
+        rx = {"$regex": _diacritic_insensitive_regex(q_stripped), "$options": "i"}
+        lexical_or = [
             {"legal_name": rx},
             {"normalized_name": rx},
             {"commercial_names": rx},
@@ -186,8 +255,22 @@ def _build_candidate_query(query: str, has_domain: bool, cluster_id=None,
             {"sources.web.category": rx},
             {"sources.web.tags": rx},
             {"sources.web.description": rx},
-        ]}
-        and_clauses.append(lexical)
+            # Bug fix: free-text query never reached location fields, so
+            # searching a province/municipio name (e.g. "Sevilla") only
+            # matched if it also happened to appear in the company name.
+            {"location.provincia": rx},
+            {"location.municipio": rx},
+            {"province_name": rx},
+        ]
+        # Bug fix: a comunidad autónoma name (e.g. "Andalucía") has no
+        # literal match anywhere — companies only store the province
+        # (e.g. "Sevilla"). Expand to the CCAA's provincias when recognized.
+        provinces = _resolve_territory_provinces(q_stripped)
+        if provinces:
+            prov_rx = {"$regex": "|".join(re.escape(p) for p in provinces), "$options": "i"}
+            lexical_or.append({"location.provincia": prov_rx})
+            lexical_or.append({"province_name": prov_rx})
+        and_clauses.append({"$or": lexical_or})
 
     if and_clauses:
         q["$and"] = and_clauses

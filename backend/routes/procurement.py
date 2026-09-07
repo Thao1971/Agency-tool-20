@@ -1,5 +1,7 @@
 """Public Procurement — Routes for contract ingestion, CPV scope, and company matching."""
 
+import asyncio
+import time
 from fastapi import APIRouter, HTTPException, Depends, Query, UploadFile, File
 from typing import Optional, Dict
 from database import db
@@ -7,56 +9,46 @@ from models import new_id, now_iso
 from auth_utils import get_current_user
 from services.procurement_connector import parse_and_ingest_csv, INITIAL_CPV_SCOPE
 import logging
-import time
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/public-procurement", tags=["public_procurement"])
 
+# 2026-09-02: alerta Atlas "Query Targeting" (scanned/returned ~7.100) — /status, /overview
+# y /validation-report reconstruian sus cifras desde cero en cada llamada, cada una con un
+# count_documents({}) (COLLSCAN completo de las 659k+ contratos) mas, en /overview y
+# /validation-report, una docena larga de aggregates/counts adicionales sobre toda la
+# coleccion. Mismo patron ya usado y aprobado en services/platform_stats.py: cache en memoria
+# con TTL + estimated_document_count() (metadatos de la coleccion, no escanea) para la cifra
+# de "total". Los datos de contratacion solo cambian con el re-sync (semanal, ver
+# placsp_scheduler.py), asi que un TTL de minutos no oculta nada relevante; se invalida ademas
+# al terminar un sync manual o automatico (ver _invalidate_procurement_caches()).
+_STATUS_CACHE: Dict = {"data": None, "expires": 0.0}
+_OVERVIEW_CACHE: Dict = {"data": None, "expires": 0.0}
+_VALIDATION_CACHE: Dict = {"data": None, "expires": 0.0}
 
-# ══════════════════════════════════════════
-# CACHE + total-count sin escaneo
-# ──────────────────────────────────────────
-# Alerta real de Atlas ("Query Targeting", scanned/returned 7.100,7 en Arroba-pro):
-# la causa era `count_documents({})` sin índice repetido cada 5-10 min en /status,
-# /overview (pública) y /validation-report — cada uno un COLLSCAN completo de 659k+
-# contratos. Arreglo: (1) `_total_contracts()` usa estimated_document_count() (lee
-# metadatos de la colección, sin escaneo) con fallback honesto a count_documents({});
-# (2) cache en memoria con TTL por ruta, invalidada al ingerir (/sync, /sync-placsp).
-# Los conteos FILTRADOS internos (matched/pending/agregados) NO se tocan: siguen igual,
-# solo se cachea la respuesta completa de cada endpoint.
-_STATUS_CACHE: Dict = {"data": None, "ts": 0.0, "ttl": 60}
-_OVERVIEW_CACHE: Dict = {"data": None, "ts": 0.0, "ttl": 600}
-_VALIDATION_CACHE: Dict = {"data": None, "ts": 0.0, "ttl": 600}
+STATUS_CACHE_TTL_SECONDS = 60
+OVERVIEW_CACHE_TTL_SECONDS = 600
+VALIDATION_CACHE_TTL_SECONDS = 600
 
 
 async def _total_contracts() -> int:
-    """Total de contratos SIN COLLSCAN: estimated_document_count() lee los metadatos
-    de la colección. Fallback a count_documents({}) si el driver/servidor no lo soporta."""
+    """Estimacion rapida (metadatos de la coleccion, sin COLLSCAN) para la cifra de cabecera
+    'total_contracts'. Mismo criterio que platform_stats._count(): no necesitamos precision
+    absoluta en un contador de cabecera, y esto evita el escaneo completo que disparo la
+    alerta de Atlas."""
     try:
         return await db.public_procurement_contracts.estimated_document_count()
     except Exception:
         return await db.public_procurement_contracts.count_documents({})
 
 
-def _cache_get(cache: Dict):
-    if cache["data"] is not None and (time.time() - cache["ts"]) < cache["ttl"]:
-        return cache["data"]
-    return None
-
-
-def _cache_set(cache: Dict, data):
-    cache["data"] = data
-    cache["ts"] = time.time()
-    return data
-
-
 def _invalidate_procurement_caches():
-    """Se llama tras cada ingesta para que /status, /overview y /validation-report
-    reflejen los nuevos contratos en la siguiente petición (no esperan al TTL)."""
-    for c in (_STATUS_CACHE, _OVERVIEW_CACHE, _VALIDATION_CACHE):
-        c["data"] = None
-        c["ts"] = 0.0
+    """Fuerza a recalcular /status, /overview y /validation-report en su proxima llamada.
+    Se llama tras cada sync (manual o PLACSP) para que la cache corta no oculte datos nuevos."""
+    _STATUS_CACHE["expires"] = 0.0
+    _OVERVIEW_CACHE["expires"] = 0.0
+    _VALIDATION_CACHE["expires"] = 0.0
 
 
 # ══════════════════════════════════════════
@@ -65,9 +57,10 @@ def _invalidate_procurement_caches():
 
 @router.get("/status")
 async def procurement_status(user=Depends(get_current_user)):
-    cached = _cache_get(_STATUS_CACHE)
-    if cached is not None:
-        return cached
+    now = time.time()
+    if _STATUS_CACHE["data"] is not None and _STATUS_CACHE["expires"] > now:
+        return _STATUS_CACHE["data"]
+
     total = await _total_contracts()
     matched = await db.public_procurement_contracts.count_documents({"matched_company_id": {"$ne": None}})
     pending = await db.public_procurement_contracts.count_documents({"review_status": "pending_review"})
@@ -83,7 +76,7 @@ async def procurement_status(user=Depends(get_current_user)):
     last_sync = await db.procurement_sync_logs.find_one({}, {"_id": 0, "synced_at": 1}, sort=[("synced_at", -1)])
     last_log = await db.procurement_sync_logs.find_one({}, {"_id": 0}, sort=[("synced_at", -1)])
 
-    return _cache_set(_STATUS_CACHE, {
+    data = {
         "provider": "public_procurement",
         "name": "Contratacion Publica",
         "total_contracts": total,
@@ -94,77 +87,98 @@ async def procurement_status(user=Depends(get_current_user)):
         "cpv_codes_active": cpv_active,
         "last_sync_at": last_sync.get("synced_at") if last_sync else None,
         "last_sync_stats": last_log,
-    })
+    }
+    _STATUS_CACHE["data"] = data
+    _STATUS_CACHE["expires"] = now + STATUS_CACHE_TTL_SECONDS
+    return data
 
 
 @router.get("/overview")
 async def procurement_overview():
-    """Comprehensive overview for the Contratacion Publica page. Public endpoint."""
-    cached = _cache_get(_OVERVIEW_CACHE)
-    if cached is not None:
-        return cached
+    """Comprehensive overview for the Contratacion Publica page. Public endpoint.
+
+    2026-09-06 - Daniel (520 intermitentes en financial-intelligence/analyze): las ~15
+    count_documents/aggregate/distinct de aqui abajo son independientes entre si (cada
+    una filtra o agrupa por su cuenta la coleccion completa de 659k+ contratos) pero se
+    lanzaban en serie, una detras de otra. En cada cache-miss (una vez cada
+    OVERVIEW_CACHE_TTL_SECONDS = 600s) eso mantenia ~12 COLLSCANs seguidos activos varios
+    segundos en el cluster Arroba-pro. El performance advisor de Atlas + el slow query log
+    (COLLSCAN de 659.486 docs, repetido) muestran picos de carga en ese cluster que
+    coinciden con los 520 intermitentes reportados en financial-intelligence/analyze (mismo
+    cluster, distinto endpoint). Lanzar estas llamadas con asyncio.gather no reduce el
+    volumen escaneado (eso ya lo resuelve el cacheo con TTL de arriba) pero si comprime la
+    ventana de varios segundos de carga simultanea a la duracion de la mas lenta de todas,
+    bajando la presion punta sobre el cluster durante ese refresco. No cambia ni un solo
+    resultado devuelto: mismos filtros, mismas agregaciones, solo se piden en paralelo.
+    """
+    now = time.time()
+    if _OVERVIEW_CACHE["data"] is not None and _OVERVIEW_CACHE["expires"] > now:
+        return _OVERVIEW_CACHE["data"]
+
     total = await _total_contracts()
     if total == 0:
         return {"total_contracts": 0}
 
-    # KPIs
-    amount_agg = await db.public_procurement_contracts.aggregate([
-        {"$group": {"_id": None, "total": {"$sum": {"$ifNull": ["$amount", 0]}},
-                    "avg": {"$avg": {"$ifNull": ["$amount", 0]}},
-                    "max": {"$max": "$amount"}}}
-    ]).to_list(1)
+    field_names = ["expediente", "cpv_code", "contract_type", "award_date", "publication_date",
+                   "buyer_name", "buyer_nif", "buyer_city", "awardee_name"]
+
+    (
+        amount_agg,
+        with_nif,
+        unique_nif_list,
+        unique_buyer_list,
+        type_agg,
+        cpv_agg,
+        empresas_ab,
+        personas,
+        field_counts,
+        amount_gt0,
+        econ_metrics,
+        econ_signals,
+        last_sync,
+    ) = await asyncio.gather(
+        db.public_procurement_contracts.aggregate([
+            {"$group": {"_id": None, "total": {"$sum": {"$ifNull": ["$amount", 0]}},
+                        "avg": {"$avg": {"$ifNull": ["$amount", 0]}},
+                        "max": {"$max": "$amount"}}}
+        ]).to_list(1),
+        db.public_procurement_contracts.count_documents({"awardee_tax_id": {"$nin": [None, ""]}}),
+        db.public_procurement_contracts.distinct("awardee_tax_id", {"awardee_tax_id": {"$nin": [None, ""]}}),
+        db.public_procurement_contracts.distinct("buyer_name", {"buyer_name": {"$nin": [None, ""]}}),
+        db.public_procurement_contracts.aggregate([
+            {"$group": {"_id": "$contract_type", "count": {"$sum": 1}, "amount": {"$sum": {"$ifNull": ["$amount", 0]}}}},
+            {"$sort": {"count": -1}},
+        ]).to_list(10),
+        db.public_procurement_contracts.aggregate([
+            {"$match": {"cpv_code": {"$nin": [None, ""]}}},
+            {"$group": {"_id": {"$substr": ["$cpv_code", 0, 2]}, "count": {"$sum": 1},
+                        "amount": {"$sum": {"$ifNull": ["$amount", 0]}}}},
+            {"$sort": {"count": -1}},
+            {"$limit": 12},
+        ]).to_list(12),
+        # NIF type breakdown (count contracts, not unique NIFs — faster and no substr issue)
+        db.public_procurement_contracts.count_documents({"awardee_tax_id": {"$regex": "^[AB]"}}),
+        db.public_procurement_contracts.count_documents({"awardee_tax_id": {"$regex": "^[0-9XYZ]"}}),
+        asyncio.gather(*[
+            db.public_procurement_contracts.count_documents({f: {"$nin": [None, ""]}})
+            for f in field_names
+        ]),
+        db.public_procurement_contracts.count_documents({"amount": {"$gt": 0}}),
+        db.economic_metrics.count_documents({"source": "procurement"}),
+        db.economic_signals.count_documents({"signal_type": "public_demand"}),
+        db.procurement_sync_logs.find_one({}, {"_id": 0}, sort=[("synced_at", -1)]),
+    )
+
     amount = amount_agg[0] if amount_agg else {}
-
-    with_nif = await db.public_procurement_contracts.count_documents({"awardee_tax_id": {"$nin": [None, ""]}})
-    unique_nifs = len(await db.public_procurement_contracts.distinct("awardee_tax_id", {"awardee_tax_id": {"$nin": [None, ""]}}))
-    unique_buyers = len(await db.public_procurement_contracts.distinct("buyer_name", {"buyer_name": {"$nin": [None, ""]}}))
-
-    # Contract type distribution
-    type_agg = await db.public_procurement_contracts.aggregate([
-        {"$group": {"_id": "$contract_type", "count": {"$sum": 1}, "amount": {"$sum": {"$ifNull": ["$amount", 0]}}}},
-        {"$sort": {"count": -1}},
-    ]).to_list(10)
-
-    # Top CPV
-    cpv_agg = await db.public_procurement_contracts.aggregate([
-        {"$match": {"cpv_code": {"$nin": [None, ""]}}},
-        {"$group": {"_id": {"$substr": ["$cpv_code", 0, 2]}, "count": {"$sum": 1},
-                    "amount": {"$sum": {"$ifNull": ["$amount", 0]}}}},
-        {"$sort": {"count": -1}},
-        {"$limit": 12},
-    ]).to_list(12)
-
-    # NIF type breakdown (count contracts, not unique NIFs — faster and no substr issue)
-    empresas_ab = await db.public_procurement_contracts.count_documents(
-        {"awardee_tax_id": {"$regex": "^[AB]"}}
-    )
-    personas = await db.public_procurement_contracts.count_documents(
-        {"awardee_tax_id": {"$regex": "^[0-9XYZ]"}}
-    )
+    unique_nifs = len(unique_nif_list)
+    unique_buyers = len(unique_buyer_list)
 
     # Field coverage
-    fields = {
-        "expediente": await db.public_procurement_contracts.count_documents({"expediente": {"$nin": [None, ""]}}),
-        "cpv_code": await db.public_procurement_contracts.count_documents({"cpv_code": {"$nin": [None, ""]}}),
-        "contract_type": await db.public_procurement_contracts.count_documents({"contract_type": {"$nin": [None, ""]}}),
-        "award_date": await db.public_procurement_contracts.count_documents({"award_date": {"$nin": [None, ""]}}),
-        "publication_date": await db.public_procurement_contracts.count_documents({"publication_date": {"$nin": [None, ""]}}),
-        "buyer_name": await db.public_procurement_contracts.count_documents({"buyer_name": {"$nin": [None, ""]}}),
-        "buyer_nif": await db.public_procurement_contracts.count_documents({"buyer_nif": {"$nin": [None, ""]}}),
-        "buyer_city": await db.public_procurement_contracts.count_documents({"buyer_city": {"$nin": [None, ""]}}),
-        "awardee_name": await db.public_procurement_contracts.count_documents({"awardee_name": {"$nin": [None, ""]}}),
-        "awardee_tax_id": with_nif,
-        "amount": await db.public_procurement_contracts.count_documents({"amount": {"$gt": 0}}),
-    }
+    fields = dict(zip(field_names, field_counts))
+    fields["awardee_tax_id"] = with_nif
+    fields["amount"] = amount_gt0
 
-    # Economic Intelligence metrics
-    econ_metrics = await db.economic_metrics.count_documents({"source": "procurement"})
-    econ_signals = await db.economic_signals.count_documents({"signal_type": "public_demand"})
-
-    # Last sync
-    last_sync = await db.procurement_sync_logs.find_one({}, {"_id": 0}, sort=[("synced_at", -1)])
-
-    return _cache_set(_OVERVIEW_CACHE, {
+    data = {
         "total_contracts": total,
         "total_amount_eur": round(amount.get("total", 0), 2),
         "avg_amount_eur": round(amount.get("avg", 0), 2),
@@ -182,7 +196,10 @@ async def procurement_overview():
         "field_coverage": {k: {"count": v, "pct": round(v / total * 100, 1)} for k, v in fields.items()},
         "economic_intelligence": {"metrics": econ_metrics, "signals": econ_signals},
         "last_sync": last_sync,
-    })
+    }
+    _OVERVIEW_CACHE["data"] = data
+    _OVERVIEW_CACHE["expires"] = now + OVERVIEW_CACHE_TTL_SECONDS
+    return data
 
 
 # ══════════════════════════════════════════
@@ -336,9 +353,10 @@ async def sync_placsp_endpoint(
 @router.get("/validation-report")
 async def validation_report(user=Depends(get_current_user)):
     """Full validation report for procurement data quality."""
-    cached = _cache_get(_VALIDATION_CACHE)
-    if cached is not None:
-        return cached
+    now = time.time()
+    if _VALIDATION_CACHE["data"] is not None and _VALIDATION_CACHE["expires"] > now:
+        return _VALIDATION_CACHE["data"]
+
     total = await _total_contracts()
     matched = await db.public_procurement_contracts.count_documents({"matched_company_id": {"$ne": None}})
     pending = await db.public_procurement_contracts.count_documents({"review_status": "pending_review"})
@@ -398,7 +416,7 @@ async def validation_report(user=Depends(get_current_user)):
     companies_with = await db.public_procurement_contracts.aggregate(companies_pipeline).to_list(1)
     companies_count = companies_with[0]["total"] if companies_with else 0
 
-    return _cache_set(_VALIDATION_CACHE, {
+    data = {
         "summary": {
             "total_contracts": total,
             "matched": matched,
@@ -421,7 +439,10 @@ async def validation_report(user=Depends(get_current_user)):
         "top_awardees": [{"name": a["_id"], "contracts": a["count"], "amount": round(a["total"], 2), "matched": a.get("matched") is not None} for a in top_awardees],
         "top_buyers": [{"name": b["_id"], "contracts": b["count"], "amount": round(b["total"], 2)} for b in top_buyers],
         "top_cpvs": [{"cpv": c["_id"], "contracts": c["count"], "amount": round(c["total"], 2)} for c in top_cpvs],
-    })
+    }
+    _VALIDATION_CACHE["data"] = data
+    _VALIDATION_CACHE["expires"] = now + VALIDATION_CACHE_TTL_SECONDS
+    return data
 
 
 # ══════════════════════════════════════════

@@ -427,6 +427,12 @@ async def ensure_indexes():
         from database import db
         await db.company_classifications.create_index("company_id")
         await db.company_classifications.create_index([("axis", 1), ("taxonomy_id", 1)])
+        # 2026-09-06 - Atlas Performance Advisor senalaba este indice como el de mayor
+        # peso pendiente en todo el cluster Arroba-pro (weight ~1.98e9): search.py
+        # (sector_counts, search_by_taxonomy) filtra por role+taxonomy_id y ordena por
+        # confidence descendente sin indice que lo soporte -> COLLSCAN en cada llamada.
+        # Cubre ambos usos: el filtro (role, taxonomy_id) y el sort(confidence, -1).
+        await db.company_classifications.create_index([("role", 1), ("taxonomy_id", 1), ("confidence", -1)])
         await db.company_fingerprint.create_index("company_id", unique=True)
         _INDEXED = True
     except Exception:
