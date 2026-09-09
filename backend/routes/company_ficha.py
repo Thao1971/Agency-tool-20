@@ -220,11 +220,25 @@ async def governance(identifier: str, _key=Depends(require_service_key)):
 
     rows = await db.norm_officers.find({"cif_normalized": cif}, {"_id": 0}).to_list(500)
 
-    best: Dict[tuple, Dict] = {}
+    # HARDENING · dedup por persona (Daniel 2026-09-09): `norm_officers` guarda
+    # a menudo la MISMA persona 2 veces para la misma sociedad — una fila con
+    # `role` en inglés (ej. "Representative") y otra con el equivalente en
+    # español crudo (ej. "Apoderado"). El dedup anterior era por (persona, rol)
+    # y como el valor de `role` difiere entre ambas filas, nunca colapsaban:
+    # cada persona salía 2 veces (Servier: 27 personas reales → 55 filas). El
+    # dedup ahora es solo por persona; entre duplicados nos quedamos con el que
+    # clasifique en un grupo real (no "otros") y, a igualdad, con el `year` más
+    # alto — mismo criterio de desempate que antes.
+    best: Dict[str, Dict] = {}
     for r in rows:
-        key = (r.get("person_key") or (r.get("person_name") or "").lower(), r.get("role"))
+        key = r.get("person_key") or (r.get("person_name") or "").lower()
         cur = best.get(key)
-        if cur is None or (r.get("year") or 0) > (cur.get("year") or 0):
+        if cur is None:
+            best[key] = r
+            continue
+        new_score = (_role_group(r.get("role")) != "otros", r.get("year") or 0)
+        cur_score = (_role_group(cur.get("role")) != "otros", cur.get("year") or 0)
+        if new_score > cur_score:
             best[key] = r
 
     officers = []
@@ -692,6 +706,19 @@ _ROLE_GROUP = {
     "Depositary": "otros",
     "Chairperson Of The Controlling Committee": "otros",
     "Alternate": "otros",
+
+    # HARDENING · roles en español crudo (Daniel 2026-09-09): `norm_officers`
+    # guarda algunas filas con `role` ya en español en vez del canon inglés de
+    # arriba — confirmado con Intel que estos 4 son los ÚNICOS valores en
+    # español que existen hoy en toda la colección (case-sensitive, tal cual
+    # están guardados). Sin esto, cada persona con una de estas filas quedaba
+    # duplicada (una vez bajo el rol inglés, clasificada bien; otra bajo este
+    # rol español, cayendo a "Otros") — ver también el dedup por persona más
+    # abajo en `governance()`.
+    "Apoderado": "apoderados",
+    "Administrador Solidario": "administracion",
+    "Administrador Único": "administracion",
+    "Auditor Cuentas Conjunto": "auditor",
 }
 _ROLE_GROUP_ORDER = {"administracion": 0, "apoderados": 1, "auditor": 2, "otros": 3}
 _ROLE_GROUP_ES = {

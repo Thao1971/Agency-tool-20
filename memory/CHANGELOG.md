@@ -3,6 +3,14 @@
 > Registro de cambios de arquitectura de la plataforma Agency Tool (compartida: Valuo.pro + arroba.com + Platform Console).
 
 
+## 2026-09-09 (f) — Gobierno: dedup por persona + mapeo de 4 roles ES crudos ✅ (solo PREVIEW)
+`routes/company_ficha.py`. Patch final de Daniel para el hallazgo de duplicados (2 ediciones):
+1. `_ROLE_GROUP`: añadidos los 4 únicos `role` en español crudo que existen en `norm_officers` (tal cual, case-sensitive): `Apoderado`→apoderados, `Administrador Solidario`/`Administrador Único`→administracion, `Auditor Cuentas Conjunto`→auditor. (Los otros 134 roles ingleses sin mapear siguen cayendo a "otros" a propósito — fuera de alcance, degradan limpio.)
+2. `governance()`: dedup cambia de `(person_key, role)` a solo `person_key`, quedándose con la fila que clasifique en grupo real (no "otros") y, a igualdad, mayor `year`. Elimina el doble listado de cada persona (fila inglesa + fila española).
+- Verificado Servier `/governance`: **officers_count 55 → 27**, **0 duplicados por nombre**, reparto {administracion:2, apoderados:24, auditor:1}, `since_iso` en todos, orden por grupo+fecha correcto. Suites externa 11/11 + smoke 7/7 PASS, compila limpio.
+- Sin desplegar.
+
+
 ## 2026-09-09 (e) — Gobierno: orden por grupo de cargo + fecha ISO normalizada ✅ (solo PREVIEW)
 `routes/company_ficha.py`. Patch de Daniel aplicado tal cual (2 ediciones):
 1. `governance()`: `appointment_date` (formatos mixtos `DDMONYYYY` / `dd/mm/yyyy`) se normaliza a ISO `YYYY-MM-DD` en `since` (+ nuevo `since_iso`); orden por grupo de cargo (Administración→Apoderados→Auditoría→Otros) y fecha desc dentro de grupo (antes ordenaba por `year`, uniformemente 2024 = inútil). Nuevos campos por officer: `since_iso`, `role_group`, `role_group_es`.
