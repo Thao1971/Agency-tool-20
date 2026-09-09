@@ -13,7 +13,7 @@ import {
 import {
   ArrowLeft, ExternalLink, CheckCircle, User, Phone, Mail,
   MapPin, Award, Users, Tag, Shield, FileText, Download, Send,
-  RefreshCw, Loader2
+  RefreshCw, Loader2, AlertTriangle
 } from 'lucide-react';
 import { toast } from 'sonner';
 
