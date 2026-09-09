@@ -420,6 +420,7 @@ async def valuation(master: Dict, latest: Dict) -> Dict:
                     "enterprise_value": round(ev, 0), "equity_value": round(equity_value, 0),
                     "net_debt_known": debt_known,
                     "range": {"low": round(ebitda * real.get("ev_ebitda_p25", mult), 0),
+                              "central": round(ev, 0),
                               "high": round(ebitda * real.get("ev_ebitda_p75", mult), 0)},
                     "confidence": round(0.8 - _cadj, 2), "hypotheses": hypotheses,
                     "lineage": {**lineage, "source": real}}
@@ -430,10 +431,10 @@ async def valuation(master: Dict, latest: Dict) -> Dict:
                       f"{section}) inferida por Arroba, pendiente de contraste con transacciones "
                       f"reales.",
                       _nd_hyp()]
-        return {"method": "ev_ebitda", "multiple": mult, "multiple_basis": "inferred_reference",
+        return {"method": "ev_ebitda", "multiple_basis": "inferred_reference", "multiple": mult,
                 "enterprise_value": round(ev, 0), "equity_value": round(equity_value, 0),
                 "net_debt_known": debt_known,
-                "range": {"low": round(ev * 0.85, 0), "high": round(ev * 1.15, 0)},
+                "range": {"low": round(ev * 0.85, 0), "central": round(ev, 0), "high": round(ev * 1.15, 0)},
                 "confidence": round(0.6 - _cadj, 2), "hypotheses": hypotheses, "lineage": lineage}
     if revenue and revenue > 0:
         mult = _DEFAULT_EV_REVENUE
@@ -444,7 +445,7 @@ async def valuation(master: Dict, latest: Dict) -> Dict:
         return {"method": "ev_revenue", "multiple": mult, "multiple_basis": "inferred_reference",
                 "enterprise_value": round(ev, 0), "equity_value": round(ev - net_debt, 0),
                 "net_debt_known": debt_known,
-                "range": {"low": round(ev * 0.7, 0), "high": round(ev * 1.3, 0)},
+                "range": {"low": round(ev * 0.7, 0), "central": round(ev, 0), "high": round(ev * 1.3, 0)},
                 "confidence": round(0.4 - _cadj, 2), "hypotheses": hypotheses, "lineage": lineage}
     if equity and equity > 0:
         return {"method": "book_value", "equity_value": round(equity, 0),
@@ -502,8 +503,8 @@ def _ratios_with_trend(series: List[Dict], employees: Optional[int]) -> Dict[str
 
 def _valuation_full(val: Dict, latest: Dict, comparables: Dict) -> Dict:
     """Additive valuation surface (arroba.v2): scenarios (conservador/base/optimista con
-    label+multiple+EV+equity), benchmark (lista empresa vs mediana categoría) y methodology.
-    Solo dato real."""
+    name+multiple+EV+equity), benchmark (objeto plano empresa vs mediana categoría,
+    contrato `ValuationBenchmark`) y methodology. Solo dato real."""
     import statistics
     out: Dict = {}
     method = val.get("method")
@@ -522,11 +523,11 @@ def _valuation_full(val: Dict, latest: Dict, comparables: Dict) -> Dict:
 
     if method in ("ev_ebitda", "ev_revenue") and None not in (ev, lo, hi):
         out["scenarios"] = [
-            {"label": "conservador", "multiple": _mult_for(lo),
+            {"name": "conservador", "multiple": _mult_for(lo),
              "enterprise_value": lo, "equity_value": round(lo - net_debt, 0)},
-            {"label": "base", "multiple": mult,
+            {"name": "base", "multiple": mult,
              "enterprise_value": ev, "equity_value": round(ev - net_debt, 0)},
-            {"label": "optimista", "multiple": _mult_for(hi),
+            {"name": "optimista", "multiple": _mult_for(hi),
              "enterprise_value": hi, "equity_value": round(hi - net_debt, 0)},
         ]
 
@@ -534,18 +535,23 @@ def _valuation_full(val: Dict, latest: Dict, comparables: Dict) -> Dict:
     pmargins = sorted([p["ebitda_margin"] for p in peers if p.get("ebitda_margin") is not None])
     prevs = sorted([p["revenue"] for p in peers if p.get("revenue") is not None])
     subj_margin = R._safe_div(latest.get("ebitda"), latest.get("revenue"))
-    benchmark = []
-    if pmargins:
-        benchmark.append({"metric": "Margen EBITDA", "company": round(subj_margin, 4) if subj_margin is not None else None,
-                          "category": round(statistics.median(pmargins), 4), "format": "percent"})
-    if prevs:
-        benchmark.append({"metric": "Ingresos", "company": latest.get("revenue"),
-                          "category": round(statistics.median(prevs), 0), "format": "currency"})
-    if benchmark:
-        out["benchmark"] = benchmark
-        out["benchmark_scope"] = "sector CNAE + banda de tamaño"
-        if (comparables or {}).get("subject_ebitda_margin_percentile") is not None:
-            out["ebitda_margin_percentile"] = round(comparables["subject_ebitda_margin_percentile"] * 100)
+    subj_revenue = latest.get("revenue")
+    pct = (comparables or {}).get("subject_ebitda_margin_percentile")
+    # Forma plana (contrato `ValuationBenchmark` en Beta: peers_count/scope/median_*/subject_*/
+    # ebitda_margin_percentile) — antes era una lista de métricas que Beta nunca leía así, y
+    # el margen/ingresos de la PROPIA empresa se omitían por completo si no había peers, aunque
+    # fueran calculables sin comparables. Se emite siempre que haya algún dato real que mostrar
+    # (propio o de categoría); todo lo demás degrada a null (R15, sin inventar cifras).
+    if subj_margin is not None or subj_revenue is not None or peers:
+        out["benchmark"] = {
+            "peers_count": len(peers),
+            "scope": "sector CNAE + banda de tamaño",
+            "median_ebitda_margin": round(statistics.median(pmargins), 4) if pmargins else None,
+            "subject_ebitda_margin": round(subj_margin, 4) if subj_margin is not None else None,
+            "median_revenue": round(statistics.median(prevs), 0) if prevs else None,
+            "subject_revenue": subj_revenue,
+            "ebitda_margin_percentile": round(pct * 100) if pct is not None else None,
+        }
 
     texts = {
         "ev_ebitda": "Valoración por múltiplo EV/EBITDA (referencia sectorial/mercado según calidad), "

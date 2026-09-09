@@ -9,6 +9,14 @@
 - **Suites existentes**: externa (contrato API) 11/11 PASS y smoke financial-intelligence 7/7 PASS contra este pod. NOTA: los ficheros de test tienen hardcodeado el `BASE_URL`/`API_KEY` de OTRO pod (`data-factory-hub`, sesión previa), por eso `pytest` directo daba 404; corridos apuntando a `REACT_APP_BACKEND_URL` de este pod pasan todos. (Latente: convendría que el test externo leyera `BASE_URL` de env como dice su docstring — no tocado por no salirse del diff pedido.)
 - **Sin desplegar**: preview hasta que Daniel autorice el deploy aparte.
 
+## 2026-09-09 (b) — valuation()/_valuation_full(): 3 correcciones de contrato para la ficha (diff de Daniel) ✅ (solo PREVIEW)
+Encontradas revisando la ficha F01 pestaña Valoración. No cambian method/multiple/multiple_basis/confidence/equity_value/enterprise_value — solo estructura que Beta ya esperaba:
+1. Los 3 `range` de `valuation()` incluyen ahora `central` (= round(ev,0)); antes solo low/high y la fila "Medio" del EV salía "No disponible".
+2. `scenarios[]` de `_valuation_full()` usan clave `name` (no `label`) — Beta leía `.name` y caía al fallback "Escenario 1/2/3".
+3. `benchmark` de `_valuation_full()` reescrito como objeto plano (`peers_count/scope/median_ebitda_margin/subject_ebitda_margin/median_revenue/subject_revenue/ebitda_margin_percentile`, contrato `ValuationBenchmark`); antes era lista que Beta no leía y solo se emitía con peers → el card "Benchmark del sector" salía vacío para todas. Ahora se emite si hay margen/ingresos propios o peers (R15: resto a null, sin inventar).
+- Verificado end-to-end en este pod: range `{low,central,high}`, scenarios name conservador/base/optimista, benchmark dict con peers_count=8/subject_revenue poblados. Suites externa 11/11 + smoke 7/7 PASS (apuntando a REACT_APP_BACKEND_URL).
+- Sin desplegar.
+
 
 
 ## 2026-09-09 — Batch Intel 3 puntos (paginación determinista + orden por columna + buscador predictivo) ✅ (solo PREVIEW)
