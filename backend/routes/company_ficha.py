@@ -15,7 +15,7 @@ from database import db
 from services.service_auth import require_service_key
 from borme.parser import normalize_company_name
 from services.data_layer.master import control_synergy as CS
-from services.data_layer.normalize import strip_accents
+from services.data_layer.normalize import strip_accents, normalize_cif
 from services.engines.financial import engine as FE
 from services.engines.investment import fragmentation as FRAG
 from routes.company_intelligence import _build as _build_identity
@@ -1039,15 +1039,23 @@ async def _control_graph_block(master: Dict, max_subs: int = 100) -> Dict:
     nodes = [{"id": "company", "label": company_name, "kind": "company",
               "master_id": master["master_id"], "cif": cif, "expandable": False}]
     edges = []
+    # HARDENING · click-to-expand (Daniel 2026-09-09): antes `expandable` exigía master_id
+    # resuelto, y en la práctica eso deja casi todos los accionistas/participadas sin poder
+    # expandir (típico: conocidos solo como counterparty en el norm_ownership de ESTA ficha,
+    # sin registro propio en master_companies todavía — ej. Danval-SA/Servier). Ahora que
+    # `/connections` también resuelve por CIF crudo vía cross-referencia en norm_ownership
+    # (`_connections_from_raw_cif`), un nodo con `cif` conocido pero sin `master_id` también
+    # es un candidato válido a expandir — el propio `/connections` responde 404 limpio (R15)
+    # si de verdad no hay ninguna referencia cruzada, sin fabricar nada.
     for i, s in enumerate(out_sh):
         nid = s["master_id"] or f"sh{i + 1}"
         nodes.append({"id": nid, "label": s["name"], "kind": "ubo" if s["is_ubo"] else "shareholder",
-                      "master_id": s["master_id"], "cif": s["cif"], "expandable": bool(s["master_id"])})
+                      "master_id": s["master_id"], "cif": s["cif"], "expandable": bool(s["master_id"] or s["cif"])})
         edges.append({"from": nid, "to": "company", "pct": s["pct"]})
     for i, d in enumerate(out_subs):
         nid = d["master_id"] or f"sub{i + 1}"
         nodes.append({"id": nid, "label": d["name"], "kind": "subsidiary",
-                      "master_id": d["master_id"], "cif": d["cif"], "expandable": bool(d["master_id"])})
+                      "master_id": d["master_id"], "cif": d["cif"], "expandable": bool(d["master_id"] or d["cif"])})
         edges.append({"from": "company", "to": nid, "pct": d["pct"]})
 
     return {
@@ -1081,13 +1089,30 @@ async def control_graph(identifier: str, _key=Depends(require_service_key)):
 
 @router.get("/{node_id}/connections")
 async def connections(node_id: str, max_nodes: int = 60, _key=Depends(require_service_key)):
-    """Vecindario 1-hop de un nodo del grafo de control (click-para-expandir, LAZY), desde el
-    grafo RESUELTO `master_relationships`: empresas que ese nodo controla/participa (`owns`) y
-    sus accionistas/matrices (`owned_by`), con % en aristas. `node_id` = master_id o CIF.
-    Nombres reales (Beta anonimiza). Vecinos con master_id → `expandable:true` (encadenable)."""
+    """Vecindario 1-hop de un nodo del grafo de control (click-para-expandir, LAZY). `node_id` =
+    master_id o CIF. Nombres reales (Beta anonimiza). Vecinos con master_id → `expandable:true`
+    (encadenable).
+
+    HARDENING · Fallback CIF-sin-master (Daniel 2026-09-09): la mayoría de accionistas/
+    participadas de una ficha (ej. Danval-SA, participada de Servier) son conocidos por Intel
+    SOLO como counterparty dentro del `norm_ownership` de otra empresa — no tienen `master_id`
+    propio todavía (no están en `master_companies`/`norm_company` como ficha propia). Antes
+    esto daba 404 siempre para esos nodos. Ahora, si `node_id` no resuelve a un master, se
+    intenta como CIF crudo contra `norm_ownership` (ver `_connections_from_raw_cif`): real-
+    data-only, cero fabricación, solo reexpone lo que OTRAS empresas ya mastereadas declaran
+    sobre ese CIF en sus propias disclosures."""
     master = await _master(node_id)
-    if not master:
+    if master:
+        return await _connections_from_master(master, max_nodes)
+    raw = await _connections_from_raw_cif(node_id, max_nodes)
+    if raw is None:
         raise HTTPException(status_code=404, detail="Node not found")
+    return raw
+
+
+async def _connections_from_master(master: Dict, max_nodes: int) -> Dict:
+    """Vecindario 1-hop desde el grafo RESUELTO `master_relationships`: empresas que ese nodo
+    controla/participa (`owns`) y sus accionistas/matrices (`owned_by`), con % en aristas."""
     mid = master["master_id"]
     cif = master["cif_normalized"]
     node_name = (master.get("identity") or {}).get("legal_name")
@@ -1179,7 +1204,80 @@ async def connections(node_id: str, max_nodes: int = 60, _key=Depends(require_se
         "owns": owns,
         "owned_by": owned_by,
         "graph": {"nodes": nodes, "edges": edges},
-        "coverage": {"owns_count": len(owns), "owned_by_count": len(owned_by), "truncated": truncated},
+        "coverage": {"owns_count": len(owns), "owned_by_count": len(owned_by), "truncated": truncated,
+                     "resolution": "master_relationships"},
+        "engine_version": ENGINE_VERSION,
+    }
+
+
+async def _connections_from_raw_cif(raw_identifier: str, max_nodes: int) -> Optional[Dict]:
+    """Fallback para un `node_id` que NO resuelve a `master_companies` (caso típico: una
+    participada/accionista conocido solo como `counterparty` en el `norm_ownership` de OTRA
+    empresa, sin ficha propia todavía). Cruza `norm_ownership` por `counterparty_cif` — es
+    decir, busca qué OTRAS empresas (ya mastereadas) declaran a este CIF como su accionista o
+    su participada — y devuelve exactamente eso. No se fabrica ni se infiere nada nuevo (R15):
+    se reexpone en crudo lo que empresas YA mastereadas han declarado sobre este CIF."""
+    cif_norm = normalize_cif(raw_identifier)
+    if not cif_norm:
+        return None
+    rows = await db.norm_ownership.find(
+        {"counterparty_cif": cif_norm, "relationship_type":
+            {"$in": ["shareholder", "parent_co", "ultimate_parent_co", "investee_co"]}},
+        {"_id": 0}).to_list(500)
+    if not rows:
+        return None
+    src_cifs = list({r["src_cif"] for r in rows if r.get("src_cif")})
+    info_by_cif: Dict[str, Dict] = {}
+    if src_cifs:
+        async for m in db.master_companies.find(
+                {"cif_normalized": {"$in": src_cifs}},
+                {"_id": 0, "master_id": 1, "cif_normalized": 1, "identity.legal_name": 1,
+                 "classification.cnae_description": 1}):
+            info_by_cif[m["cif_normalized"]] = m
+    node = await db.norm_company.find_one({"cif_normalized": cif_norm}, {"_id": 0, "legal_name": 1})
+    node_name = (node or {}).get("legal_name") \
+        or next((r.get("counterparty_name") for r in rows if r.get("counterparty_name")), None)
+
+    def _mk(r):
+        src_cif = r.get("src_cif")
+        info = info_by_cif.get(src_cif) if src_cif else None
+        name = ((info.get("identity") or {}).get("legal_name") if info else None) or src_cif
+        mid = info.get("master_id") if info else None
+        node_o = {"name": name, "master_id": mid, "cif": src_cif, "pct": r.get("pct"),
+                  "type": "legal", "expandable": bool(mid)}
+        if r.get("relationship_type") != "investee_co":
+            node_o["control_label"] = _control_label(r.get("pct"))
+            node_o["activity"] = (info.get("classification") or {}).get("cnae_description") if info else None
+        return node_o
+
+    owned_by = [_mk(r) for r in rows if r.get("relationship_type") == "investee_co"]
+    owns = [_mk(r) for r in rows if r.get("relationship_type") != "investee_co"]
+    owns.sort(key=lambda e: (e["pct"] is not None, e["pct"] or 0), reverse=True)
+    owned_by.sort(key=lambda e: (e["pct"] is not None, e["pct"] or 0), reverse=True)
+    truncated = len(owns) > max_nodes or len(owned_by) > max_nodes
+    owns, owned_by = owns[:max_nodes], owned_by[:max_nodes]
+
+    nodes = [{"id": cif_norm, "label": node_name, "kind": "company", "master_id": None,
+              "cif": cif_norm, "expandable": False}]
+    edges = []
+    for i, n in enumerate(owned_by):
+        nid = n["master_id"] or n["cif"] or f"in{i + 1}"
+        nodes.append({"id": nid, "label": n["name"], "kind": "shareholder",
+                      "master_id": n["master_id"], "cif": n["cif"], "expandable": n["expandable"]})
+        edges.append({"from": nid, "to": cif_norm, "pct": n["pct"]})
+    for i, n in enumerate(owns):
+        nid = n["master_id"] or n["cif"] or f"out{i + 1}"
+        nodes.append({"id": nid, "label": n["name"], "kind": "subsidiary",
+                      "master_id": n["master_id"], "cif": n["cif"], "expandable": n["expandable"]})
+        edges.append({"from": cif_norm, "to": nid, "pct": n["pct"]})
+
+    return {
+        "node": {"master_id": None, "cif": cif_norm, "name": node_name},
+        "available": bool(owns or owned_by),
+        "owns": owns, "owned_by": owned_by,
+        "graph": {"nodes": nodes, "edges": edges},
+        "coverage": {"owns_count": len(owns), "owned_by_count": len(owned_by), "truncated": truncated,
+                     "resolution": "raw_cif_crossref"},
         "engine_version": ENGINE_VERSION,
     }
 

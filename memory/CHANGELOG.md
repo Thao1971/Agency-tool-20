@@ -3,6 +3,14 @@
 > Registro de cambios de arquitectura de la plataforma Agency Tool (compartida: Valuo.pro + arroba.com + Platform Console).
 
 
+## 2026-09-09 (d) — Grafo de control click-to-expand: fallback por CIF crudo + expandable ampliado ✅ (solo PREVIEW)
+Contrapartida Intel del fix de cobertura del click-to-expand. `routes/company_ficha.py`:
+1. Import: `normalize_cif` desde `services.data_layer.normalize`.
+2. `connections()` refactorizado a dispatcher: si el `node_id` resuelve a master → `_connections_from_master()` (lógica previa byte-idéntica, ahora con `coverage.resolution="master_relationships"`); si NO resuelve → nuevo `_connections_from_raw_cif()` que cruza `norm_ownership` por `counterparty_cif` (qué otras empresas ya mastereadas declaran a ese CIF como accionista/participada) y devuelve `coverage.resolution="raw_cif_crossref"`. R15: solo reexpone lo declarado, cero fabricación; 404 limpio si no hay referencia cruzada.
+3. `_control_graph_block()`: `expandable` de shareholders/subsidiaries pasa de `bool(master_id)` a `bool(master_id or cif)` — un vecino conocido solo por CIF (típico: counterparty sin ficha propia, ej. DANVAL-SA/Servier) ya es candidato a expandir porque el fallback puede resolverlo.
+- Verificado: Servier control-graph → 5 nodos, 2 expandable (ambos cif-sin-master, antes no expandibles). `/company/A79479846/connections` (DANVAL-SA) → HTTP 200 (antes 404), available=true, resolution=raw_cif_crossref, owned_by=2. Suites externa 11/11 + smoke 7/7 PASS, compila limpio. Sin desplegar.
+
+
 ## 2026-09-09 — valuation(): hipótesis en prosa ES (diff de Daniel, aplicado tal cual) ✅ (solo PREVIEW)
 - `services/engines/financial/engine.py::valuation()`: las cadenas de `hypotheses[]` pasan de jerga cruda ("Múltiplo EV/EBITDA sectorial (sección M) = 6.5x (REFERENCIA inferida)") a prosa cuidada en español. Nueva `_fmt_eur()` (formato "1.696.320 €"). Afecta a las 6 ramas: `_nd_hyp` (deuda conocida/desconocida), múltiplo real M&A Radar, múltiplo sectorial inferido, EV/Ingresos, valor en libros y datos insuficientes. **No cambia ningún campo numérico ni la estructura del contrato — solo texto.**
 - Verificado: `py_compile` OK; `_fmt_eur(1696320)` → "1.696.320 €". Endpoint real de este pod: `valuation` devuelve method `ev_ebitda`, `multiple_basis` `inferred_reference` y hypotheses en prosa ("El múltiplo de 7.5× es una referencia sectorial (sección CNAE C)…", "Se ha restado la deuda financiera neta (deuda − caja: -520.970 €)…").
