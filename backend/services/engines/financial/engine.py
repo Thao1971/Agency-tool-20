@@ -222,7 +222,18 @@ def compute_evolution(series: List[Dict]) -> Dict:
                     # Posición financiera neta = deuda financiera (c/p + l/p) − tesorería.
                     "net_financial_position": (round((s.get("financial_debt") or 0) - s["cash"], 2)
                                                if (s.get("cash") is not None and s.get("financial_debt") is not None) else None),
-                    "employees": None} for s in series],
+                    "employees": None,
+                    "current_assets": s.get("current_assets"),
+                    "non_current_assets": s.get("non_current_assets"),
+                    "total_assets": s.get("total_assets"),
+                    "cash": s.get("cash"),
+                    "current_liabilities": s.get("current_liabilities"),
+                    "non_current_liabilities": s.get("non_current_liabilities"),
+                    "total_liabilities": s.get("total_liabilities"),
+                    "st_debt": s.get("st_debt"),
+                    "lt_debt": s.get("lt_debt"),
+                    "financial_debt": s.get("financial_debt"),
+                    "equity": s.get("equity")} for s in series],
     }
 
 

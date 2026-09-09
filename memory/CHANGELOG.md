@@ -17,6 +17,13 @@ Encontradas revisando la ficha F01 pestaña Valoración. No cambian method/multi
 - Verificado end-to-end en este pod: range `{low,central,high}`, scenarios name conservador/base/optimista, benchmark dict con peers_count=8/subject_revenue poblados. Suites externa 11/11 + smoke 7/7 PASS (apuntando a REACT_APP_BACKEND_URL).
 - Sin desplegar.
 
+## 2026-09-09 (c) — compute_evolution(): exponer las 11 líneas de balance por año (pestaña Balance) ✅ (solo PREVIEW)
+Mismo síntoma que el fix de PyG de esta mañana pero en la pestaña Balance (Sobron B95222139): 2022/2023/2024 en "—", solo el último ejercicio con dato, pese a haber histórico real.
+- Causa: `metrics.py::_year_metrics()` ya calculaba las 11 líneas de balance por año, pero `compute_evolution()` (engine.py) solo proyectaba a `points[]` revenue/ebitda/net_income + derivados; el resto no salía nunca al API.
+- Fix: en el dict de cada punto de `points[]` (tras `"employees": None`) se añaden 11 claves tomadas de `s` (sin calcular nada nuevo): `current_assets, non_current_assets, total_assets, cash, current_liabilities, non_current_liabilities, total_liabilities, st_debt, lt_debt, financial_debt, equity`. Nada más de la función cambia (revenue/ebitda/net_income/márgenes/working_capital/net_financial_position intactos).
+- Verificado end-to-end: `evolution.points` trae las 11 claves para TODOS los años — Sobron 2022-2025 (total_assets/equity poblados, financial_debt=None por no reportarlo), Servier 2022-2024 (9 con dato). Suites externa 11/11 + smoke 7/7 PASS, compila limpio, ningún test roto.
+- Sin desplegar.
+
 
 
 ## 2026-09-09 — Batch Intel 3 puntos (paginación determinista + orden por columna + buscador predictivo) ✅ (solo PREVIEW)
