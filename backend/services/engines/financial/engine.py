@@ -60,6 +60,10 @@ _DEFAULT_EV_EBITDA = 6.5
 _DEFAULT_EV_REVENUE = 0.9
 
 
+def _fmt_eur(v: float) -> str:
+    return f"{v:,.0f} €".replace(",", ".")
+
+
 def _pct_change(new, old):
     if new is None or old in (None, 0):
         return None
@@ -391,9 +395,11 @@ async def valuation(master: Dict, latest: Dict) -> Dict:
 
     def _nd_hyp() -> str:
         if debt_known:
-            return f"Deuda neta = deuda financiera - caja = {round(net_debt, 0)}"
-        return ("Deuda financiera no disponible — Equity Value = EV sin ajuste por deuda "
-                "(posible sobrevaloración si la empresa tiene deuda no desglosada)")
+            return (f"Se ha restado la deuda financiera neta (deuda − caja: {_fmt_eur(net_debt)}) "
+                    "del Enterprise Value para llegar al Equity Value.")
+        return ("No hay dato de deuda financiera para esta empresa: el Equity Value coincide con "
+                "el Enterprise Value. Si la empresa tiene deuda no reflejada en sus cuentas "
+                "depositadas, el valor real para el accionista podría ser algo menor.")
 
     _cadj = 0.0 if debt_known else 0.1  # penaliza la confianza cuando falta la deuda
 
@@ -406,8 +412,9 @@ async def valuation(master: Dict, latest: Dict) -> Dict:
             mult = real["ev_ebitda_median"]
             ev = ebitda * mult
             equity_value = ev - net_debt
-            hypotheses = [f"Múltiplo EV/EBITDA REAL del M&A Radar (agencias de publicidad, "
-                          f"{real['sample_size']} transacciones) = {mult}x (mediana observada)",
+            hypotheses = [f"El múltiplo de {mult:.1f}× es la mediana real observada en "
+                          f"{real['sample_size']} transacciones de agencias de publicidad "
+                          f"(M&A Radar de Arroba).",
                           _nd_hyp()]
             return {"method": "ev_ebitda", "multiple": mult, "multiple_basis": "market_observed",
                     "enterprise_value": round(ev, 0), "equity_value": round(equity_value, 0),
@@ -419,7 +426,9 @@ async def valuation(master: Dict, latest: Dict) -> Dict:
         mult = _SECTION_EV_EBITDA.get(section, _DEFAULT_EV_EBITDA)
         ev = ebitda * mult
         equity_value = ev - net_debt
-        hypotheses = [f"Múltiplo EV/EBITDA sectorial (sección {section}) = {mult}x (REFERENCIA inferida)",
+        hypotheses = [f"El múltiplo de {mult:.1f}× es una referencia sectorial (sección CNAE "
+                      f"{section}) inferida por Arroba, pendiente de contraste con transacciones "
+                      f"reales.",
                       _nd_hyp()]
         return {"method": "ev_ebitda", "multiple": mult, "multiple_basis": "inferred_reference",
                 "enterprise_value": round(ev, 0), "equity_value": round(equity_value, 0),
@@ -429,7 +438,8 @@ async def valuation(master: Dict, latest: Dict) -> Dict:
     if revenue and revenue > 0:
         mult = _DEFAULT_EV_REVENUE
         ev = revenue * mult
-        hypotheses = [f"Múltiplo EV/Ingresos = {mult}x (REFERENCIA inferida; EBITDA no disponible/≤0)",
+        hypotheses = [f"Al no disponer de EBITDA positivo, se ha aplicado un múltiplo de "
+                      f"{mult:.1f}× sobre ingresos como referencia inferida por Arroba.",
                       _nd_hyp()]
         return {"method": "ev_revenue", "multiple": mult, "multiple_basis": "inferred_reference",
                 "enterprise_value": round(ev, 0), "equity_value": round(ev - net_debt, 0),
@@ -438,10 +448,14 @@ async def valuation(master: Dict, latest: Dict) -> Dict:
                 "confidence": round(0.4 - _cadj, 2), "hypotheses": hypotheses, "lineage": lineage}
     if equity and equity > 0:
         return {"method": "book_value", "equity_value": round(equity, 0),
-                "confidence": 0.3, "hypotheses": ["Valor en libros (patrimonio neto)"],
+                "confidence": 0.3,
+                "hypotheses": ["El valor se basa en el patrimonio neto contable (valor en libros), "
+                               "al no disponer de EBITDA ni ingresos suficientes para aplicar un "
+                               "múltiplo."],
                 "lineage": lineage}
     return {"method": "insufficient_data", "confidence": 0.0,
-            "hypotheses": ["Sin EBITDA, ingresos ni patrimonio utilizables"], "lineage": lineage}
+            "hypotheses": ["No hay datos financieros suficientes (EBITDA, ingresos o "
+                           "patrimonio) para estimar una valoración."], "lineage": lineage}
 
 
 def _identity_descriptors(master: Dict) -> Dict:

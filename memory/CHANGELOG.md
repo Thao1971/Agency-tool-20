@@ -3,6 +3,14 @@
 > Registro de cambios de arquitectura de la plataforma Agency Tool (compartida: Valuo.pro + arroba.com + Platform Console).
 
 
+## 2026-09-09 — valuation(): hipótesis en prosa ES (diff de Daniel, aplicado tal cual) ✅ (solo PREVIEW)
+- `services/engines/financial/engine.py::valuation()`: las cadenas de `hypotheses[]` pasan de jerga cruda ("Múltiplo EV/EBITDA sectorial (sección M) = 6.5x (REFERENCIA inferida)") a prosa cuidada en español. Nueva `_fmt_eur()` (formato "1.696.320 €"). Afecta a las 6 ramas: `_nd_hyp` (deuda conocida/desconocida), múltiplo real M&A Radar, múltiplo sectorial inferido, EV/Ingresos, valor en libros y datos insuficientes. **No cambia ningún campo numérico ni la estructura del contrato — solo texto.**
+- Verificado: `py_compile` OK; `_fmt_eur(1696320)` → "1.696.320 €". Endpoint real de este pod: `valuation` devuelve method `ev_ebitda`, `multiple_basis` `inferred_reference` y hypotheses en prosa ("El múltiplo de 7.5× es una referencia sectorial (sección CNAE C)…", "Se ha restado la deuda financiera neta (deuda − caja: -520.970 €)…").
+- **Suites existentes**: externa (contrato API) 11/11 PASS y smoke financial-intelligence 7/7 PASS contra este pod. NOTA: los ficheros de test tienen hardcodeado el `BASE_URL`/`API_KEY` de OTRO pod (`data-factory-hub`, sesión previa), por eso `pytest` directo daba 404; corridos apuntando a `REACT_APP_BACKEND_URL` de este pod pasan todos. (Latente: convendría que el test externo leyera `BASE_URL` de env como dice su docstring — no tocado por no salirse del diff pedido.)
+- **Sin desplegar**: preview hasta que Daniel autorice el deploy aparte.
+
+
+
 ## 2026-09-09 — Batch Intel 3 puntos (paginación determinista + orden por columna + buscador predictivo) ✅ (solo PREVIEW)
 Autorizado por Daniel. Todo backend, aditivo, sin romper contratos (solo 2 params opcionales nuevos). Verificado con testing_agent (iteration_17): **17/17 tests PASS, 100%**, sin incidencias.
 
