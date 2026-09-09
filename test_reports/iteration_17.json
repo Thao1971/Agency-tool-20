@@ -1,0 +1,31 @@
+{
+  "summary": "Backend-only testing of Intel batch (Daniel 2026-09-09): 3 points across skills/search, company-taxonomy/search and new /companies/suggest endpoint. Created /app/backend/tests/test_intel_batch_2026_09_09.py with 17 pytest tests covering all requested scenarios. All 17 tests PASSED (100%) against preview URL.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_intel_batch_2026_09_09.py",
+    "/app/test_reports/pytest/iter17_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "PUNTO 3 (companies/suggest) is public/unauthenticated - acceptable per spec (Daniel), but consider rate-limiting to avoid enumeration abuse (name+cif+sector by 2-letter prefix).",
+    "Taxonomy sort pool cap _TAXO_SORT_POOL_CAP=3000 is by design (per agent-to-agent note); confirmed not a bug. Document in API docs so consumers know 'top revenue' for large nodes is a bounded approximation.",
+    "test_intel_fixes.py previous tests still coexist; naming pattern is fine but consider consolidating pod-specific tests under a subdir in the future."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_intel_batch_2026_09_09.py (new)"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "N/A (skipped per request)"},
+  "test_credentials": "ARROBA_SERVICE_API_KEY loaded from backend/.env via python-dotenv (strips quotes). Value len=35, used as X-API-Key for company-taxonomy/search.",
+  "seed_data_creation": "None - used existing companies_master collection.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Intel batch 2026-09-09 fully verified backend-side: (1) deterministic tie-break by master_company_id confirmed - page1/page2 skills and offset 0/5 taxonomy no overlap and stable across calls; (2) skills/search sort_by name asc + revenue desc work; invalid sort_by ('DROP TABLE', 'foo') gracefully falls back to relevance (byte-identical id order); taxonomy sort_by same via HTTP with X-API-Key on node_id=S09 (count~8458 preserved); (3) /api/v1/companies/suggest public: empty/1-char -> {results:[]}, 'ba' prefix, diacritic-insensitive 'telefon'=='téléfon' returning TELEFON*, limit capped at 20, deterministic order, each item has master_company_id/name/cif/sector. Reuse test file /app/backend/tests/test_intel_batch_2026_09_09.py for regressions."
+}

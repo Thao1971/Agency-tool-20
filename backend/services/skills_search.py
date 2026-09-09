@@ -21,6 +21,17 @@ logger = logging.getLogger(__name__)
 CANDIDATE_CAP = 500       # pre-rank pool for lexical/semantic search at current scale
 SCREEN_CAP = 2000         # pre-rank pool for a pure financial screen (no lexical query)
 
+# Point 2 (2026-09-09): columnas admitidas en `sort_by` -> path real en companies_master.
+# Cualquier valor fuera de esta whitelist se ignora (cae al comportamiento actual); nunca
+# se construye el path de Mongo con el string crudo del cliente.
+_SORT_FIELDS = {
+    "name": "normalized_name",
+    "revenue": "financials.latest.revenue",
+    "ebitda": "financials.latest.ebitda",
+    "employees": "financials.latest.employees",
+    "cif": "cif_normalized",
+}
+
 _WORD_RE = re.compile(r"[^a-z0-9áéíóúñü]+")
 
 
@@ -363,7 +374,8 @@ def _passes_filters(doc: Dict, web: Dict, filters: Dict) -> bool:
 
 
 async def search_companies(query: str, filters: Dict, page: int, page_size: int,
-                           context: Optional[Dict] = None) -> Dict:
+                           context: Optional[Dict] = None,
+                           sort_by: Optional[str] = None, sort_dir: str = "desc") -> Dict:
     from services.taxonomy_embeddings import is_ready, semantic_top
 
     context = context or {}
@@ -398,14 +410,26 @@ async def search_companies(query: str, filters: Dict, page: int, page_size: int,
     # bigger pool; lexical/semantic search keeps the confidence-ranked candidate pool.
     screen_only = is_screen and not query.strip()
     cap = SCREEN_CAP if is_screen else CANDIDATE_CAP
+    # Point 2: ordenar por columna sobre TODO el resultado (no solo la página). Si sort_by
+    # es una columna de la whitelist, se empuja directo a la consulta Mongo y se salta el
+    # scoring de relevancia; si no, comportamiento actual (relevancia / screen por revenue).
+    sort_key = _SORT_FIELDS.get((sort_by or "").strip().lower())
+    sort_valid = sort_key is not None
+    sort_direction = 1 if (sort_dir or "").strip().lower() == "asc" else -1
     sort_field = "financials.latest.revenue" if screen_only else "confidence_score"
+    # Point 1: desempate determinista por master_company_id para evitar duplicados/huecos
+    # entre paginas cuando muchos docs empatan en el campo de orden.
+    if sort_valid:
+        order_spec = [(sort_key, sort_direction), ("master_company_id", 1)]
+    else:
+        order_spec = [(sort_field, -1), ("master_company_id", 1)]
     candidates = await db.companies_master.find(mongo_q, {"_id": 0}).sort(
-        sort_field, -1
+        order_spec
     ).limit(cap).to_list(cap)
     pool = {d["master_company_id"]: d for d in candidates}
 
     q = query.strip()
-    sem_ready = bool(q) and is_ready()
+    sem_ready = bool(q) and is_ready() and not sort_valid
     sem: Dict[str, float] = {}
     if sem_ready:
         top = await semantic_top(q, 80)
@@ -425,7 +449,11 @@ async def search_companies(query: str, filters: Dict, page: int, page_size: int,
         web = (doc.get("sources") or {}).get("web") or {}
         if not _passes_filters(doc, web, filters):
             continue
-        if screen_only:
+        if sort_valid:
+            # column sort: la relevancia no aplica; el orden lo fija la consulta Mongo
+            # (campo mapeado + desempate por master_company_id), que pool.items() preserva.
+            final = 0.0
+        elif screen_only:
             # rank by revenue desc; keep score in [0,1] for the UI (relative to top revenue)
             final = revenue_of(doc) or 0.0
         else:
@@ -435,7 +463,9 @@ async def search_companies(query: str, filters: Dict, page: int, page_size: int,
                 final = round(0.9 * final + 0.1 * ((doc.get("signal_score") or 0) / 100.0), 4)
         scored.append((final, doc, web))
 
-    scored.sort(key=lambda x: -x[0])
+    if not sort_valid:
+        # Point 1: desempate determinista tambien en el re-sort en Python.
+        scored.sort(key=lambda x: (-x[0], x[1]["master_company_id"]))
     total = len(scored)
 
     start = (page - 1) * page_size
@@ -446,7 +476,7 @@ async def search_companies(query: str, filters: Dict, page: int, page_size: int,
         "name": _resolve_name(doc, web),
         "sector": _resolve_sector(doc, web),
         "cif": doc.get("cif"),
-        "score": (1.0 if screen_only else score),
+        "score": (1.0 if (screen_only or sort_valid) else score),
         "summary": _row_summary(doc),
     } for score, doc, web in page_items]
 

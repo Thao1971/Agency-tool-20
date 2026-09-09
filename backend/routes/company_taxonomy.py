@@ -82,9 +82,11 @@ async def peers(company_id: str, k: int = 10, same_primary_only: bool = False,
 @router.get("/search")
 async def search(node_id: Optional[str] = None, dimension_id: Optional[str] = None,
                  q: Optional[str] = None, primary_only: bool = False, limit: int = 50,
-                 offset: int = 0, _key=Depends(require_service_key)):
+                 offset: int = 0, sort_by: Optional[str] = None, sort_dir: str = "desc",
+                 _key=Depends(require_service_key)):
     """Búsqueda por taxonomía (doble modo). `q` resuelve una etiqueta de texto a nodo/dimensión.
-    Devuelve `results` enriquecidos con `summary` + `count`/`limit`/`offset` (paginación de servidor)."""
+    Devuelve `results` enriquecidos con `summary` + `count`/`limit`/`offset` (paginación de servidor).
+    `sort_by` (name|revenue|ebitda|employees|cif) ordena TODO el conjunto por esa columna."""
     resolved = None
     if q and not (node_id or dimension_id):
         hit = SEARCH.resolve_label(q)
@@ -97,7 +99,8 @@ async def search(node_id: Optional[str] = None, dimension_id: Optional[str] = No
         else:
             dimension_id = hit["id"]
     res = await SEARCH.search_by_taxonomy(node_id=node_id, dimension_id=dimension_id,
-                                          primary_only=primary_only, limit=limit, offset=offset)
+                                          primary_only=primary_only, limit=limit, offset=offset,
+                                          sort_by=sort_by, sort_dir=sort_dir)
     if resolved:
         res["resolved"] = resolved
     return res

@@ -45,6 +45,11 @@ class SearchRequest(BaseModel):
     filters: SearchFilters = Field(default_factory=SearchFilters)
     context: Dict = Field(default_factory=dict)
     pagination: SearchPagination = Field(default_factory=SearchPagination)
+    # Point 2 (2026-09-09): orden por columna sobre TODO el resultado. sort_by debe ser una
+    # columna de la whitelist (services.skills_search._SORT_FIELDS); cualquier otro valor se
+    # ignora y cae al orden por relevancia actual. sort_dir: 'asc' | 'desc' (defecto 'desc').
+    sort_by: Optional[str] = None
+    sort_dir: str = "desc"
 
 
 @router.post("/search")
@@ -52,7 +57,8 @@ async def skill_search(req: SearchRequest):
     """Company search skill. Returns workspace.blocks with a single search_results block."""
     page = max(1, req.pagination.page)
     page_size = min(max(1, req.pagination.page_size), 100)
-    return await search_companies(req.query, req.filters.model_dump(), page, page_size, req.context)
+    return await search_companies(req.query, req.filters.model_dump(), page, page_size,
+                                  req.context, sort_by=req.sort_by, sort_dir=req.sort_dir)
 
 
 class ValueRequest(BaseModel):

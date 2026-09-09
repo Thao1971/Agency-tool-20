@@ -188,8 +188,21 @@ async def resolve_company_by_name(name: str) -> Optional[Dict]:
     return None
 
 
+# Point 2 (2026-09-09): columnas admitidas en `sort_by` -> path real en master_companies.
+# Fuera de esta whitelist se ignora (nunca se arma el path de Mongo con el string del cliente).
+_SORT_FIELDS_MASTER = {
+    "name": "identity.legal_name",
+    "revenue": "financials.latest.revenue",
+    "ebitda": "financials.latest.ebitda",
+    "employees": "financials.latest.employees",
+    "cif": "cif_normalized",
+}
+_TAXO_SORT_POOL_CAP = 3000  # tope del pool completo a ordenar cuando se pide sort_by
+
+
 async def search_by_taxonomy(node_id: Optional[str] = None, dimension_id: Optional[str] = None,
-                             primary_only: bool = False, limit: int = 50, offset: int = 0) -> Dict:
+                             primary_only: bool = False, limit: int = 50, offset: int = 0,
+                             sort_by: Optional[str] = None, sort_dir: str = "desc") -> Dict:
     """Empresas clasificadas bajo un nodo (sector/industria/categoría) o dimensión (vertical, etc.).
     primary_only=True → solo cuando ese nodo es la actividad PRINCIPAL (role=primary).
     Devuelve `results` enriquecidos con el `summary` de cada empresa (tabla sin N+1) + paginación
@@ -205,20 +218,41 @@ async def search_by_taxonomy(node_id: Optional[str] = None, dimension_id: Option
     total = 0
     rows: List[Dict] = []
     try:
-        async for r in db.company_classifications.find(q, {"_id": 0, "company_id": 1}) \
-                .sort("confidence", -1).skip(offset).limit(limit):
-            ids.append(r["company_id"])
+        sort_key = _SORT_FIELDS_MASTER.get((sort_by or "").strip().lower())
+        sort_valid = sort_key is not None
         total = await db.company_classifications.count_documents(q)
+        base: Dict[str, Dict] = {}
+        master_proj = {"_id": 0, "master_id": 1, "cif_normalized": 1,
+                       "identity.legal_name": 1, "classification.cnae_section": 1}
+        if sort_valid:
+            # Point 2: ordenar por columna sobre TODO el conjunto (no solo la pagina).
+            # Resolvemos el pool completo de company_ids (tope _TAXO_SORT_POOL_CAP, orden
+            # estable por company_id) y paginamos sobre master_companies ya ordenado en BD,
+            # con desempate por master_id (Point 1).
+            direction = 1 if (sort_dir or "").strip().lower() == "asc" else -1
+            pool_ids: List[str] = []
+            async for r in db.company_classifications.find(q, {"_id": 0, "company_id": 1}) \
+                    .sort("company_id", 1).limit(_TAXO_SORT_POOL_CAP):
+                pool_ids.append(r["company_id"])
+            if pool_ids:
+                async for m in db.master_companies.find(
+                        {"master_id": {"$in": pool_ids}}, master_proj) \
+                        .sort([(sort_key, direction), ("master_id", 1)]).skip(offset).limit(limit):
+                    ids.append(m["master_id"])
+                    base[m["master_id"]] = m
+        else:
+            # Point 1: desempate determinista por company_id (evita duplicados/huecos entre paginas).
+            async for r in db.company_classifications.find(q, {"_id": 0, "company_id": 1}) \
+                    .sort([("confidence", -1), ("company_id", 1)]).skip(offset).limit(limit):
+                ids.append(r["company_id"])
+            if ids:
+                async for m in db.master_companies.find(
+                        {"master_id": {"$in": ids}}, master_proj):
+                    base[m["master_id"]] = m
         if ids:
             from services.company_card import build_summaries
-            base: Dict[str, Dict] = {}
-            async for m in db.master_companies.find(
-                    {"master_id": {"$in": ids}},
-                    {"_id": 0, "master_id": 1, "cif_normalized": 1,
-                     "identity.legal_name": 1, "classification.cnae_section": 1}):
-                base[m["master_id"]] = m
             summaries = await build_summaries(ids)
-            for cid in ids:  # preserve confidence order
+            for cid in ids:  # preserve chosen order (confidence o columna)
                 m = base.get(cid) or {}
                 rows.append({"master_id": cid, "cif": m.get("cif_normalized"),
                              "name": (m.get("identity") or {}).get("legal_name"),

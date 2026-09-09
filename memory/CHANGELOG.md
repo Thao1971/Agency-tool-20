@@ -3,6 +3,23 @@
 > Registro de cambios de arquitectura de la plataforma Agency Tool (compartida: Valuo.pro + arroba.com + Platform Console).
 
 
+## 2026-09-09 — Batch Intel 3 puntos (paginación determinista + orden por columna + buscador predictivo) ✅ (solo PREVIEW)
+Autorizado por Daniel. Todo backend, aditivo, sin romper contratos (solo 2 params opcionales nuevos). Verificado con testing_agent (iteration_17): **17/17 tests PASS, 100%**, sin incidencias.
+
+- **Punto 1 — Desempate determinista en paginación** (evita duplicados/huecos entre páginas cuando muchos docs empatan en el campo de orden):
+  - `services/taxonomy/search.py::search_by_taxonomy()`: `.sort("confidence", -1)` → `.sort([("confidence", -1), ("company_id", 1)])`.
+  - `services/skills_search.py::search_companies()`: consulta del pool → `.sort([(sort_field, -1), ("master_company_id", 1)])`; re-sort en Python → `key=lambda x: (-x[0], x[1]["master_company_id"])`.
+- **Punto 2 — Orden por columna sobre TODO el resultado** (params opcionales `sort_by`/`sort_dir` en `GET /api/v1/company-taxonomy/search` y `POST /api/v1/skills/search`):
+  - Whitelist (Grupo A, campos guardados): `name`, `revenue`, `ebitda`, `employees`, `cif`. Cualquier valor fuera de la whitelist se **ignora** (cae al comportamiento actual) — nunca se arma el path de Mongo con el string crudo del cliente (verificado: `sort_by='DROP TABLE'` → fallback a relevancia).
+  - `search_by_taxonomy`: con `sort_by` válido resuelve el pool completo de `company_ids` (tope `_TAXO_SORT_POOL_CAP=3000`, orden estable por `company_id`) y pagina sobre `master_companies` ordenado en BD con desempate por `master_id`. **Por diseño**: para nodos muy grandes (p.ej. S09 = 8458) el orden es sobre ese pool de 3000, no el máximo global (decisión explícita de Daniel).
+  - `search_companies`: con `sort_by` válido empuja el orden a la consulta Mongo inicial y salta el scoring de relevancia (y el semántico).
+  - Grupo B (Crecimiento %, Score señales, Valoración, Score Arroba — campos calculados) queda para una 2ª tanda, fuera de este batch.
+- **Punto 3 — Buscador predictivo** `GET /api/v1/companies/suggest?q=<texto>&limit=8` (nuevo, `routes/companies.py`, público, registrado en `server.py`): `limit` topado a 20; `q`<2 chars → `{"results": []}` sin tocar BD; normaliza `q` con `_normalize_name` (entity_resolution); tolerancia a tildes con `_diacritic_insensitive_regex` anclado con `^` (prefijo); consulta `companies_master.normalized_name` excluyendo `merge_status=merged`; orden `financials.latest.revenue` desc + `master_company_id`; respuesta `{"results":[{master_company_id,name,cif,sector}]}`.
+- **Sin desplegar**: queda en preview hasta que Daniel suba con "Save to GitHub → Deploy".
+- Nota de datos del pod: `skills/search` con el default `has_domain=true` da ~0 (solo 2 empresas con dominio); los tests de orden/paginación usan `has_domain=false`.
+
+
+
 ## 2026-06 (jun) — Aplicado paquete "Intel-290826-deploy-pendiente" (autorizado por Daniel) ✅ (solo PREVIEW)
 - Daniel subió el zip `Intel-290826_deploy_pendiente_*.zip`. Al comparar contra el pod, 5 ficheros ya estaban idénticos (search.py, registry.py, ratios_library.py, transaction/engine.py, transaction_intelligence.py). El pod iba POR DELANTE del zip en 3 ficheros, así que se aplicó de forma **quirúrgica** (no sobrescribir) para no regresar código ya presente:
   - **`services/skills_search.py`** — añadido fix de territorio + tildes: `_strip_accents()`/`_diacritic_insensitive_regex()` (regex insensible a tildes á/é/í/ó/ú/ü, ñ intacta), tabla `_CCAA_TO_PROVINCES` (17 CCAA) + `_resolve_territory_provinces()`. `_build_candidate_query()` ahora añade `location.provincia`/`location.municipio`/`province_name` al `$or` léxico y expande CCAA→provincias. **Conservado el bloque REQ-004b id bridge** (mc_→UUID) que el pod ya tenía y el zip no.

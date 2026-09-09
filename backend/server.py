@@ -203,6 +203,8 @@ app.include_router(editorial_router)
 app.include_router(transactions_router)
 from routes.ai_chat import router as ai_chat_router
 app.include_router(ai_chat_router)
+from routes.companies import router as companies_router
+app.include_router(companies_router)
 
 
 # Hub endpoint
