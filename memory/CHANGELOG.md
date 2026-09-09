@@ -3,6 +3,14 @@
 > Registro de cambios de arquitectura de la plataforma Agency Tool (compartida: Valuo.pro + arroba.com + Platform Console).
 
 
+## 2026-09-09 (g) — Gobierno: traducción de 134 roles ingleses + reclasificación de 54 ✅ (solo PREVIEW)
+`routes/company_ficha.py`. Patch de Daniel (2 ediciones):
+1. `_ROLE_ES`: añadidas traducciones ES de los 134 roles ingleses que se mostraban en crudo (terminología societaria; `Creditors? Commission` con `?` literal por mojibake de origen, match exacto).
+2. `_ROLE_GROUP`: reclasificados 54 de esos 134 en grupo real (35 administracion, 9 apoderados, 10 auditor); los otros 80 (comisionados/liquidadores concursales/comités complejos) se quedan en "otros" a propósito, ya traducidos.
+- Verificado: sanity `_role_es`/`_role_group` OK (Member Of The Board Of Directors→administracion, Officer→Apoderado/apoderados, Alternate Accounts Auditor→auditor, Tax Representative→apoderados, Audit Commission→auditor; Creditors?/Bankruptcy Liquidator→otros). Roles sin traducción = 4 (los ES crudos, que ya están en español, no la necesitan) → 0 inglés crudo restante. En grupo "otros": 95 (los 80 previstos + ~15 originales). Servier sin cambios (27, 0 duplicados, {admin:2, apoderados:24, auditor:1}). Suites externa 11/11 + smoke 7/7 PASS, compila limpio.
+- Sin desplegar.
+
+
 ## 2026-09-09 (f) — Gobierno: dedup por persona + mapeo de 4 roles ES crudos ✅ (solo PREVIEW)
 `routes/company_ficha.py`. Patch final de Daniel para el hallazgo de duplicados (2 ediciones):
 1. `_ROLE_GROUP`: añadidos los 4 únicos `role` en español crudo que existen en `norm_officers` (tal cual, case-sensitive): `Apoderado`→apoderados, `Administrador Solidario`/`Administrador Único`→administracion, `Auditor Cuentas Conjunto`→auditor. (Los otros 134 roles ingleses sin mapear siguen cayendo a "otros" a propósito — fuera de alcance, degradan limpio.)
