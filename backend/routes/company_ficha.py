@@ -198,7 +198,21 @@ async def ownership(identifier: str, _key=Depends(require_service_key)):
 
 @router.get("/{identifier}/governance")
 async def governance(identifier: str, _key=Depends(require_service_key)):
-    """Órgano de administración: cargos vigentes por persona (I-2 #7)."""
+    """Órgano de administración: cargos vigentes por persona (I-2 #7).
+
+    HARDENING · orden Gobierno (Daniel 2026-09-09): antes se ordenaba por `year`
+    (año de la ENTREGA de Iberinform, no de nombramiento — uniformemente 2024 en
+    toda la colección, así que no aportaba ningún orden real). Ahora se ordena
+    por grupo de cargo (Administración → Apoderados → Auditoría → Otros) y,
+    dentro de cada grupo, por fecha real de nombramiento descendente (más
+    reciente primero). De paso se normaliza `appointment_date` (formatos mixtos
+    `DDMONYYYY` / `dd/mm/yyyy` sin normalizar en origen) a ISO `YYYY-MM-DD` en
+    `since` — eso es lo que hoy rompía el parseo en el frontend y hacía caer al
+    año de la entrega. R15: solo se reformatea/clasifica un valor real ya
+    existente (`appointment_date`, `role`); nunca se inventa ni se corrige nada,
+    y un rol o fecha no reconocidos degradan limpio (`role_group="otros"`,
+    `since_iso=None`) en vez de fabricar algo.
+    """
     master = await _master(identifier)
     if not master:
         raise HTTPException(status_code=404, detail="Company not found")
@@ -213,15 +227,28 @@ async def governance(identifier: str, _key=Depends(require_service_key)):
         if cur is None or (r.get("year") or 0) > (cur.get("year") or 0):
             best[key] = r
 
-    officers = [{
-        "name": r.get("person_name"),
-        "role": r.get("role"),
-        "role_es": _role_es(r.get("role")),
-        "role_label_es": _role_es(r.get("role")),
-        "since": r.get("appointment_date"),
-        "year": r.get("year"),
-    } for r in best.values()]
-    officers.sort(key=lambda o: (o["year"] or 0), reverse=True)
+    officers = []
+    for r in best.values():
+        role = r.get("role")
+        since_iso = _parse_officer_date(r.get("appointment_date"))
+        group = _role_group(role)
+        officers.append({
+            "name": r.get("person_name"),
+            "role": role,
+            "role_es": _role_es(role),
+            "role_label_es": _role_es(role),
+            "since": since_iso or r.get("appointment_date"),
+            "since_iso": since_iso,
+            "year": r.get("year"),
+            "role_group": group,
+            "role_group_es": _ROLE_GROUP_ES.get(group),
+        })
+
+    # Orden estable en 2 pasadas (Python Timsort es estable): primero fecha
+    # desc (sin fecha reconocida → al final del grupo), luego grupo de cargo
+    # asc — así el orden por fecha dentro de cada grupo se conserva intacto.
+    officers.sort(key=lambda o: o["since_iso"] or "", reverse=True)
+    officers.sort(key=lambda o: _ROLE_GROUP_ORDER.get(o["role_group"], 99))
 
     if not officers:
         return {"identifier": identifier, "cif": cif, "available": False,
@@ -567,6 +594,118 @@ def _role_es(role: Optional[str]) -> Optional[str]:
     if not role:
         return None
     return _ROLE_ES.get(role) or _ROLE_ES.get(role.strip()) or role
+
+
+# HARDENING · orden Gobierno (Daniel 2026-09-09): `appointment_date` en
+# `norm_officers` llega de Iberinform en 2 formatos sin normalizar —
+# `DDMONYYYY` en inglés (ej. `11APR2011`, mayoría de la colección) y
+# `dd/mm/yyyy` (minoría). Sin esto el frontend no podía parsear el primer
+# formato y caía a mostrar el año de la ENTREGA (`year`, uniformemente 2024 en
+# toda la colección), no el año real de nombramiento.
+_MONTH_ABBR_EN = {
+    "JAN": 1, "FEB": 2, "MAR": 3, "APR": 4, "MAY": 5, "JUN": 6,
+    "JUL": 7, "AUG": 8, "SEP": 9, "OCT": 10, "NOV": 11, "DEC": 12,
+}
+
+
+def _parse_officer_date(raw: Optional[str]) -> Optional[str]:
+    """Normaliza `appointment_date` a ISO `YYYY-MM-DD`. R15: solo reformatea un
+    valor real ya existente — nunca inventa ni corrige una fecha; si el
+    formato no es reconocible devuelve `None` (degradación honesta)."""
+    if not raw:
+        return None
+    raw = raw.strip()
+    m = re.match(r"^(\d{2})/(\d{2})/(\d{4})$", raw)
+    if m:
+        day, month, year = m.groups()
+        return f"{year}-{month}-{day}"
+    m = re.match(r"^(\d{2})([A-Za-z]{3})(\d{4})$", raw)
+    if m:
+        day, mon_abbr, year = m.groups()
+        month = _MONTH_ABBR_EN.get(mon_abbr.upper())
+        if month:
+            return f"{year}-{month:02d}-{day}"
+    return None
+
+
+# Clasificación de los 60 valores de `role` mapeados en `_ROLE_ES` en 4 grupos,
+# usada únicamente para ORDENAR la tabla "Gobierno" (Administración primero,
+# luego Apoderados/Representantes, luego Auditoría, el resto al final). R15:
+# es una categorización de un campo real (`role`) ya existente — no infiere ni
+# fabrica nada; un rol no listado aquí (o desconocido) cae a "otros".
+_ROLE_GROUP = {
+    "Sole Director": "administracion",
+    "Joint And Several Director": "administracion",
+    "Director": "administracion",
+    "Joint Director": "administracion",
+    "Chairperson": "administracion",
+    "Secretary": "administracion",
+    "Director Member": "administracion",
+    "Joint And Several Chief Executive Officer": "administracion",
+    "Chief Executive Officer": "administracion",
+    "Delegate Joint Director": "administracion",
+    "Member": "administracion",
+    "Vice-Chairperson": "administracion",
+    "Bankruptcy Administrator": "administracion",
+    "Non-Director Secretary": "administracion",
+    "Vice-Secretary": "administracion",
+    "Liquidator": "administracion",
+    "Joint And Joint And Several Delegate Director": "administracion",
+    "Member Of The Board": "administracion",
+    "Sole Chief Executive Officer": "administracion",
+    "Non-Director Vice-Secretary": "administracion",
+    "Director Secretary": "administracion",
+    "Alternate Director": "administracion",
+    "Vice-Chairperson Of The Board": "administracion",
+    "Chairperson Of The Board": "administracion",
+    "Chairperson Of The Board Of Directors": "administracion",
+    "Board Of Directors' Member": "administracion",
+    "Board": "administracion",
+    "Treasurer": "administracion",
+    "Accountant": "administracion",
+
+    "Representative": "apoderados",
+    "Joint And Several Representative": "apoderados",
+    "Representative Art. 143 Rrm": "apoderados",
+    "Joint Representative": "apoderados",
+    "Manager": "apoderados",
+    "Advisor": "apoderados",
+    "Attorney": "apoderados",
+
+    "Auditor": "auditor",
+    "Accounts Auditor": "auditor",
+    "Alternate Auditor": "auditor",
+    "Joint Accounts Auditor": "auditor",
+
+    "Controlling Committee Member": "otros",
+    "Member Of The Committee": "otros",
+    "Member Of The Controlling Committee": "otros",
+    "Committee Member": "otros",
+    "Professional Partner": "otros",
+    "Partner": "otros",
+    "Depositary Entity": "otros",
+    "Managing Entity": "otros",
+    "Sole Shareholder": "otros",
+    "Committee Chairperson": "otros",
+    "Supervisor": "otros",
+    "Secretary To The Controlling Committee": "otros",
+    "Depositary": "otros",
+    "Chairperson Of The Controlling Committee": "otros",
+    "Alternate": "otros",
+}
+_ROLE_GROUP_ORDER = {"administracion": 0, "apoderados": 1, "auditor": 2, "otros": 3}
+_ROLE_GROUP_ES = {
+    "administracion": "Administración",
+    "apoderados": "Apoderados",
+    "auditor": "Auditoría",
+    "otros": "Otros cargos",
+}
+
+
+def _role_group(role: Optional[str]) -> str:
+    if not role:
+        return "otros"
+    return _ROLE_GROUP.get(role) or _ROLE_GROUP.get(role.strip()) or "otros"
 
 
 def _score_word(v) -> Optional[str]:

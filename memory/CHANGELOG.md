@@ -3,6 +3,15 @@
 > Registro de cambios de arquitectura de la plataforma Agency Tool (compartida: Valuo.pro + arroba.com + Platform Console).
 
 
+## 2026-09-09 (e) — Gobierno: orden por grupo de cargo + fecha ISO normalizada ✅ (solo PREVIEW)
+`routes/company_ficha.py`. Patch de Daniel aplicado tal cual (2 ediciones):
+1. `governance()`: `appointment_date` (formatos mixtos `DDMONYYYY` / `dd/mm/yyyy`) se normaliza a ISO `YYYY-MM-DD` en `since` (+ nuevo `since_iso`); orden por grupo de cargo (Administración→Apoderados→Auditoría→Otros) y fecha desc dentro de grupo (antes ordenaba por `year`, uniformemente 2024 = inútil). Nuevos campos por officer: `since_iso`, `role_group`, `role_group_es`.
+2. Helpers nuevos: `_parse_officer_date()`, `_MONTH_ABBR_EN`, `_ROLE_GROUP` (60 roles→4 grupos), `_ROLE_GROUP_ORDER`, `_ROLE_GROUP_ES`, `_role_group()`. R15: solo reformatea/clasifica valores reales; fecha/rol no reconocidos → None/"otros".
+- Verificado: Servier `/governance` → 55 officers, `since` ISO en todos (since_iso=None=0), orden correcto por grupo+fecha. Suites externa 11/11 + smoke 7/7 PASS.
+- ⚠️ HALLAZGO DE DATOS (reportado a Daniel, sin tocar): `norm_officers` guarda CADA persona DOS veces con `role` distinto — uno en inglés (`Representative`, `Joint And Several Director`, mapeado a grupo) y otro en español crudo (`Apoderado`, `Administrador Solidario`, `Auditor Cuentas Conjunto`, NO mapeado → caen a "Otros"). Servier: 27 personas reales → 55 filas. El dedup por `(person_key, role)` no colapsa los duplicados porque el `role` difiere. La tabla muestra a cada persona 2 veces (una en su grupo, otra en "Otros"). Pendiente de decisión de Daniel (spec) — no es regresión del patch (el dedup era así antes).
+- Sin desplegar.
+
+
 ## 2026-09-09 (d) — Grafo de control click-to-expand: fallback por CIF crudo + expandable ampliado ✅ (solo PREVIEW)
 Contrapartida Intel del fix de cobertura del click-to-expand. `routes/company_ficha.py`:
 1. Import: `normalize_cif` desde `services.data_layer.normalize`.
