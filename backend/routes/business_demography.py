@@ -33,14 +33,24 @@ MONTH_NAMES_SHORT = {1:"Ene",2:"Feb",3:"Mar",4:"Abr",5:"May",6:"Jun",7:"Jul",8:"
 
 
 def _card(ind, label):
+    # 2026-09-10 (a peticion de Daniel): antes solo se exponia el interanual
+    # bajo el nombre ambiguo `change_pct`. Ahora se exponen los dos, con
+    # nombre explicito, porque el mes a mes ya se calcula y se guarda en el
+    # documento (`mom_change_pct`, ver sync_business_demography) pero no
+    # salia de este endpoint. `change_pct` desaparece para no dejar un campo
+    # ambiguo junto a los dos explicitos (ver mapa-empresarial/page.tsx,
+    # unico consumidor hoy, migrado a `change_pct_yoy` en el mismo cambio).
     if not ind:
-        return {"value": None, "change_pct": None, "trend": None}
-    # change_pct as decimal for Arroba (0.008 = 0.8%)
+        return {"value": None, "change_pct_mom": None, "change_pct_yoy": None, "trend": None}
+    # decimal para Arroba (0.008 = 0.8%)
+    mom = ind.get("mom_change_pct")
     yoy = ind.get("yoy_change_pct")
-    change_decimal = round(yoy / 100, 4) if yoy is not None else None
+    mom_decimal = round(mom / 100, 4) if mom is not None else None
+    yoy_decimal = round(yoy / 100, 4) if yoy is not None else None
     return {
         "value": int(ind["value"]) if ind.get("value") is not None else None,
-        "change_pct": change_decimal,
+        "change_pct_mom": mom_decimal,
+        "change_pct_yoy": yoy_decimal,
         "trend": ind.get("trend_direction"),
     }
 

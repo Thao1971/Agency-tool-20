@@ -156,22 +156,53 @@ async def overview(
     }
 
 
+_VALID_CNAE_LEVELS = ("section", "division", "group")
+
+
 @router.get("/top-dynamic")
 async def top_dynamic(
     limit: int = Query(10, ge=1, le=200),
-    level: str = Query("section", regex="^(section|division|group)$"),
+    level: str = Query(
+        "section",
+        description="Uno o varios niveles CNAE separados por coma, ej. 'section' o "
+                     "'section,division,group'. Homes que quieran una unica lista de "
+                     "dinamismo mezclando granularidades (ej. 'Salud' a nivel seccion "
+                     "junto a 'Actividades veterinarias' a nivel division) piden varios "
+                     "niveles a la vez; consumidores existentes (Mapa Empresarial) que "
+                     "piden un solo nivel siguen funcionando igual.",
+    ),
 ):
-    """Top sectors by dynamism_score (combined metric)."""
+    """Top sectors by dynamism_score (combined metric).
+
+    `level` acepta una lista separada por coma para poder rankear por
+    dynamism_score a traves de varios niveles CNAE en una sola llamada
+    (2026-09-10, a peticion de Daniel: la Home nueva quiere mezclar
+    secciones amplias como 'Salud' con divisiones concretas como
+    'Actividades veterinarias' en un unico ranking). Cada sector devuelto
+    ya trae su propio `cnae_level` en `_sector_card`, asi que el frontend
+    puede etiquetar cada fila con su granularidad real en vez de tratarlas
+    como si fueran comparables 1:1."""
     t0 = time.time()
+    levels = [lv.strip() for lv in level.split(",") if lv.strip()]
+    invalid = [lv for lv in levels if lv not in _VALID_CNAE_LEVELS]
+    if not levels or invalid:
+        raise HTTPException(
+            status_code=422,
+            detail=f"level invalido: {invalid or level!r}. Valores permitidos: "
+                   f"{', '.join(_VALID_CNAE_LEVELS)} (separados por coma).",
+        )
+
+    level_query = levels[0] if len(levels) == 1 else {"$in": levels}
     sectors = await db.sector_intelligence.find(
-        {"cnae_level": level, "taxonomy_type": "official_cnae", "dynamism_score": {"$gt": 0}},
+        {"cnae_level": level_query, "taxonomy_type": "official_cnae", "dynamism_score": {"$gt": 0}},
         {"_id": 0},
     ).sort([("dynamism_score", -1), ("cnae_code", 1)]).limit(limit).to_list(limit)
 
     return {
         **_meta(t0),
         "ranking_by": "dynamism_score",
-        "level": level,
+        "level": levels[0] if len(levels) == 1 else ",".join(levels),  # compat: consumidores de un solo nivel siguen leyendo un string simple
+        "levels": levels,
         "sectors": [_sector_card(s) for s in sectors],
     }
 

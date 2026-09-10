@@ -3,6 +3,14 @@
 > Registro de cambios de arquitectura de la plataforma Agency Tool (compartida: Valuo.pro + arroba.com + Platform Console).
 
 
+## 2026-09-10 — Paquete "Intel-70926 deploy pendiente" (Home nueva) ✅ (solo PREVIEW)
+Zip con 3 ficheros. `engine.py` NO se toca: ya estaba aplicado íntegro en rondas previas (valuation prosa + range.central + scenarios.name + benchmark plano + evolution 11 líneas); las únicas diferencias del zip eran un comentario y un orden de claves, y además el pod va por delante (tiene el reorden `multiple_basis`/`multiple` que Daniel pidió en la ronda b) — aplicarlo lo revertiría. Aplicados los 2 ficheros nuevos del paquete Home:
+1. `routes/business_demography.py` — `_card()` (usada por `/overview`, `/active-companies`, `/new-companies`, `/closed-companies`, prefijo `/api/v1/public/business-demography`): elimina el campo ambiguo `change_pct` (era interanual) y expone `change_pct_mom` (desde `mom_change_pct`, ya guardado en el doc pero no salía) + `change_pct_yoy`. ⚠️ Consumidor en Beta (Mapa Empresarial) leía `change_pct` → debe migrarse a `change_pct_yoy` (fix en el paquete Beta hermano; desplegar juntos o Intel primero).
+2. `routes/sector_intelligence.py` — `GET /top-dynamic`: `level` acepta lista separada por coma (`section,division,group`) además del valor único; valida contra `_VALID_CNAE_LEVELS` (422 si vacío/ inválido); respuesta añade `levels` (lista) manteniendo `level` (string) por compat.
+- Verificado end-to-end: overview → cards con `change_pct_mom`/`change_pct_yoy`, sin `change_pct` (new_companies mom -0.0315, yoy -0.154). top-dynamic nivel único OK (compat), multi-nivel mezcla 5 section + 1 division, `level=foo`/`section,foo` → 422. Suites externa 11/11 + smoke 7/7 PASS, compila limpio.
+- Sin desplegar.
+
+
 ## 2026-09-09 (g) — Gobierno: traducción de 134 roles ingleses + reclasificación de 54 ✅ (solo PREVIEW)
 `routes/company_ficha.py`. Patch de Daniel (2 ediciones):
 1. `_ROLE_ES`: añadidas traducciones ES de los 134 roles ingleses que se mostraban en crudo (terminología societaria; `Creditors? Commission` con `?` literal por mojibake de origen, match exacto).
