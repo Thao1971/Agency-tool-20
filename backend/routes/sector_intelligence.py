@@ -30,11 +30,20 @@ def _meta(t0):
     }
 
 
+_CNAE_LEVEL_ES = {"section": "Sección", "division": "División", "group": "Grupo"}
+
+
 def _sector_card(s):
     """Compact card representation for lists."""
     return {
         "cnae_code": s.get("cnae_code"),
         "cnae_level": s.get("cnae_level"),
+        # 2026-09-10: etiqueta ya traducida del nivel CNAE (sugerencia de la
+        # verificacion en preview) - para que un ranking de /top-dynamic con
+        # varios niveles mezclados (ver `level` como lista mas abajo) se pueda
+        # etiquetar fila a fila ("Seccion"/"Division"/"Grupo") sin que el
+        # frontend tenga que mantener su propio mapeo.
+        "cnae_level_es": _CNAE_LEVEL_ES.get(s.get("cnae_level")),
         "cnae_label": s.get("cnae_label"),
         "size_score": s.get("size_score", 0),
         "growth_score": s.get("growth_score", 0),

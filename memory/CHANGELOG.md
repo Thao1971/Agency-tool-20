@@ -3,6 +3,10 @@
 > Registro de cambios de arquitectura de la plataforma Agency Tool (compartida: Valuo.pro + arroba.com + Platform Console).
 
 
+## 2026-09-10 (b) — top-dynamic: `cnae_level_es` por fila ✅ (solo PREVIEW)
+`routes/sector_intelligence.py`: `_sector_card()` añade `cnae_level_es` (etiqueta traducida del nivel CNAE vía nueva constante `_CNAE_LEVEL_ES = {section:"Sección", division:"División", group:"Grupo"}`), para que Beta etiquete cada fila del ranking multi-nivel sin mapeo propio (venía `null`). Verificado: `/top-dynamic?level=section,division&limit=6` → las 6 filas con `cnae_level_es` no-nulo; single-level intacto; suites externa 11/11 + smoke 7/7 PASS. Sin desplegar.
+
+
 ## 2026-09-10 — Paquete "Intel-70926 deploy pendiente" (Home nueva) ✅ (solo PREVIEW)
 Zip con 3 ficheros. `engine.py` NO se toca: ya estaba aplicado íntegro en rondas previas (valuation prosa + range.central + scenarios.name + benchmark plano + evolution 11 líneas); las únicas diferencias del zip eran un comentario y un orden de claves, y además el pod va por delante (tiene el reorden `multiple_basis`/`multiple` que Daniel pidió en la ronda b) — aplicarlo lo revertiría. Aplicados los 2 ficheros nuevos del paquete Home:
 1. `routes/business_demography.py` — `_card()` (usada por `/overview`, `/active-companies`, `/new-companies`, `/closed-companies`, prefijo `/api/v1/public/business-demography`): elimina el campo ambiguo `change_pct` (era interanual) y expone `change_pct_mom` (desde `mom_change_pct`, ya guardado en el doc pero no salía) + `change_pct_yoy`. ⚠️ Consumidor en Beta (Mapa Empresarial) leía `change_pct` → debe migrarse a `change_pct_yoy` (fix en el paquete Beta hermano; desplegar juntos o Intel primero).
