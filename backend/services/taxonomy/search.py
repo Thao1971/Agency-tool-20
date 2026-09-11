@@ -20,14 +20,23 @@ def _norm(s: str) -> str:
 def _build_label_index():
     idx: Dict[str, Dict] = {}
     for n in REG.build_nodes():
-        idx.setdefault(_norm(n["label_es"]), {"id": n["id"], "kind": n["level"], "label": n["label_es"]})
+        idx.setdefault(_norm(n["label_es"]), {"id": n["id"], "kind": n["level"],
+                                              "label": n["label_es"], "parent_id": n.get("parent_id")})
     for d in REG.build_dimensions():
-        idx.setdefault(_norm(d["label_es"]), {"id": d["id"], "kind": d["dimension"], "label": d["label_es"]})
+        idx.setdefault(_norm(d["label_es"]), {"id": d["id"], "kind": d["dimension"],
+                                              "label": d["label_es"], "parent_id": None})
     return idx
 
 
 _LABEL_IDX = _build_label_index()
 _IS_NODE = {"sector", "industry", "category"}
+
+# Mapa id→nodo (id, kind, label) para resolver el PADRE COMÚN en desempates de términos
+# genéricos (BUGFIX taxonomía "software"): ver el bloque final de resolve_label.
+_NODE_BY_ID: Dict[str, Dict] = {
+    n["id"]: {"id": n["id"], "kind": n["level"], "label": n["label_es"]}
+    for n in REG.build_nodes()
+}
 
 
 def _stem_token(w: str) -> str:
@@ -59,6 +68,14 @@ _STEM_ITEMS = [(_stem(k), k, v) for k, v in _LABEL_IDX.items()]
 # Prioridad por nivel al resolver un texto ambiguo ("salud" → sector S05, no la categoría "Salud").
 _KIND_PRIO = {"sector": 0, "industry": 1, "verticals": 2, "business_models": 3, "technologies": 3,
               "client_types": 3, "value_chain": 3, "capabilities": 3, "category": 4}
+
+# Nº mínimo de hojas empatadas (mismo n-grama/nivel/exactitud) que comparten un único padre para
+# resolver al PADRE en lugar de a una hoja arbitraria (BUGFIX taxonomía "software"). Se pone en 3
+# a propósito: un término realmente genérico casa muchas hojas del sector (p. ej. "software" casa
+# 6 industrias de S02 → Tecnología), mientras que un empate de 2 suele ser un par de sinónimos
+# cercanos donde una hoja SÍ es la respuesta canónica (p. ej. "farmaceutico" empata "Industria
+# farmacéutica" con "CRO y servicios farmacéuticos" → debe quedarse en "Industria farmacéutica").
+_GENERIC_PARENT_MIN_TIES = 3
 
 # Palabras de relleno de una consulta en lenguaje natural ("busca empresas del sector X") que no
 # aportan a la resolución de la etiqueta. Se descartan antes de generar n-gramas.
@@ -153,7 +170,24 @@ def resolve_label(text: str) -> Optional[Dict]:
     if not cands:
         return None
     cands.sort(key=lambda c: (-c[0], c[1], c[2], c[3]))
-    return cands[0][4]
+    # Desempate por PADRE COMÚN (BUGFIX taxonomía · término genérico como "software"):
+    # cuando el grupo de mejores empates (mismo n-grama, mismo nivel y misma exactitud) son ≥2
+    # nodos DISTINTOS que comparten un único padre, se resuelve al PADRE en vez de elegir
+    # arbitrariamente la etiqueta más corta por longitud. Antes: "software" empataba las 6
+    # industrias de S02 (Software empresarial/financiero/RRHH/comercial/marketing/Desarrollo)
+    # y el desempate por longitud devolvía "Software de RRHH"; ahora → S02 "Tecnología".
+    # Las coincidencias EXACTAS (c[2]=0) quedan protegidas: forman su propio top_rank y no
+    # entran en la sustitución. Si el padre es None (sectores/dimensiones) no se sustituye.
+    top = cands[0]
+    top_rank = (top[0], top[1], top[2])
+    tied = {c[4]["id"]: c[4] for c in cands if (c[0], c[1], c[2]) == top_rank}
+    if len(tied) >= _GENERIC_PARENT_MIN_TIES:
+        parents = {node.get("parent_id") for node in tied.values()}
+        if len(parents) == 1 and next(iter(parents)) is not None:
+            parent = _NODE_BY_ID.get(next(iter(parents)))
+            if parent:
+                return parent
+    return top[4]
 
 
 async def sector_counts() -> List[Dict]:
