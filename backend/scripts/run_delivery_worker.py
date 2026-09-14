@@ -64,14 +64,16 @@ async def _run(run_id: str, mode: str, data_dir: str = None, object_key: str = N
                       "result": {"sector_total": sector_result.get("total"), "geo_total": geo_result.get("total")}})
         await _set({"steps": steps})
 
-        # ── Fase 3 · moderno (master_companies + ratios + ownership + señales + semántico) ──
-        from services.data_layer import bootstrap as bootstrap_svc
+        # ── Fase 3 · moderno (delta-scoped: master_companies + ratios + ownership + señales + semántico) ──
+        from services.data_layer import bootstrap_delta
         if mode == "r2":
-            modern = await bootstrap_svc.run_bootstrap_tab(
-                run_id=f"{run_id}_modern", source_version=run_id, delivery=delivery)
+            modern = await bootstrap_delta.run_bootstrap_delta(
+                run_id=f"{run_id}_modern", source_version=run_id, delivery=delivery,
+                steps=steps, set_fn=_set)
         else:
-            modern = await bootstrap_svc.run_bootstrap_tab(
-                directory=data_dir, run_id=f"{run_id}_modern", source_version=run_id)
+            modern = await bootstrap_delta.run_bootstrap_delta(
+                directory=data_dir, run_id=f"{run_id}_modern", source_version=run_id,
+                steps=steps, set_fn=_set)
         steps.append({"step": "modern_ingest", "status": "ok" if modern.get("status") != "failed" else "error", "result": modern})
 
         status = "completed" if all(s["status"] == "ok" for s in steps) else "completed_with_errors"
