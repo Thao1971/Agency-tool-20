@@ -9,6 +9,7 @@ import time
 import uuid
 import zipfile
 import logging
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -78,6 +79,61 @@ def _find_data_dir(root: str) -> Optional[str]:
     return None
 
 
+# ── Auto-reconciliación de entregas huérfanas ──────────────────────────────
+_last_reconcile_ts = 0.0
+STALE_RUN_MINUTES = 45
+RECONCILE_MIN_INTERVAL_S = 60
+
+
+async def _reconcile_stale_delivery_runs() -> None:
+    global _last_reconcile_ts
+    now = time.time()
+    if now - _last_reconcile_ts < RECONCILE_MIN_INTERVAL_S:
+        return
+    _last_reconcile_ts = now
+    try:
+        stale_ids = []
+        cursor = db.iberinform_delivery_runs.find(
+            {"status": "running"}, {"_id": 0, "run_id": 1, "worker_pid": 1, "started_at": 1}
+        )
+        async for doc in cursor:
+            run_id = doc.get("run_id")
+            pid = doc.get("worker_pid")
+            if pid:
+                try:
+                    os.kill(pid, 0)
+                    continue
+                except ProcessLookupError:
+                    stale_ids.append(run_id)
+                    continue
+                except PermissionError:
+                    continue
+                except Exception:
+                    pass
+            started_at = doc.get("started_at")
+            if not started_at:
+                continue
+            try:
+                started_dt = datetime.fromisoformat(started_at)
+            except Exception:
+                continue
+            age_min = (datetime.now(timezone.utc) - started_dt).total_seconds() / 60
+            if age_min >= STALE_RUN_MINUTES:
+                stale_ids.append(run_id)
+        for run_id in stale_ids:
+            await db.iberinform_delivery_runs.update_one(
+                {"run_id": run_id, "status": "running"},
+                {"$set": {
+                    "status": "failed",
+                    "finished_at": now_iso(),
+                    "error": "orphaned: no live worker process found during reconciliation "
+                             "(worker died before writing final status — reload/pod-restart/crash)",
+                }},
+            )
+    except Exception:
+        logger.exception("iberinform: fallo en _reconcile_stale_delivery_runs (no bloqueante)")
+
+
 async def _launch_delivery_worker(run_id: str, mode: str, data_dir: str = None, object_key: str = None) -> None:
     """Lanza scripts/run_delivery_worker.py como SUBPROCESO AISLADO (no en el event loop
     del backend) para que el rebuild pesado (rebuild_master completo + ownership + señales
@@ -90,9 +146,33 @@ async def _launch_delivery_worker(run_id: str, mode: str, data_dir: str = None, 
         args += ["--data-dir", data_dir]
     else:
         args += ["--object-key", object_key]
-    await asyncio.create_subprocess_exec(
-        *args, cwd=str(BACKEND_DIR), env=env,
-        stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL)
+
+    log_path = None
+    stdout_target = asyncio.subprocess.DEVNULL
+    stderr_target = asyncio.subprocess.DEVNULL
+    log_file = None
+    try:
+        log_dir = Path(tempfile.gettempdir()) / "iberinform_worker_logs"
+        log_dir.mkdir(parents=True, exist_ok=True)
+        log_path = log_dir / f"{run_id}.log"
+        log_file = open(log_path, "wb")
+        stdout_target = stderr_target = log_file
+    except Exception:
+        logger.exception("iberinform: no se pudo abrir el log del worker, usando DEVNULL")
+
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            *args, cwd=str(BACKEND_DIR), env=env,
+            stdout=stdout_target, stderr=stderr_target,
+            start_new_session=True)
+    finally:
+        if log_file is not None:
+            log_file.close()
+
+    await db.iberinform_delivery_runs.update_one(
+        {"run_id": run_id},
+        {"$set": {"worker_pid": proc.pid, **({"worker_log": str(log_path)} if log_path else {})}}
+    )
 
 
 @router.post("/upload-delivery")
@@ -104,6 +184,7 @@ async def upload_delivery(file: UploadFile = File(...), user=Depends(get_current
 
     Runs in the background (can take a while at 25k companies + ownership graph rebuild).
     Poll GET /admin/iberinform/upload-delivery/{run_id} for progress."""
+    await _reconcile_stale_delivery_runs()
     if not file.filename.lower().endswith(".zip"):
         raise HTTPException(400, "El fichero debe ser un .zip (la entrega de Iberinform tal cual la reciben)")
 
@@ -154,6 +235,7 @@ async def get_delivery(run_id: str, user=Depends(get_current_user)):
 
 @router.get("/upload-delivery")
 async def list_deliveries(limit: int = Query(10, ge=1, le=50), user=Depends(get_current_user)):
+    await _reconcile_stale_delivery_runs()
     runs = await db.iberinform_delivery_runs.find({}, {"_id": 0}).sort("started_at", -1).to_list(limit)
     return {"runs": runs}
 
@@ -188,6 +270,7 @@ async def process_from_storage(object_key: str = Query(..., description="Key del
     """Ingiere una entrega de Iberinform leyéndola por STREAMING desde R2 (sin subirla por
     HTTP ni materializarla en disco). Corre en background con el mismo modelo de progreso
     que /upload-delivery; sondea GET /upload-delivery/{run_id}."""
+    await _reconcile_stale_delivery_runs()
     if not object_key.lower().endswith(".zip"):
         raise HTTPException(400, "object_key debe apuntar a un .zip")
 
