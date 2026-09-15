@@ -74,7 +74,8 @@ async def _run(run_id: str, mode: str, data_dir: str = None, object_key: str = N
             modern = await bootstrap_delta.run_bootstrap_delta(
                 directory=data_dir, run_id=f"{run_id}_modern", source_version=run_id,
                 steps=steps, set_fn=_set)
-        steps.append({"step": "modern_ingest", "status": "ok" if modern.get("status") != "failed" else "error", "result": modern})
+        modern_summary = {k: v for k, v in modern.items() if k != "steps"}
+        steps.append({"step": "modern_ingest", "status": "ok" if modern.get("status") != "failed" else "error", "result": modern_summary})
 
         status = "completed" if all(s["status"] == "ok" for s in steps) else "completed_with_errors"
         await _set({"status": status, "finished_at": now_iso(),
