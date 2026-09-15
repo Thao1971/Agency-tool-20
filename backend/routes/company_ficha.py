@@ -1683,7 +1683,10 @@ async def ficha(identifier: str, _key=Depends(require_service_key)):
     identity["is_listed"] = capital_markets_block["listing"]["available"]
     identity["is_listed_label_es"] = "Cotizada" if identity["is_listed"] else "No cotizada"
     identity["listed_market"] = capital_markets_block["listing"].get("market_segment")
-    _desc = await CS.resolve_description(master["master_id"], identity, identity.get("activity_es"))
+    # La ficha no espera a un proveedor de IA: usa descripción cacheada o web.
+    _desc = await CS.resolve_description(
+        master["master_id"], identity, identity.get("activity_es"),
+        generate_if_missing=False)
     identity["description"] = _desc["description"]
     identity["description_source"] = _desc["description_source"]
 

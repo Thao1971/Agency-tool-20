@@ -16,7 +16,8 @@ from typing import Dict, List, Optional
 
 from database import db
 from models import now_iso
-from docstudio.model_provider import generate_company_description, generate_summary
+from docstudio.model_provider import (COMPANY_DESCRIPTION_PROMPT_VERSION,
+                                      generate_company_description, generate_summary)
 
 _CACHE = "company_descriptions"   # colección aparte de la caché del /ficha
 _MKT_CACHE = "market_readings"    # caché de la lectura de mercado (IA, fact-lock)
@@ -27,7 +28,8 @@ def _hash(text: str) -> str:
     return hashlib.sha256((text or "").encode("utf-8")).hexdigest()[:16]
 
 
-async def resolve_description(master_id: str, identity: Dict, cnae_es: Optional[str]) -> Dict:
+async def resolve_description(master_id: str, identity: Dict, cnae_es: Optional[str],
+                              generate_if_missing: bool = True) -> Dict:
     """Devuelve {'description', 'description_source' in {official, ai, web} | None}."""
     objeto = (identity.get("objeto_social") or identity.get("corporate_purpose") or "").strip()
     web = (identity.get("description") or "").strip()   # hoy = web_description (scraping web)
@@ -36,23 +38,26 @@ async def resolve_description(master_id: str, identity: Dict, cnae_es: Optional[
     # (2) IA reformula el objeto social — cacheada por master_id + hash(objeto).
     if objeto:
         h = _hash(objeto)
-        cached = await db[_CACHE].find_one({"master_id": master_id, "objeto_hash": h}, {"_id": 0})
+        cache_key = {"master_id": master_id, "objeto_hash": h,
+                     "prompt_version": COMPANY_DESCRIPTION_PROMPT_VERSION}
+        cached = await db[_CACHE].find_one(cache_key, {"_id": 0})
         if cached and cached.get("description"):
             return {"description": cached["description"],
                     "description_source": cached.get("description_source", "ai")}
         res = {}
-        try:
-            res = await asyncio.wait_for(
-                generate_company_description(objeto, cnae_es, name, provider="nvidia"),
-                timeout=_AI_TIMEOUT)
-        except Exception:
-            res = {}
+        if generate_if_missing:
+            try:
+                res = await asyncio.wait_for(
+                    generate_company_description(objeto, cnae_es, name, provider="nvidia"),
+                    timeout=_AI_TIMEOUT)
+            except Exception:
+                res = {}
         text = (res.get("description") or "").strip() if isinstance(res, dict) else ""
         if text and "error" not in (res or {}):
             out = {"description": text, "description_source": "ai"}
             await db[_CACHE].update_one(
-                {"master_id": master_id, "objeto_hash": h},
-                {"$set": {**out, "master_id": master_id, "objeto_hash": h,
+                cache_key,
+                {"$set": {**out, **cache_key,
                           "model": res.get("_model"), "generated_at": now_iso()}}, upsert=True)
             return out
         # IA falló/timeout -> cae a web

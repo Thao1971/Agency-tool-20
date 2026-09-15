@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 # Modelo NVIDIA del tier gratuito para failover (rápido y fiable). Configurable con
 # NVIDIA_MODEL_FALLBACK; se usa cuando el modelo primario (NVIDIA_MODEL) no responde.
 NVIDIA_FALLBACK_MODEL = "meta/llama-3.1-8b-instruct"
+COMPANY_DESCRIPTION_PROMPT_VERSION = 3
 
 
 async def generate_analysis(data: Dict, instruction: str, provider: str = "claude",
@@ -150,8 +151,26 @@ async def generate_company_description(objeto_social: str, cnae_es: Optional[str
     """Reformula el OBJETO SOCIAL registral en una descripción CF breve (2-3 frases, ES).
     FACT-LOCK estricto: la IA SOLO reformula el texto dado; NO añade personas, lugares,
     cifras, fechas, hechos ni productos que no estén en el objeto social/CNAE. No inventa."""
-    prompt = f"""Reformula el OBJETO SOCIAL de una empresa española en una descripción breve, clara y
-profesional (2-3 frases, en español), apta para una ficha de inteligencia empresarial.
+    prompt = f"""Redacta una descripción útil de la actividad de una empresa española para una ficha
+de inteligencia empresarial. Escribe 2-3 frases en español natural y correcto.
+Extensión orientativa: 40-75 palabras si el dato de origen lo permite; si es
+escaso, escribe menos antes que añadir relleno o suposiciones.
+
+ESTRUCTURA: primero explica la actividad principal que conste en el objeto social
+o en el CNAE. Después explica las actividades secundarias de otra naturaleza y
+cómo figuran en el objeto social. Una tercera frase puede aclarar el alcance
+de los servicios o instrumentos citados, SOLO si consta expresamente. Si hay
+dos líneas distintas (por ejemplo, asesoramiento comercial y tenencia de valores),
+no ocultes la segunda ni las presentes como una misma actividad.
+
+ESTILO EDITORIAL: escribe en prosa, no como enumeración registral. Agrupa
+instrumentos semejantes sin perder la distinción entre participaciones y otros
+valores. Evita copiar listas largas de verbos como "compra, venta, arrendamiento"
+si no aportan una idea distintiva. Usa minúsculas en los nombres comunes y las
+tildes correctas; conserva las siglas y los nombres propios.
+No escribas todo el texto en mayúsculas ni capitalices cada palabra. No repitas la
+razón social: la ficha ya la muestra en la cabecera. Evita fórmulas vacías como
+"se dedica a diversas actividades" y evita afirmaciones comerciales.
 
 REGLA FUNDAMENTAL (FACT-LOCK): usa EXCLUSIVAMENTE la información del objeto social y la actividad CNAE
 de abajo. NO añadas ni inventes personas, lugares, fechas, cifras, productos, hechos ni juicios que no
@@ -162,7 +181,13 @@ ACTIVIDAD (CNAE, español): {cnae_es or "—"}
 OBJETO SOCIAL (texto registral a reformular):
 {(objeto_social or "").strip()[:1500]}
 
-Devuelve SOLO JSON válido: {{"description": "la descripción reformulada, 2-3 frases en español"}}"""
+El objeto social define actividades previstas, no prueba cuáles desarrolla hoy.
+No conviertas una facultad de negociar o poseer valores en gestión de carteras,
+servicios financieros a clientes o inversiones realizadas. Si el dato no permite
+identificar una actividad principal, resume las actividades explícitas sin
+elegir una por tu cuenta.
+
+Devuelve SOLO JSON válido: {{"description": "la descripción, 2-3 frases en español"}}"""
     import os
     _desc_model = os.environ.get("NVIDIA_DESC_MODEL", NVIDIA_FALLBACK_MODEL)
     result = await _call_provider(provider, "company_description", prompt, document_id, model=_desc_model)
@@ -179,7 +204,9 @@ async def _call_provider(provider: str, task: str, prompt: str, document_id: str
         "audit_id": new_id(),
         "provider": provider,
         "task": task,
-        "prompt": prompt[:2000],
+        # La regla editorial v3 puede superar 2.000 caracteres antes del objeto social.
+        # Guardamos el contexto completo de esta tarea para auditar el fact-lock.
+        "prompt": prompt[:4000] if task == "company_description" else prompt[:2000],
         "document_id": document_id,
         "created_at": now,
     }
