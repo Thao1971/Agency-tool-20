@@ -77,7 +77,10 @@ async def _run(run_id: str, mode: str, data_dir: str = None, object_key: str = N
         modern_summary = {k: v for k, v in modern.items() if k != "steps"}
         steps.append({"step": "modern_ingest", "status": "ok" if modern.get("status") != "failed" else "error", "result": modern_summary})
 
-        status = "completed" if all(s["status"] == "ok" for s in steps) else "completed_with_errors"
+        latest_step_status = {}
+        for s in steps:
+            latest_step_status[s["step"]] = s["status"]
+        status = "completed" if all(v == "ok" for v in latest_step_status.values()) else "completed_with_errors"
         await _set({"status": status, "finished_at": now_iso(),
                     "duration_s": round(time.time() - t0, 1), "steps": steps})
     except Exception as e:  # noqa: BLE001 — persistido, nunca revienta silenciosamente
