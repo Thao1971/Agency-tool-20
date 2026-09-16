@@ -1096,10 +1096,13 @@ async def market(identifier: str, include_reading: bool = True,
     # forma diferida después del primer render; esperarla aquí bloqueaba toda la
     # ficha hasta 25 s y duplicaba el mismo trabajo.
     result["reading_ai"] = None
+    result["reading_status"] = None
     if include_reading:
         # `company_summary` (import local: el CS a nivel de módulo es control_synergy).
         from services import company_summary as _CSUM
-        result["reading_ai"] = await _CSUM.resolve_market_reading(master["master_id"], result)
+        deferred = await _CSUM.defer_market_reading(master["master_id"], result)
+        result["reading_ai"] = deferred["reading"]
+        result["reading_status"] = deferred["status"]
         if result["reading_ai"] is not None:
             result["provenance"]["reading_ai"] = "ai_narrative"
     return result

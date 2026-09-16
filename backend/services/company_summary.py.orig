@@ -11,9 +11,7 @@
 import asyncio
 import hashlib
 import json
-import logging
 import os
-import time
 from typing import Dict, List, Optional
 
 from database import db
@@ -24,10 +22,6 @@ from docstudio.model_provider import (COMPANY_DESCRIPTION_PROMPT_VERSION,
 _CACHE = "company_descriptions"   # colección aparte de la caché del /ficha
 _MKT_CACHE = "market_readings"    # caché de la lectura de mercado (IA, fact-lock)
 _AI_TIMEOUT = 25
-_MKT_FAILURE_TTL = 300
-_MKT_INFLIGHT: Dict[str, asyncio.Task] = {}
-_MKT_FAILURE_UNTIL: Dict[str, float] = {}
-logger = logging.getLogger(__name__)
 
 
 def _hash(text: str) -> str:
@@ -108,16 +102,19 @@ def _market_reading_context(market_block: Dict) -> Optional[Dict]:
     return ctx or None
 
 
-def _market_reading_material(master_id: str, market_block: Dict) -> tuple[Optional[Dict], Optional[str], Optional[Dict]]:
+async def resolve_market_reading(master_id: str, market_block: Dict) -> Optional[str]:
+    """Lectura de mercado en prosa (IA, FACT-LOCK) sobre el bloque `market` ya agregado:
+    combina posición sectorial (ranking/percentil) + estado del sector + territorio +
+    concentración en 2-3 frases ejecutivas. Cacheada en Mongo por master_id + hash del
+    contenido material (se regenera solo si cambia el dato). Fallo/timeout/IA vacía -> None
+    (Beta degrada sin bloquear). Proveedor configurable con MARKET_READING_PROVIDER (claude)."""
     ctx = _market_reading_context(market_block)
     if not ctx:
-        return None, None, None
+        return None
     h = _hash(json.dumps(ctx, sort_keys=True, ensure_ascii=False, default=str))
-    return ctx, h, {"master_id": master_id, "ctx_hash": h}
-
-
-async def _generate_market_reading(master_id: str, ctx: Dict, h: str) -> Optional[str]:
-    """Genera y persiste una lectura. Se usa tanto en modo síncrono como diferido."""
+    cached = await db[_MKT_CACHE].find_one({"master_id": master_id, "ctx_hash": h}, {"_id": 0})
+    if cached and cached.get("reading"):
+        return cached["reading"]
     provider = os.environ.get("MARKET_READING_PROVIDER", "claude")
     res = {}
     try:
@@ -134,60 +131,6 @@ async def _generate_market_reading(master_id: str, ctx: Dict, h: str) -> Optiona
                       "model": res.get("_model"), "generated_at": now_iso()}}, upsert=True)
         return text
     return None
-
-
-def _finish_market_task(key: str, task: asyncio.Task) -> None:
-    """Libera la deduplicación y aplica una caché negativa corta tras un fallo real."""
-    if _MKT_INFLIGHT.get(key) is task:
-        _MKT_INFLIGHT.pop(key, None)
-    try:
-        result = task.result()
-    except BaseException as exc:  # también consume CancelledError para evitar warnings
-        result = None
-        logger.warning("market_reading.background_error key=%s error=%s", key, exc)
-    if not result:
-        _MKT_FAILURE_UNTIL[key] = time.monotonic() + _MKT_FAILURE_TTL
-
-
-async def defer_market_reading(master_id: str, market_block: Dict) -> Dict:
-    """Devuelve la lectura cacheada o inicia su generación sin bloquear la petición HTTP.
-
-    Estados públicos: ready (caché Mongo), pending (una única tarea en curso) y
-    unavailable (sin contexto o fallo reciente). La caché negativa evita relanzar
-    Claude en cada poll cuando el proveedor falla.
-    """
-    ctx, h, cache_key = _market_reading_material(master_id, market_block)
-    if not ctx or not h or not cache_key:
-        return {"reading": None, "status": "unavailable"}
-
-    cached = await db[_MKT_CACHE].find_one(cache_key, {"_id": 0})
-    if cached and cached.get("reading"):
-        return {"reading": cached["reading"], "status": "ready"}
-
-    key = f"{master_id}:{h}"
-    failed_until = _MKT_FAILURE_UNTIL.get(key, 0.0)
-    if failed_until > time.monotonic():
-        return {"reading": None, "status": "unavailable"}
-    _MKT_FAILURE_UNTIL.pop(key, None)
-
-    task = _MKT_INFLIGHT.get(key)
-    if task is None or task.done():
-        task = asyncio.create_task(_generate_market_reading(master_id, ctx, h))
-        _MKT_INFLIGHT[key] = task
-        task.add_done_callback(lambda done, task_key=key: _finish_market_task(task_key, done))
-        logger.info("market_reading.background_started master_id=%s ctx_hash=%s", master_id, h)
-    return {"reading": None, "status": "pending"}
-
-
-async def resolve_market_reading(master_id: str, market_block: Dict) -> Optional[str]:
-    """Compatibilidad para consumidores internos que todavía esperan la generación."""
-    ctx, h, cache_key = _market_reading_material(master_id, market_block)
-    if not ctx or not h or not cache_key:
-        return None
-    cached = await db[_MKT_CACHE].find_one(cache_key, {"_id": 0})
-    if cached and cached.get("reading"):
-        return cached["reading"]
-    return await _generate_market_reading(master_id, ctx, h)
 
 
 def opportunity_thesis(finances: Dict, market: Dict) -> Dict:

@@ -3,6 +3,16 @@
 > Registro de cambios de arquitectura de la plataforma Agency Tool (compartida: Valuo.pro + arroba.com + Platform Console).
 
 
+## 2026-09-16 — Parche INTEL market-async: narrativa de mercado asíncrona (pending → ready) ✅ (solo PREVIEW)
+Aplicado `market-async-intel.patch` (checksum OK) por hunks (`patch -p1`, offset 4 por ediciones NVIDIA previas, sin conflictos), conservando todos los cambios recientes de NVIDIA/trazabilidad/guardas.
+- **`services/company_summary.py`:** `resolve_market_reading` refactorizado en `_market_reading_material` + `_generate_market_reading` + `defer_market_reading` (+ `resolve_market_reading` de compatibilidad). `defer_market_reading` devuelve estados públicos `ready` (caché Mongo), `pending` (una única tarea en curso, dedupe por `_MKT_INFLIGHT`) y `unavailable` (sin contexto o fallo reciente vía caché negativa `_MKT_FAILURE_UNTIL`/`_MKT_FAILURE_TTL=300s`). No bloquea la petición HTTP (`asyncio.create_task`).
+- **`routes/company_ficha.py`:** `market()` añade `reading_status` (null en /ficha con `include_reading=False`); `/market` usa `defer_market_reading` → expone `reading_status: pending|ready|unavailable`.
+- **`tests/test_market_reading_deferred.py`** (nuevo): dedupe pending→ready + unavailable. 2/2 PASSED (instalado `pytest-asyncio`).
+- **Fix de concurrencia (opción a, autorizado):** `_call_claude`/`_call_openai` ahora ejecutan la llamada de `emergentintegrations` en un hilo con su propio loop (`_send_message_threaded` → `asyncio.to_thread`), porque bloqueaba el event loop del único worker de uvicorn y hacía que la primera `/market` tardara ~15 s pese a devolver `pending`. NO toca NVIDIA (descripciones) ni la lógica del parche.
+- **Validación E2E (Preview, service-key):** primera `/market` sin caché = **pending en 0,44 s** (<500 ms); polls siguientes `pending` sin regenerar; al terminar Claude `ready` con `reading_ai`; siguiente llamada `ready` inmediato desde `market_readings`; delta caché **+1** con **1** `background_started` (una sola generación por `master_id+ctx_hash`); `unavailable` para empresa sin contexto; `/ficha` mantiene latencia V4 (0,28 s). **NO desplegado a producción** (intel.arroba.com), a la espera de la orden de Daniel.
+- **Contrato Beta:** `/market` incluye `reading_status`; Beta debe seguir consultando mientras reciba `pending` (no convertirlo en `unavailable`) y al recibir `ready` mostrar `reading_ai` y detener el polling.
+
+
 ## 2026-09-16 — Precalentamiento de descripciones de compañía (NVIDIA) ✅ (solo PREVIEW)
 Activado `backend/scripts/prewarm_company_descriptions.py`. No afecta a Beta ni a la narrativa de mercado (Claude).
 - **Modelos NVIDIA:** el `NVIDIA_MODEL` previo (`meta/llama-3.3-70b-instruct`) y el fallback por defecto (`meta/llama-3.1-8b-instruct`) devuelven **410 Gone**. Tras escanear el catálogo (82 modelos, la mayoría 404 "función no disponible para la cuenta"), operativos y aptos: `mistralai/mistral-nemotron` (limpio, mejor calidad), `meta/llama-3.2-11b-vision-instruct` (limpio, no-razonador). **DESCARTADO** `nvidia/nemotron-3-super-120b-a12b`: es un modelo de razonamiento que vuelca su CoT en `content` → envenenó la caché (docs de 442 y 1 palabra, borrados).

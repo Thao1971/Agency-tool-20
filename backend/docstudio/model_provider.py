@@ -8,6 +8,7 @@ financiero/los engines; la IA solo redacta (fact-lock).
 Every call is audited: provider, model, prompt, response, tokens, cost.
 """
 
+import asyncio
 import logging
 from typing import Dict, Optional
 from database import db
@@ -302,55 +303,57 @@ async def _call_provider(provider: str, task: str, prompt: str, document_id: str
     return result
 
 
-async def _call_openai(prompt: str) -> Dict:
-    """Call GPT-5.2 via Emergent LLM Key."""
-    import json
-    import os
-    try:
+async def _send_message_threaded(system_message: str, provider: str, model: str, prompt: str) -> str:
+    """Ejecuta la llamada LLM (emergentintegrations) en un hilo con su propio event loop.
+
+    emergentintegrations bloquea el event loop durante la llamada; en uvicorn con un
+    único worker eso impide que las tareas diferidas (p. ej. la lectura de mercado)
+    devuelvan `pending` de inmediato. Al aislarla en un hilo, el loop principal queda
+    libre para responder mientras el modelo genera. No usa Mongo (motor sigue en el
+    loop principal), así que no hay problemas de loops cruzados.
+    """
+    import os as _os
+
+    def _worker():
         from emergentintegrations.llm.chat import LlmChat, UserMessage
 
-        api_key = os.environ.get("EMERGENT_LLM_KEY")
-        chat = LlmChat(
-            api_key=api_key,
-            session_id=f"docstudio_{new_id()[:8]}",
-            system_message="You are a professional financial analyst generating structured intelligence reports in Spanish. Always return valid JSON.",
-        ).with_model("openai", "gpt-5.2")
+        async def _inner():
+            chat = LlmChat(
+                api_key=_os.environ.get("EMERGENT_LLM_KEY"),
+                session_id=f"docstudio_{new_id()[:8]}",
+                system_message=system_message,
+            ).with_model(provider, model)
+            return await chat.send_message(UserMessage(text=prompt))
 
-        user_msg = UserMessage(text=prompt)
-        response = await chat.send_message(user_msg)
-        text = str(response)
+        return asyncio.run(_inner())
 
+    response = await asyncio.to_thread(_worker)
+    return str(response)
+
+
+async def _call_openai(prompt: str) -> Dict:
+    """Call GPT-5.2 via Emergent LLM Key (aislada en hilo, no bloquea el event loop)."""
+    try:
+        text = await _send_message_threaded(
+            "You are a professional financial analyst generating structured intelligence reports in Spanish. Always return valid JSON.",
+            "openai", "gpt-5.2", prompt)
         parsed = _extract_json(text)
         parsed["_model"] = "gpt-5.2"
         return parsed
-
     except Exception as e:
         logger.error(f"OpenAI call failed: {e}")
         return {"error": str(e), "_model": "gpt-5.2"}
 
 
 async def _call_claude(prompt: str) -> Dict:
-    """Call Claude via Emergent LLM Key."""
-    import json
-    import os
+    """Call Claude via Emergent LLM Key (aislada en hilo, no bloquea el event loop)."""
     try:
-        from emergentintegrations.llm.chat import LlmChat, UserMessage
-
-        api_key = os.environ.get("EMERGENT_LLM_KEY")
-        chat = LlmChat(
-            api_key=api_key,
-            session_id=f"docstudio_{new_id()[:8]}",
-            system_message="You are a professional executive writer generating polished narratives in Spanish. Always return valid JSON.",
-        ).with_model("anthropic", "claude-sonnet-4-6")
-
-        user_msg = UserMessage(text=prompt)
-        response = await chat.send_message(user_msg)
-        text = str(response)
-
+        text = await _send_message_threaded(
+            "You are a professional executive writer generating polished narratives in Spanish. Always return valid JSON.",
+            "anthropic", "claude-sonnet-4-6", prompt)
         parsed = _extract_json(text)
         parsed["_model"] = "claude-sonnet-4-6"
         return parsed
-
     except Exception as e:
         logger.error(f"Claude call failed: {e}")
         return {"error": str(e), "_model": "claude-sonnet-4-6"}
