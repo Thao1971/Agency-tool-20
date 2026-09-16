@@ -3,6 +3,17 @@
 > Registro de cambios de arquitectura de la plataforma Agency Tool (compartida: Valuo.pro + arroba.com + Platform Console).
 
 
+## 2026-09-16 — Parche INTEL V4 (rendimiento `/ficha`): narrativa Claude fuera del camino crítico ✅ (solo PREVIEW)
+Aplicado `emergent-intel-ficha-rendimiento-v4-160926.zip`. De los 4 archivos del ZIP, 3 eran idénticos a los actuales (SHA256 coincide: `company_summary.py`, `docstudio/model_provider.py`, `scripts/prewarm_company_descriptions.py`); **solo cambió `routes/company_ficha.py`** (SHA256 destino `f6e41ef4…`). El diff aplicó limpio sobre la versión actual (base exacta que V4 esperaba), sin pisar trabajo reciente de Emergent. Backup del previo en `/tmp/company_ficha.pre_v4.bak`.
+- **Cambios:** helper `_timed_ficha_block` que loguea `company_ficha.block_duration block=<nombre> duration_s=<seg>`; `market()` gana `include_reading=True` por defecto; `/ficha` llama a `market(..., include_reading=False)` para NO esperar la narrativa IA; los 9 bloques (finances, governance, market, capital_markets, signals, control_graph, ownership, events, description) se ejecutan en paralelo con `asyncio.gather`; dentro de `market()` sector/geo/concentración/posición también en paralelo. `/ficha` sigue con `generate_if_missing=False` (usa descripción v3 cacheada/web, sin llamar a proveedor).
+- **Validado E2E (preview, service-key `X-API-Key`)** con empresa SIN caché `B95222139` (desc_cached=0, market_reading=0):
+  - Cold `/ficha`: **0,20 s**, HTTP 200, `market.reading_ai=null`, sin auditoría summary/Claude. 9 bloques logueados: description 0,002 · ownership 0,005 · signals 0,015 · governance 0,018 · events 0,022 · control_graph 0,023 · finances 0,029 · capital_markets 0,036 · market 0,039.
+  - `market-reading` diferida (`GET /market`, include_reading=True): **12,96 s**, generó narrativa con `claude-sonnet-4-6` (LiteLLM), `reading_ai` string no vacío, `provenance.reading_ai=ai_narrative`, cacheada en `market_readings` (9→10).
+  - Repetición caliente: `/ficha` 0,30 s, `/market` 0,18 s con `reading_ai` servido de caché y **0** nuevas llamadas a LiteLLM.
+- Sin desplegar a producción (intel.arroba.com), por acuerdo con Daniel. Batch `prewarm_company_descriptions.py` NO ejecutado (pendiente de configurar/verificar `NVIDIA_DESC_MODEL`; el modelo `meta/llama-3.1-8b-instruct` devolvía HTTP 410).
+
+
+
 ## 2026-09-11 — Ingesta PROD `20260821_base.zip`: fases de DATO completadas + rebuild DIRIGIDO (no full) de señales/semántico ✅ (PRODUCCIÓN Atlas)
 El worker `run_delivery_worker` (PID 2454) contra Atlas completó y verificó las fases de DATO: legacy_ingest (+611 empresas nuevas, 389 modificadas), balances (+2.542), master_builder full (25.603), ownership_graph (2.805 aristas, 140 resueltas, 15 grupos). Conteos Atlas post-ingesta: master_companies/companies_master 25.603, norm_financials 16.044, norm_officers 88.122, norm_ownership 2.805, signals 66.3xx, semantic_profiles 25.868.
 - **HALLAZGO (medido, no estimado):** las fases finales `signal_builder` + `semantic_index` del worker recomputan TODO el universo (25.603) una a una contra Atlas a ~0,3-0,5/s → ETA ~24-30 h. Innecesario para una entrega incremental de ~1.000 empresas (las 25k existentes ya tienen señales + embeddings de despliegues previos). El traspaso anterior asumía "termina pronto" — era incorrecto.

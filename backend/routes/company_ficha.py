@@ -4,8 +4,11 @@ Read-only, additive, X-API-Key protected. Real-data-only: every block reports it
 `coverage` and returns `available: false` cleanly when there is no data (Beta degrades to
 "información en preparación"). No internal/provider vocabulary in user-facing text.
 """
-from typing import Dict, List, Optional
+from typing import Awaitable, Dict, List, Optional, TypeVar
+import asyncio
+import logging
 import re
+import time
 import unicodedata
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -22,6 +25,18 @@ from routes.company_intelligence import _build as _build_identity
 
 router = APIRouter(prefix="/api/v1/company", tags=["company-ficha (arroba.v2)"])
 ENGINE_VERSION = "arroba-company-ficha-v1"
+logger = logging.getLogger(__name__)
+_T = TypeVar("_T")
+
+
+async def _timed_ficha_block(label: str, operation: Awaitable[_T]) -> _T:
+    """Registra el tiempo real de cada bloque del agregador sin alterar su contrato."""
+    started = time.monotonic()
+    try:
+        return await operation
+    finally:
+        logger.info("company_ficha.block_duration block=%s duration_s=%.3f",
+                    label, time.monotonic() - started)
 
 
 async def _master(identifier: str) -> Optional[Dict]:
@@ -1015,7 +1030,8 @@ def _concentration_narrative(c: Dict, sector_name: Optional[str]) -> Optional[st
 
 
 @router.get("/{identifier}/market")
-async def market(identifier: str, _key=Depends(require_service_key)):
+async def market(identifier: str, include_reading: bool = True,
+                 _key=Depends(require_service_key)):
     """Contexto de mercado de la empresa (arroba.v2 'Mercado'): sector (tamaño/dinamismo/
     crecimiento), geografía (provincia), concentración/HHI (nivel group con degradación a
     division) y la posición relativa de la empresa. Cada bloque es null-safe (available)."""
@@ -1025,10 +1041,12 @@ async def market(identifier: str, _key=Depends(require_service_key)):
     cif = master["cif_normalized"]
     cls = master.get("classification") or {}
 
-    sector_doc = await _resolve_sector(cls)
-    geo_doc = await _resolve_geo(master)
-    concentration = await _resolve_concentration(cls)
-    position = await FE.ranking(master)
+    sector_doc, geo_doc, concentration, position = await asyncio.gather(
+        _resolve_sector(cls),
+        _resolve_geo(master),
+        _resolve_concentration(cls),
+        FE.ranking(master),
+    )
 
     sector_block = ({"available": True, **_sector_card(sector_doc)}
                     if sector_doc else {"available": False, "reason": "sector_not_computed"})
@@ -1074,12 +1092,16 @@ async def market(identifier: str, _key=Depends(require_service_key)):
                      "position": position_block.get("available", False)},
         "engine_version": ENGINE_VERSION,
     }
-    # Lectura de mercado en prosa (IA, fact-lock, cacheada). Fallo -> null (Beta degrada).
-    # `company_summary` (import local: el CS a nivel de módulo es control_synergy).
-    from services import company_summary as _CSUM
-    result["reading_ai"] = await _CSUM.resolve_market_reading(master["master_id"], result)
-    if result["reading_ai"] is not None:
-        result["provenance"]["reading_ai"] = "ai_narrative"
+    # La lectura IA es opcional. `/ficha` la omite porque Beta ya la solicita de
+    # forma diferida después del primer render; esperarla aquí bloqueaba toda la
+    # ficha hasta 25 s y duplicaba el mismo trabajo.
+    result["reading_ai"] = None
+    if include_reading:
+        # `company_summary` (import local: el CS a nivel de módulo es control_synergy).
+        from services import company_summary as _CSUM
+        result["reading_ai"] = await _CSUM.resolve_market_reading(master["master_id"], result)
+        if result["reading_ai"] is not None:
+            result["provenance"]["reading_ai"] = "ai_narrative"
     return result
 
 
@@ -1667,13 +1689,27 @@ async def ficha(identifier: str, _key=Depends(require_service_key)):
     if not master:
         raise HTTPException(status_code=404, detail="Company not found")
     cif = master["cif_normalized"]
-    finances = await FE.analyze(cif)
     identity = _build_identity(master).model_dump()
-    governance_block = await governance(identifier, _key=None)
-    market_block = await market(identifier, _key=None)
-    capital_markets_block = await capital_markets(identifier, _key=None)
-    signals_block = await signals(identifier, _key=None)
-    control_graph_block = await _control_graph_block(master)
+
+    # Estos bloques solo dependen del master/identifier. Ejecutarlos en serie
+    # sumaba todas las esperas de Atlas; la lectura IA de mercado queda fuera
+    # del camino crítico y se pide desde Beta después del primer render.
+    (finances, governance_block, market_block, capital_markets_block,
+     signals_block, control_graph_block, ownership_block, events_block,
+     description_block) = await asyncio.gather(
+        _timed_ficha_block("finances", FE.analyze(cif)),
+        _timed_ficha_block("governance", governance(identifier, _key=None)),
+        _timed_ficha_block("market", market(identifier, include_reading=False, _key=None)),
+        _timed_ficha_block("capital_markets", capital_markets(identifier, _key=None)),
+        _timed_ficha_block("signals", signals(identifier, _key=None)),
+        _timed_ficha_block("control_graph", _control_graph_block(master)),
+        _timed_ficha_block("ownership", ownership(identifier, _key=None)),
+        _timed_ficha_block("events", events(identifier, _key=None)),
+        _timed_ficha_block(
+            "description",
+            CS.resolve_description(master["master_id"], identity,
+                                   identity.get("activity_es"), generate_if_missing=False)),
+    )
 
     # Resumen (§ redistribución): verified + auditor + descripción enriquecida con flag de origen.
     identity["verified"] = bool((finances or {}).get("has_financials"))
@@ -1684,20 +1720,17 @@ async def ficha(identifier: str, _key=Depends(require_service_key)):
     identity["is_listed_label_es"] = "Cotizada" if identity["is_listed"] else "No cotizada"
     identity["listed_market"] = capital_markets_block["listing"].get("market_segment")
     # La ficha no espera a un proveedor de IA: usa descripción cacheada o web.
-    _desc = await CS.resolve_description(
-        master["master_id"], identity, identity.get("activity_es"),
-        generate_if_missing=False)
-    identity["description"] = _desc["description"]
-    identity["description_source"] = _desc["description_source"]
+    identity["description"] = description_block["description"]
+    identity["description_source"] = description_block["description_source"]
 
     return {
         "identifier": identifier, "cif": cif, "master_id": master["master_id"],
         "identity": identity,
         "finances": finances,
         "ranking": (finances or {}).get("ranking"),
-        "ownership": await ownership(identifier, _key=None),
+        "ownership": ownership_block,
         "governance": governance_block,
-        "events": await events(identifier, _key=None),
+        "events": events_block,
         "signals": signals_block,
         "market": market_block,
         "capital_markets": capital_markets_block,
