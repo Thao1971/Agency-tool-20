@@ -55,10 +55,14 @@ async def resolve_description(master_id: str, identity: Dict, cnae_es: Optional[
         text = (res.get("description") or "").strip() if isinstance(res, dict) else ""
         if text and "error" not in (res or {}):
             out = {"description": text, "description_source": "ai"}
+            # Trazabilidad interna (no se expone en /ficha): modelo real que respondió
+            # (primario o fallback) y si se usó el fallback.
             await db[_CACHE].update_one(
                 cache_key,
                 {"$set": {**out, **cache_key,
-                          "model": res.get("_model"), "generated_at": now_iso()}}, upsert=True)
+                          "model": res.get("_model") if isinstance(res, dict) else None,
+                          "fallback_used": bool(res.get("_fallback_used")) if isinstance(res, dict) else False,
+                          "generated_at": now_iso()}}, upsert=True)
             return out
         # IA falló/timeout -> cae a web
 

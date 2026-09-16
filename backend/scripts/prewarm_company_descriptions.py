@@ -67,8 +67,10 @@ async def main(args):
     successes = failures = consecutive_failures = 0
     for index, row in enumerate(selected, 1):
         objeto = row["objeto_social"].strip()
+        wd = row.get("web_description")
+        web_text = wd.get("description") if isinstance(wd, dict) else wd
         identity = {"objeto_social": objeto,
-                    "description": row.get("web_description"),
+                    "description": web_text,
                     "legal_name": (row.get("identity") or {}).get("legal_name")}
         cnae = cnae_label_es((row.get("classification") or {}).get("cnae_code"))
         result = await resolve_description(row["master_id"], identity, cnae,

@@ -145,6 +145,42 @@ Devuelve SOLO JSON válido: {{"message": "la respuesta reescrita en español"}}"
     return result
 
 
+# Marcadores de fuga de razonamiento (modelos "thinking" que escriben su proceso en vez
+# de la descripción). En una descripción en español correcta no aparecen estas frases.
+_REASONING_MARKERS = (
+    "the user wants", "we need to", "we must", "we can say", "let's count", "let me",
+    "i need to", "json object", "okay,", "the object social", "according to the",
+    "word count", "```",
+)
+
+# Meta-comentario sobre la fuente (defecto típico del fallback): la descripción debe
+# describir la actividad, nunca comentar lo que el objeto social dice o deja de decir.
+_META_MARKERS = (
+    "no menciona", "sin especificar si", "no se especifica", "no queda claro",
+    "no se detalla", "objeto social no", "no especifica ",
+)
+
+
+def _reject_description(desc: str, json_failed: bool) -> Optional[str]:
+    """Devuelve un motivo si la salida NO es una descripción válida (para no guardarla).
+    Protege la caché frente a fugas de razonamiento o respuestas no conformes."""
+    if not desc:
+        return "empty"
+    if json_failed:
+        return "json_parse_failed"
+    words = desc.split()
+    if len(words) < 3:
+        return "too_short"
+    if len(words) > 120:
+        return "too_long"
+    low = desc.lower()
+    if any(m in low for m in _REASONING_MARKERS):
+        return "reasoning_leak"
+    if any(m in low for m in _META_MARKERS):
+        return "meta_commentary"
+    return None
+
+
 async def generate_company_description(objeto_social: str, cnae_es: Optional[str],
                                        name: Optional[str], provider: str = "nvidia",
                                        document_id: str = None) -> Dict:
@@ -153,8 +189,11 @@ async def generate_company_description(objeto_social: str, cnae_es: Optional[str
     cifras, fechas, hechos ni productos que no estén en el objeto social/CNAE. No inventa."""
     prompt = f"""Redacta una descripción útil de la actividad de una empresa española para una ficha
 de inteligencia empresarial. Escribe 2-3 frases en español natural y correcto.
-Extensión orientativa: 40-75 palabras si el dato de origen lo permite; si es
-escaso, escribe menos antes que añadir relleno o suposiciones.
+EXTENSIÓN (importante): alcanza entre 40 y 75 palabras cuando el objeto social o el
+CNAE aporten contenido suficiente; en ese caso NO te quedes por debajo de 40 palabras.
+Para llegar al rango, desarrolla el alcance de los servicios, el ámbito de actuación o
+el tipo de operaciones que YA consten en la fuente, sin inventar. Solo escribe menos de
+40 palabras si la fuente es realmente escasa; nunca añadas relleno ni suposiciones.
 
 ESTRUCTURA: primero explica la actividad principal que conste en el objeto social
 o en el CNAE. Después explica las actividades secundarias de otra naturaleza y
@@ -168,9 +207,11 @@ instrumentos semejantes sin perder la distinción entre participaciones y otros
 valores. Evita copiar listas largas de verbos como "compra, venta, arrendamiento"
 si no aportan una idea distintiva. Usa minúsculas en los nombres comunes y las
 tildes correctas; conserva las siglas y los nombres propios.
-No escribas todo el texto en mayúsculas ni capitalices cada palabra. No repitas la
-razón social: la ficha ya la muestra en la cabecera. Evita fórmulas vacías como
-"se dedica a diversas actividades" y evita afirmaciones comerciales.
+No escribas todo el texto en mayúsculas ni capitalices cada palabra. NO menciones el
+nombre, la razón social ni las siglas de la propia empresa dentro de la descripción
+(la ficha ya los muestra en la cabecera): empieza siempre por la actividad, nunca por
+el nombre. Evita fórmulas vacías como "se dedica a diversas actividades" y evita
+afirmaciones comerciales.
 
 REGLA FUNDAMENTAL (FACT-LOCK): usa EXCLUSIVAMENTE la información del objeto social y la actividad CNAE
 de abajo. NO añadas ni inventes personas, lugares, fechas, cifras, productos, hechos ni juicios que no
@@ -190,14 +231,26 @@ elegir una por tu cuenta.
 Devuelve SOLO JSON válido: {{"description": "la descripción, 2-3 frases en español"}}"""
     import os
     _desc_model = os.environ.get("NVIDIA_DESC_MODEL", NVIDIA_FALLBACK_MODEL)
-    result = await _call_provider(provider, "company_description", prompt, document_id, model=_desc_model)
-    if isinstance(result, dict) and not result.get("description") and result.get("raw_text"):
-        result["description"] = result["raw_text"].strip()
+    result = await _call_provider(provider, "company_description", prompt, document_id,
+                                  model=_desc_model, keep_meta=True)
+    if not isinstance(result, dict):
+        return {"error": "invalid_provider_result"}
+    # `raw_text` presente => el JSON no se pudo parsear (típico de fugas de razonamiento).
+    json_failed = bool(result.get("raw_text")) and not result.get("description")
+    desc = (result.get("description") or "").strip()
+    motivo = _reject_description(desc, json_failed)
+    if motivo:
+        logger.warning("company_description descartada (%s) model=%s: %r",
+                       motivo, result.get("_model"), desc[:120])
+        result["description"] = None
+        result["error"] = f"description_rejected:{motivo}"
+        return result
+    result["description"] = desc
     return result
 
 
 async def _call_provider(provider: str, task: str, prompt: str, document_id: str = None,
-                         model: str = None) -> Dict:
+                         model: str = None, keep_meta: bool = False) -> Dict:
     """Call the AI provider and audit the result."""
     now = now_iso()
     audit = {
@@ -238,9 +291,13 @@ async def _call_provider(provider: str, task: str, prompt: str, document_id: str
     except Exception:
         pass
 
-    # Remove internal metadata
-    result.pop("_model", None)
-    result.pop("_tokens", None)
+    # Remove internal metadata. `keep_meta=True` lo conserva SOLO para trazabilidad interna
+    # del llamador (p. ej. `resolve_description` guarda `_model`/`_fallback_used` en Mongo);
+    # nunca se expone en la respuesta pública de /ficha.
+    if not keep_meta:
+        result.pop("_model", None)
+        result.pop("_tokens", None)
+        result.pop("_fallback_used", None)
 
     return result
 
@@ -341,10 +398,14 @@ async def _call_nvidia(prompt: str, model: str = None) -> Dict:
     primary_timeout = float(os.environ.get("NVIDIA_PRIMARY_TIMEOUT", "12")) if has_fallback else full_timeout
     res = await _nvidia_once(prompt, primary, primary_timeout)
     if "error" not in res:
+        res["_fallback_used"] = False
         return res
     if has_fallback:
         logger.warning(f"NVIDIA primario '{primary}' no responde; failover a '{fallback}'")
-        return await _nvidia_once(prompt, fallback, full_timeout)
+        res = await _nvidia_once(prompt, fallback, full_timeout)
+        res["_fallback_used"] = True
+        return res
+    res["_fallback_used"] = False
     return res
 
 
