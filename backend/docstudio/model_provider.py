@@ -10,6 +10,7 @@ Every call is audited: provider, model, prompt, response, tokens, cost.
 
 import asyncio
 import logging
+import os
 from typing import Dict, Optional
 from database import db
 from models import new_id, now_iso
@@ -20,6 +21,19 @@ logger = logging.getLogger(__name__)
 # NVIDIA_MODEL_FALLBACK; se usa cuando el modelo primario (NVIDIA_MODEL) no responde.
 NVIDIA_FALLBACK_MODEL = "meta/llama-3.1-8b-instruct"
 COMPANY_DESCRIPTION_PROMPT_VERSION = 3
+
+# Límite de concurrencia para las llamadas LLM aisladas en hilo (_send_message_threaded).
+# Configurable con LLM_MAX_CONCURRENCY (por defecto 2): evita saturar el threadpool y el
+# proveedor cuando varias fichas/lecturas se generan a la vez.
+_LLM_MAX_CONCURRENCY = int(os.environ.get("LLM_MAX_CONCURRENCY", "2"))
+_llm_semaphore: Optional[asyncio.Semaphore] = None
+
+
+def _get_llm_semaphore() -> asyncio.Semaphore:
+    global _llm_semaphore
+    if _llm_semaphore is None:
+        _llm_semaphore = asyncio.Semaphore(_LLM_MAX_CONCURRENCY)
+    return _llm_semaphore
 
 
 async def generate_analysis(data: Dict, instruction: str, provider: str = "claude",
@@ -327,7 +341,8 @@ async def _send_message_threaded(system_message: str, provider: str, model: str,
 
         return asyncio.run(_inner())
 
-    response = await asyncio.to_thread(_worker)
+    async with _get_llm_semaphore():
+        response = await asyncio.to_thread(_worker)
     return str(response)
 
 

@@ -1,0 +1,336 @@
+--- a/backend/services/company_summary.py
++++ b/backend/services/company_summary.py
+@@ -11,7 +11,9 @@
+ import asyncio
+ import hashlib
+ import json
++import logging
+ import os
++import time
+ from typing import Dict, List, Optional
+ 
+ from database import db
+@@ -22,6 +24,10 @@
+ _CACHE = "company_descriptions"   # colección aparte de la caché del /ficha
+ _MKT_CACHE = "market_readings"    # caché de la lectura de mercado (IA, fact-lock)
+ _AI_TIMEOUT = 25
++_MKT_FAILURE_TTL = 300
++_MKT_INFLIGHT: Dict[str, asyncio.Task] = {}
++_MKT_FAILURE_UNTIL: Dict[str, float] = {}
++logger = logging.getLogger(__name__)
+ 
+ 
+ def _hash(text: str) -> str:
+@@ -98,19 +104,16 @@
+     return ctx or None
+ 
+ 
+-async def resolve_market_reading(master_id: str, market_block: Dict) -> Optional[str]:
+-    """Lectura de mercado en prosa (IA, FACT-LOCK) sobre el bloque `market` ya agregado:
+-    combina posición sectorial (ranking/percentil) + estado del sector + territorio +
+-    concentración en 2-3 frases ejecutivas. Cacheada en Mongo por master_id + hash del
+-    contenido material (se regenera solo si cambia el dato). Fallo/timeout/IA vacía -> None
+-    (Beta degrada sin bloquear). Proveedor configurable con MARKET_READING_PROVIDER (claude)."""
++def _market_reading_material(master_id: str, market_block: Dict) -> tuple[Optional[Dict], Optional[str], Optional[Dict]]:
+     ctx = _market_reading_context(market_block)
+     if not ctx:
+-        return None
++        return None, None, None
+     h = _hash(json.dumps(ctx, sort_keys=True, ensure_ascii=False, default=str))
+-    cached = await db[_MKT_CACHE].find_one({"master_id": master_id, "ctx_hash": h}, {"_id": 0})
+-    if cached and cached.get("reading"):
+-        return cached["reading"]
++    return ctx, h, {"master_id": master_id, "ctx_hash": h}
++
++
++async def _generate_market_reading(master_id: str, ctx: Dict, h: str) -> Optional[str]:
++    """Genera y persiste una lectura. Se usa tanto en modo síncrono como diferido."""
+     provider = os.environ.get("MARKET_READING_PROVIDER", "claude")
+     res = {}
+     try:
+@@ -127,6 +130,60 @@
+                       "model": res.get("_model"), "generated_at": now_iso()}}, upsert=True)
+         return text
+     return None
++
++
++def _finish_market_task(key: str, task: asyncio.Task) -> None:
++    """Libera la deduplicación y aplica una caché negativa corta tras un fallo real."""
++    if _MKT_INFLIGHT.get(key) is task:
++        _MKT_INFLIGHT.pop(key, None)
++    try:
++        result = task.result()
++    except BaseException as exc:  # también consume CancelledError para evitar warnings
++        result = None
++        logger.warning("market_reading.background_error key=%s error=%s", key, exc)
++    if not result:
++        _MKT_FAILURE_UNTIL[key] = time.monotonic() + _MKT_FAILURE_TTL
++
++
++async def defer_market_reading(master_id: str, market_block: Dict) -> Dict:
++    """Devuelve la lectura cacheada o inicia su generación sin bloquear la petición HTTP.
++
++    Estados públicos: ready (caché Mongo), pending (una única tarea en curso) y
++    unavailable (sin contexto o fallo reciente). La caché negativa evita relanzar
++    Claude en cada poll cuando el proveedor falla.
++    """
++    ctx, h, cache_key = _market_reading_material(master_id, market_block)
++    if not ctx or not h or not cache_key:
++        return {"reading": None, "status": "unavailable"}
++
++    cached = await db[_MKT_CACHE].find_one(cache_key, {"_id": 0})
++    if cached and cached.get("reading"):
++        return {"reading": cached["reading"], "status": "ready"}
++
++    key = f"{master_id}:{h}"
++    failed_until = _MKT_FAILURE_UNTIL.get(key, 0.0)
++    if failed_until > time.monotonic():
++        return {"reading": None, "status": "unavailable"}
++    _MKT_FAILURE_UNTIL.pop(key, None)
++
++    task = _MKT_INFLIGHT.get(key)
++    if task is None or task.done():
++        task = asyncio.create_task(_generate_market_reading(master_id, ctx, h))
++        _MKT_INFLIGHT[key] = task
++        task.add_done_callback(lambda done, task_key=key: _finish_market_task(task_key, done))
++        logger.info("market_reading.background_started master_id=%s ctx_hash=%s", master_id, h)
++    return {"reading": None, "status": "pending"}
++
++
++async def resolve_market_reading(master_id: str, market_block: Dict) -> Optional[str]:
++    """Compatibilidad para consumidores internos que todavía esperan la generación."""
++    ctx, h, cache_key = _market_reading_material(master_id, market_block)
++    if not ctx or not h or not cache_key:
++        return None
++    cached = await db[_MKT_CACHE].find_one(cache_key, {"_id": 0})
++    if cached and cached.get("reading"):
++        return cached["reading"]
++    return await _generate_market_reading(master_id, ctx, h)
+ 
+ 
+ def opportunity_thesis(finances: Dict, market: Dict) -> Dict:
+--- a/backend/routes/company_ficha.py
++++ b/backend/routes/company_ficha.py
+@@ -1096,10 +1096,13 @@
+     # forma diferida después del primer render; esperarla aquí bloqueaba toda la
+     # ficha hasta 25 s y duplicaba el mismo trabajo.
+     result["reading_ai"] = None
++    result["reading_status"] = None
+     if include_reading:
+         # `company_summary` (import local: el CS a nivel de módulo es control_synergy).
+         from services import company_summary as _CSUM
+-        result["reading_ai"] = await _CSUM.resolve_market_reading(master["master_id"], result)
++        deferred = await _CSUM.defer_market_reading(master["master_id"], result)
++        result["reading_ai"] = deferred["reading"]
++        result["reading_status"] = deferred["status"]
+         if result["reading_ai"] is not None:
+             result["provenance"]["reading_ai"] = "ai_narrative"
+     return result
+--- /dev/null
++++ b/backend/tests/test_market_reading_deferred.py
+@@ -0,0 +1,81 @@
++import asyncio
++
++import pytest
++
++from services import company_summary as summary
++
++
++class _Collection:
++    def __init__(self):
++        self.docs = {}
++
++    async def find_one(self, query, projection=None):
++        return self.docs.get((query["master_id"], query["ctx_hash"]))
++
++    async def update_one(self, query, update, upsert=False):
++        self.docs[(query["master_id"], query["ctx_hash"])] = update["$set"]
++
++
++class _DB:
++    def __init__(self):
++        self.collection = _Collection()
++
++    def __getitem__(self, name):
++        assert name == "market_readings"
++        return self.collection
++
++
++def _market():
++    return {
++        "available": True,
++        "sector": {"available": True, "cnae_label": "Servicios", "size_score": 55},
++        "geo": {"available": False},
++        "concentration": {"available": False},
++        "position": {"available": False},
++    }
++
++
++@pytest.mark.asyncio
++async def test_deferred_market_reading_pending_deduplicated_then_ready(monkeypatch):
++    fake_db = _DB()
++    release = asyncio.Event()
++    calls = 0
++
++    async def fake_generate(ctx, **kwargs):
++        nonlocal calls
++        calls += 1
++        await release.wait()
++        return {"executive_summary": "Lectura generada", "_model": "test-model"}
++
++    monkeypatch.setattr(summary, "db", fake_db)
++    monkeypatch.setattr(summary, "generate_summary", fake_generate)
++    summary._MKT_INFLIGHT.clear()
++    summary._MKT_FAILURE_UNTIL.clear()
++
++    first = await summary.defer_market_reading("mc_test", _market())
++    second = await summary.defer_market_reading("mc_test", _market())
++    await asyncio.sleep(0)
++    await asyncio.sleep(0)
++
++    assert first == {"reading": None, "status": "pending"}
++    assert second == {"reading": None, "status": "pending"}
++    assert calls == 1
++
++    release.set()
++    await next(iter(summary._MKT_INFLIGHT.values()))
++    ready = await summary.defer_market_reading("mc_test", _market())
++
++    assert ready == {"reading": "Lectura generada", "status": "ready"}
++    assert calls == 1
++
++
++@pytest.mark.asyncio
++async def test_deferred_market_reading_without_context_is_unavailable(monkeypatch):
++    monkeypatch.setattr(summary, "db", _DB())
++    summary._MKT_INFLIGHT.clear()
++    summary._MKT_FAILURE_UNTIL.clear()
++
++    result = await summary.defer_market_reading("mc_empty", {"available": False})
++
++    assert result == {"reading": None, "status": "unavailable"}
++    assert summary._MKT_INFLIGHT == {}
+--- a/backend/docstudio/model_provider.py
++++ b/backend/docstudio/model_provider.py
+@@ -8,7 +8,9 @@
+ Every call is audited: provider, model, prompt, response, tokens, cost.
+ """
+ 
++import asyncio
+ import logging
++import os
+ from typing import Dict, Optional
+ from database import db
+ from models import new_id, now_iso
+@@ -20,6 +22,19 @@
+ NVIDIA_FALLBACK_MODEL = "meta/llama-3.1-8b-instruct"
+ COMPANY_DESCRIPTION_PROMPT_VERSION = 3
+ 
++# Límite de concurrencia para las llamadas LLM aisladas en hilo (_send_message_threaded).
++# Configurable con LLM_MAX_CONCURRENCY (por defecto 2): evita saturar el threadpool y el
++# proveedor cuando varias fichas/lecturas se generan a la vez.
++_LLM_MAX_CONCURRENCY = int(os.environ.get("LLM_MAX_CONCURRENCY", "2"))
++_llm_semaphore: Optional[asyncio.Semaphore] = None
++
++
++def _get_llm_semaphore() -> asyncio.Semaphore:
++    global _llm_semaphore
++    if _llm_semaphore is None:
++        _llm_semaphore = asyncio.Semaphore(_LLM_MAX_CONCURRENCY)
++    return _llm_semaphore
++
+ 
+ async def generate_analysis(data: Dict, instruction: str, provider: str = "claude",
+                             document_id: str = None) -> Dict:
+@@ -302,55 +317,58 @@
+     return result
+ 
+ 
+-async def _call_openai(prompt: str) -> Dict:
+-    """Call GPT-5.2 via Emergent LLM Key."""
+-    import json
+-    import os
+-    try:
++async def _send_message_threaded(system_message: str, provider: str, model: str, prompt: str) -> str:
++    """Ejecuta la llamada LLM (emergentintegrations) en un hilo con su propio event loop.
++
++    emergentintegrations bloquea el event loop durante la llamada; en uvicorn con un
++    único worker eso impide que las tareas diferidas (p. ej. la lectura de mercado)
++    devuelvan `pending` de inmediato. Al aislarla en un hilo, el loop principal queda
++    libre para responder mientras el modelo genera. No usa Mongo (motor sigue en el
++    loop principal), así que no hay problemas de loops cruzados.
++    """
++    import os as _os
++
++    def _worker():
+         from emergentintegrations.llm.chat import LlmChat, UserMessage
+ 
+-        api_key = os.environ.get("EMERGENT_LLM_KEY")
+-        chat = LlmChat(
+-            api_key=api_key,
+-            session_id=f"docstudio_{new_id()[:8]}",
+-            system_message="You are a professional financial analyst generating structured intelligence reports in Spanish. Always return valid JSON.",
+-        ).with_model("openai", "gpt-5.2")
+-
+-        user_msg = UserMessage(text=prompt)
+-        response = await chat.send_message(user_msg)
+-        text = str(response)
++        async def _inner():
++            chat = LlmChat(
++                api_key=_os.environ.get("EMERGENT_LLM_KEY"),
++                session_id=f"docstudio_{new_id()[:8]}",
++                system_message=system_message,
++            ).with_model(provider, model)
++            return await chat.send_message(UserMessage(text=prompt))
++
++        return asyncio.run(_inner())
++
++    async with _get_llm_semaphore():
++        response = await asyncio.to_thread(_worker)
++    return str(response)
+ 
++
++async def _call_openai(prompt: str) -> Dict:
++    """Call GPT-5.2 via Emergent LLM Key (aislada en hilo, no bloquea el event loop)."""
++    try:
++        text = await _send_message_threaded(
++            "You are a professional financial analyst generating structured intelligence reports in Spanish. Always return valid JSON.",
++            "openai", "gpt-5.2", prompt)
+         parsed = _extract_json(text)
+         parsed["_model"] = "gpt-5.2"
+         return parsed
+-
+     except Exception as e:
+         logger.error(f"OpenAI call failed: {e}")
+         return {"error": str(e), "_model": "gpt-5.2"}
+ 
+ 
+ async def _call_claude(prompt: str) -> Dict:
+-    """Call Claude via Emergent LLM Key."""
+-    import json
+-    import os
++    """Call Claude via Emergent LLM Key (aislada en hilo, no bloquea el event loop)."""
+     try:
+-        from emergentintegrations.llm.chat import LlmChat, UserMessage
+-
+-        api_key = os.environ.get("EMERGENT_LLM_KEY")
+-        chat = LlmChat(
+-            api_key=api_key,
+-            session_id=f"docstudio_{new_id()[:8]}",
+-            system_message="You are a professional executive writer generating polished narratives in Spanish. Always return valid JSON.",
+-        ).with_model("anthropic", "claude-sonnet-4-6")
+-
+-        user_msg = UserMessage(text=prompt)
+-        response = await chat.send_message(user_msg)
+-        text = str(response)
+-
++        text = await _send_message_threaded(
++            "You are a professional executive writer generating polished narratives in Spanish. Always return valid JSON.",
++            "anthropic", "claude-sonnet-4-6", prompt)
+         parsed = _extract_json(text)
+         parsed["_model"] = "claude-sonnet-4-6"
+         return parsed
+-
+     except Exception as e:
+         logger.error(f"Claude call failed: {e}")
+         return {"error": str(e), "_model": "claude-sonnet-4-6"}

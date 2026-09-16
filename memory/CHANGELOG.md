@@ -3,6 +3,12 @@
 > Registro de cambios de arquitectura de la plataforma Agency Tool (compartida: Valuo.pro + arroba.com + Platform Console).
 
 
+## 2026-09-16 — Semáforo de concurrencia LLM + paquete de despliegue Market (para el pipeline de producción)
+- **Semáforo (`model_provider.py`):** `_send_message_threaded` ahora limita la concurrencia con `_get_llm_semaphore()` (asyncio.Semaphore lazy). Configurable con **`LLM_MAX_CONCURRENCY`** (por defecto **2**). Evita saturar el threadpool/proveedor cuando varias fichas/lecturas se generan a la vez. Validado: /market pending 0,37 s → ready → cache, sin regresión.
+- **Smoke OpenAI:** `_call_openai` (gpt-5.2, aislado en hilo) devuelve JSON válido en ~3 s y NO bloquea el loop (56 ticks durante la llamada). Nota: ninguna ruta actual pasa `provider="openai"` (todos los `generate_*` usan claude por defecto).
+- **Paquete de despliegue para producción** en `/app/deploy_market/` y ZIP `/app/emergent-intel-market-deploy-160926.zip` (SHA256 `8d2080ec…`). Contiene `market-async-concurrency-intel.patch` (hunk-based, 4 ficheros/9 hunks: company_summary market-async + company_ficha reading_status + model_provider concurrencia+semáforo + test nuevo), instrucciones, rollback (`patch -R`), variable nueva `LLM_MAX_CONCURRENCY=2`, checklist de validación de producción, contrato Beta y `SHA256.txt`. Sin secretos ni `.env`. Verificado reverse-apply (dry-run) contra el código actual y forward-apply+py_compile sobre baseline reconstruida.
+
+
 ## 2026-09-16 — Parche INTEL market-async: narrativa de mercado asíncrona (pending → ready) ✅ (solo PREVIEW)
 Aplicado `market-async-intel.patch` (checksum OK) por hunks (`patch -p1`, offset 4 por ediciones NVIDIA previas, sin conflictos), conservando todos los cambios recientes de NVIDIA/trazabilidad/guardas.
 - **`services/company_summary.py`:** `resolve_market_reading` refactorizado en `_market_reading_material` + `_generate_market_reading` + `defer_market_reading` (+ `resolve_market_reading` de compatibilidad). `defer_market_reading` devuelve estados públicos `ready` (caché Mongo), `pending` (una única tarea en curso, dedupe por `_MKT_INFLIGHT`) y `unavailable` (sin contexto o fallo reciente vía caché negativa `_MKT_FAILURE_UNTIL`/`_MKT_FAILURE_TTL=300s`). No bloquea la petición HTTP (`asyncio.create_task`).

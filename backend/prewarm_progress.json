@@ -1,19 +1,19 @@
 {
   "started_iso": "2026-09-16T16:16:12.767361+00:00",
-  "updated_iso": "2026-09-16T16:46:50.598468+00:00",
+  "updated_iso": "2026-09-16T17:18:28.482584+00:00",
   "deadline_iso": "2026-09-17T04:16:12.767359+00:00",
-  "horas_restantes": 11.49,
+  "horas_restantes": 10.96,
   "done": false,
-  "generadas": 214,
-  "fallidas": 18,
+  "generadas": 307,
+  "fallidas": 55,
   "reparto_por_modelo": {
-    "mistralai/mistral-nemotron": 179,
-    "meta/llama-3.2-11b-vision-instruct": 35
+    "mistralai/mistral-nemotron": 226,
+    "meta/llama-3.2-11b-vision-instruct": 81
   },
-  "fallback_used": 35,
+  "fallback_used": 81,
   "motivos_fallo": {
-    "web": 2,
-    "none": 16
+    "web": 5,
+    "none": 50
   },
-  "ultimo_cif": "B10188415"
+  "ultimo_cif": "B84696558"
 }

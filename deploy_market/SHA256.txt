@@ -1,0 +1,10 @@
+# === Archivos del paquete ===
+e30f0ac446240e61322fc951a5d6dfd83d070bbea5fd957b0c66b69c60ddeddc  market-async-concurrency-intel.patch
+b840a6c51945e833505bc3394431ce973576a9072958eb3d959d554ed617cdb3  INSTRUCCIONES-DESPLIEGUE-MARKET.txt
+b2c2872be636a7e3b4f3a0cfa5059295fa78c6e58e9198508743e56b4d30816e  tests/test_market_reading_deferred.py
+
+# === Ficheros de destino DESPUÉS de aplicar (verificación post-apply) ===
+3d13bab9449842b624654f95ddee6f742c7816c6197d33103cfd545292e22312  backend/services/company_summary.py
+7ed3e58a2f7076af7dfc7d4c3b73a93b1f3e675a105db18f824ab2fb08f3af46  backend/routes/company_ficha.py
+52a385a9ed7e53dc7953ca1d49efcdeda7e2f73a72faa7af15cb7974fe3295ba  backend/docstudio/model_provider.py
+b2c2872be636a7e3b4f3a0cfa5059295fa78c6e58e9198508743e56b4d30816e  backend/tests/test_market_reading_deferred.py

@@ -1,0 +1,100 @@
+PAQUETE DE DESPLIEGUE · INTEL · NARRATIVA DE MERCADO ASÍNCRONA + CONCURRENCIA
+Fecha: 2026-09-16
+Ámbito: producción (intel.arroba.com). Preparado en Preview; NO contiene secretos ni .env.
+
+============================================================
+OBJETIVO
+============================================================
+1) /api/v1/company/{cif}/market deja de esperar a Claude: responde de inmediato con
+   reading_status = pending | ready | unavailable (evita el timeout del edge / 520).
+2) Fix de concurrencia: las llamadas LLM de emergentintegrations (_call_claude y
+   _call_openai) se ejecutan en un hilo con su propio event loop para NO bloquear el
+   event loop del worker de uvicorn. Sin esto, la primera /market seguía tardando ~15 s
+   pese a devolver pending.
+3) Semáforo de concurrencia LLM configurable (por defecto 2) para no saturar el
+   threadpool ni el proveedor cuando varias fichas/lecturas se generan a la vez.
+
+============================================================
+CONTENIDO
+============================================================
+- market-async-concurrency-intel.patch   (parche por hunks; 4 ficheros, 9 hunks)
+    backend/services/company_summary.py   (defer_market_reading + estados + dedupe)
+    backend/routes/company_ficha.py       (reading_status en /market; null en /ficha)
+    backend/docstudio/model_provider.py    (fix concurrencia _call_claude/_call_openai + semáforo)
+    backend/tests/test_market_reading_deferred.py  (NUEVO)
+- tests/test_market_reading_deferred.py   (copia suelta del test, por comodidad)
+- SHA256.txt                              (checksums del paquete y de los ficheros resultantes)
+- INSTRUCCIONES-DESPLIEGUE-MARKET.txt     (este archivo)
+
+============================================================
+BASELINE REQUERIDO
+============================================================
+- El parche está hecho contra Intel V4 (la función market() con include_reading).
+- Es ORTOGONAL a los cambios de NVIDIA / trazabilidad de modelos / guardas de calidad:
+  no toca _call_nvidia, _reject_description, generate_company_description ni el keep_meta
+  de _call_provider. Al aplicarse por hunks, CONSERVA esos cambios si ya existen.
+- Si algún hunk no aplica por cambios posteriores, intégralo manualmente SOLO ese hunk.
+  NO revertir ni reemplazar los cambios de NVIDIA/trazabilidad/guardas.
+
+============================================================
+VARIABLES DE ENTORNO NUEVAS
+============================================================
+- LLM_MAX_CONCURRENCY (opcional, por defecto "2"): nº máx. de llamadas LLM simultáneas
+  aisladas en hilo. Empezar en 2. No requiere secretos. Si no se define, usa 2.
+  (No hay más variables nuevas. No se incluye ni se modifica ningún .env.)
+
+============================================================
+APLICACIÓN (desde la raíz del repositorio Intel)
+============================================================
+  1) Dry-run:
+       patch --dry-run -p1 < market-async-concurrency-intel.patch
+     (Es normal ver "offset N lines" en company_summary.py; los hunks aplican igual.)
+  2) Aplicar:
+       patch -p1 < market-async-concurrency-intel.patch
+
+============================================================
+CHECKLIST QUE DEBE EJECUTAR PRODUCCIÓN
+============================================================
+A) Compilación y tests:
+     python -m py_compile backend/services/company_summary.py \
+       backend/routes/company_ficha.py backend/docstudio/model_provider.py
+     pip install pytest-asyncio   # si no está
+     python -m pytest backend/tests/test_market_reading_deferred.py -p asyncio -q
+     -> esperado: 2 passed
+B) Reinicio controlado de Intel:
+     (según vuestro gestor) p. ej.  sudo supervisorctl restart backend
+C) /ficha por debajo de 1 segundo y comportamiento V4:
+     GET /api/v1/company/{CIF}/ficha  -> HTTP 200, < 1 s, market.reading_status = null,
+     market.reading_ai = null (no espera la narrativa).
+D) /market SIN caché (primera llamada):
+     GET /api/v1/company/{CIF}/market -> HTTP 200, reading_ai = null,
+     reading_status = "pending", respuesta < 1 s.
+E) Transición pending -> ready:
+     Repetir GET /market durante la generación: sigue "pending" SIN lanzar otra
+     llamada a Claude (buscar en logs UNA sola línea
+     "market_reading.background_started master_id=... ctx_hash=..." por combinación).
+     Al terminar Claude: reading_status = "ready" con reading_ai (narrativa).
+F) Cache hit posterior inmediato:
+     Siguiente GET /market -> "ready" al instante desde la colección market_readings.
+G) Una sola generación por master_id + ctx_hash:
+     La colección market_readings incrementa en +1 para ese CIF (no duplica).
+H) Cero respuestas 520 y sin bloqueo del event loop:
+     Ninguna /market ni /ficha devuelve 520; el servicio sigue atendiendo otras
+     peticiones durante la generación (loop no bloqueado).
+
+Entregar: CIF utilizado, tiempos de cada paso y logs relevantes.
+
+============================================================
+ROLLBACK
+============================================================
+  patch -R -p1 < market-async-concurrency-intel.patch
+  (y reiniciar Intel). El parche revierte limpio; no toca datos ni .env.
+  Verificado: reverse-apply en dry-run sin conflictos contra el código de referencia.
+
+============================================================
+CONTRATO PARA BETA
+============================================================
+/market expone reading_status: pending | ready | unavailable.
+- pending  -> Beta DEBE seguir consultando (no tratarlo como error ni como unavailable).
+- ready    -> Beta muestra reading_ai y DETIENE el polling.
+- unavailable -> no hay contexto de mercado o fallo reciente; no reintentar en bucle.
