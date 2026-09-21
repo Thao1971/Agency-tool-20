@@ -14,6 +14,9 @@ from services.engines.financial import ratios_library as R
 from services.engines.financial import market_multiples as MM
 from services.engines.financial import iberinform_ratios as IR
 from services.engines.financial import pgc_account_labels as PGC
+from services.engines.valuation import calculate_dcf, calculate_wacc, resolve_sector_rule
+from services.engines.valuation.conventions import apply_equity_bridge_to_scenarios, equity_bridge
+from services.engines.valuation.market_inputs import resolve_market_inputs
 
 ENGINE_VERSION = "financial-intelligence-v1"
 
@@ -162,11 +165,8 @@ def _financial_narrative(quality: Dict, kpis: Dict, evolution: Dict,
 
 
 def _net_debt(m: Dict) -> Optional[float]:
-    """Deuda neta = deuda financiera - caja. None si no consta la deuda financiera."""
-    fd = m.get("financial_debt")
-    if fd is None:
-        return None
-    return round(fd - (m.get("cash") or 0), 2)
+    """Canonical net debt: available only when both debt and cash are reported."""
+    return equity_bridge(m)["net_debt"]
 
 
 def compute_kpis(series: List[Dict], employees: Optional[int]) -> Dict:
@@ -397,20 +397,21 @@ async def valuation(master: Dict, latest: Dict) -> Dict:
     cnae_code = (master.get("classification") or {}).get("cnae_code")
     revenue, ebitda = latest.get("revenue"), latest.get("ebitda")
     equity = latest.get("equity")
-    # Honest net-debt handling: if the balance doesn't report financial debt
+    # Honest net-debt handling: if the balance does not report debt and cash
     # (typical of abbreviated/PYME accounts), do NOT silently assume 0 debt and
     # net the cash — that would inflate equity. Treat net debt as "not applied",
     # flag it, and lower confidence so the ficha can warn of possible overvaluation.
-    debt_known = latest.get("financial_debt") is not None
-    net_debt = ((latest.get("financial_debt") or 0) - (latest.get("cash") or 0)) if debt_known else 0
+    bridge = equity_bridge(latest)
+    debt_known = bridge["net_debt_known"]
+    net_debt = bridge["net_debt"]
 
     def _nd_hyp() -> str:
         if debt_known:
             return (f"Se ha restado la deuda financiera neta (deuda − caja: {_fmt_eur(net_debt)}) "
                     "del Enterprise Value para llegar al Equity Value.")
-        return ("No hay dato de deuda financiera para esta empresa: el Equity Value coincide con "
-                "el Enterprise Value. Si la empresa tiene deuda no reflejada en sus cuentas "
-                "depositadas, el valor real para el accionista podría ser algo menor.")
+        missing = ", ".join(bridge["missing_fields"])
+        return (f"No se calcula el Equity Value porque faltan datos del puente de deuda neta: "
+                f"{missing}. Se mantiene el Enterprise Value como referencia operativa.")
 
     _cadj = 0.0 if debt_known else 0.1  # penaliza la confianza cuando falta la deuda
 
@@ -422,14 +423,16 @@ async def valuation(master: Dict, latest: Dict) -> Dict:
         if real:
             mult = real["ev_ebitda_median"]
             ev = ebitda * mult
-            equity_value = ev - net_debt
+            equity_value = equity_bridge(latest, ev)["equity_value"]
             hypotheses = [f"El múltiplo de {mult:.1f}× es la mediana real observada en "
                           f"{real['sample_size']} transacciones de agencias de publicidad "
                           f"(M&A Radar de Arroba).",
                           _nd_hyp()]
             return {"method": "ev_ebitda", "multiple": mult, "multiple_basis": "market_observed",
-                    "enterprise_value": round(ev, 0), "equity_value": round(equity_value, 0),
+                    "enterprise_value": round(ev, 0), "equity_value": round(equity_value, 0) if equity_value is not None else None,
                     "net_debt_known": debt_known,
+                    "equity_bridge": equity_bridge(latest, ev),
+                    "warnings": bridge["warnings"],
                     "range": {"low": round(ebitda * real.get("ev_ebitda_p25", mult), 0),
                               "central": round(ev, 0),
                               "high": round(ebitda * real.get("ev_ebitda_p75", mult), 0)},
@@ -437,14 +440,16 @@ async def valuation(master: Dict, latest: Dict) -> Dict:
                     "lineage": {**lineage, "source": real}}
         mult = _SECTION_EV_EBITDA.get(section, _DEFAULT_EV_EBITDA)
         ev = ebitda * mult
-        equity_value = ev - net_debt
+        equity_value = equity_bridge(latest, ev)["equity_value"]
         hypotheses = [f"El múltiplo de {mult:.1f}× es una referencia sectorial (sección CNAE "
                       f"{section}) inferida por Arroba, pendiente de contraste con transacciones "
                       f"reales.",
                       _nd_hyp()]
         return {"method": "ev_ebitda", "multiple_basis": "inferred_reference", "multiple": mult,
-                "enterprise_value": round(ev, 0), "equity_value": round(equity_value, 0),
+                "enterprise_value": round(ev, 0), "equity_value": round(equity_value, 0) if equity_value is not None else None,
                 "net_debt_known": debt_known,
+                "equity_bridge": equity_bridge(latest, ev),
+                "warnings": bridge["warnings"],
                 "range": {"low": round(ev * 0.85, 0), "central": round(ev, 0), "high": round(ev * 1.15, 0)},
                 "confidence": round(0.6 - _cadj, 2), "hypotheses": hypotheses, "lineage": lineage}
     if revenue and revenue > 0:
@@ -454,8 +459,10 @@ async def valuation(master: Dict, latest: Dict) -> Dict:
                       f"{mult:.1f}× sobre ingresos como referencia inferida por Arroba.",
                       _nd_hyp()]
         return {"method": "ev_revenue", "multiple": mult, "multiple_basis": "inferred_reference",
-                "enterprise_value": round(ev, 0), "equity_value": round(ev - net_debt, 0),
+                "enterprise_value": round(ev, 0), "equity_value": equity_bridge(latest, ev)["equity_value"],
                 "net_debt_known": debt_known,
+                "equity_bridge": equity_bridge(latest, ev),
+                "warnings": bridge["warnings"],
                 "range": {"low": round(ev * 0.7, 0), "central": round(ev, 0), "high": round(ev * 1.3, 0)},
                 "confidence": round(0.4 - _cadj, 2), "hypotheses": hypotheses, "lineage": lineage}
     if equity and equity > 0:
@@ -523,24 +530,22 @@ def _valuation_full(val: Dict, latest: Dict, comparables: Dict) -> Dict:
     mult = val.get("multiple")
     rng = val.get("range") or {}
     lo, hi = rng.get("low"), rng.get("high")
-    # Honest net-debt handling (mirrors valuation()): if financial debt isn't reported,
+    # Honest net-debt handling (mirrors valuation()): if debt or cash is not reported,
     # don't assume 0 and net the cash — that would inflate equity in the scenarios too.
     # Only the net-debt treatment changes here; multiples, ranges and scenario structure intact.
-    debt_known = latest.get("financial_debt") is not None
-    net_debt = ((latest.get("financial_debt") or 0) - (latest.get("cash") or 0)) if debt_known else 0
+    bridge = equity_bridge(latest)
+    debt_known = bridge["net_debt_known"]
+    net_debt = bridge["net_debt"]
 
     def _mult_for(x):
         return round(mult * x / ev, 2) if (mult and ev) else None
 
     if method in ("ev_ebitda", "ev_revenue") and None not in (ev, lo, hi):
-        out["scenarios"] = [
-            {"name": "conservador", "multiple": _mult_for(lo),
-             "enterprise_value": lo, "equity_value": round(lo - net_debt, 0)},
-            {"name": "base", "multiple": mult,
-             "enterprise_value": ev, "equity_value": round(ev - net_debt, 0)},
-            {"name": "optimista", "multiple": _mult_for(hi),
-             "enterprise_value": hi, "equity_value": round(hi - net_debt, 0)},
-        ]
+        out["scenarios"] = apply_equity_bridge_to_scenarios([
+            {"name": "conservador", "multiple": _mult_for(lo), "enterprise_value": lo},
+            {"name": "base", "multiple": mult, "enterprise_value": ev},
+            {"name": "optimista", "multiple": _mult_for(hi), "enterprise_value": hi},
+        ], latest)
 
     peers = (comparables or {}).get("peers") or []
     pmargins = sorted([p["ebitda_margin"] for p in peers if p.get("ebitda_margin") is not None])
@@ -670,6 +675,15 @@ async def analyze(identifier: str) -> Optional[Dict]:
     comparables = await financial_comparables(master, latest)
     val = await valuation(master, latest)
     val = {**val, **_valuation_full(val, latest, comparables)}
+    sector_rule = resolve_sector_rule(
+        (master.get("classification") or {}).get("cnae_code"), latest.get("revenue"))
+    market_snapshot, comparable_beta, _public_peers = await resolve_market_inputs(
+        db, sector_rule["archetype"])
+    wacc_analysis = calculate_wacc(
+        latest, sector_rule, market_snapshot=market_snapshot,
+        comparable_beta=comparable_beta)
+    val["dcf"] = calculate_dcf(
+        series, sector_rule=sector_rule, wacc_analysis=wacc_analysis)
 
     statements = M.statements(latest, employees)
     _cf = M.cashflow_statement(series)
@@ -694,7 +708,7 @@ async def analyze(identifier: str) -> Optional[Dict]:
     d2e = kpis.get("debt_to_equity")
     ni = latest.get("net_income")
     ebitda = latest.get("ebitda")
-    net_debt = (latest.get("financial_debt") or 0) - (latest.get("cash") or 0)
+    net_debt = _net_debt(latest)
     wc = (latest["current_assets"] - latest["current_liabilities"]
           if latest.get("current_assets") is not None and latest.get("current_liabilities") is not None else None)
 
@@ -705,7 +719,7 @@ async def analyze(identifier: str) -> Optional[Dict]:
         strengths.append("Crecimiento de ingresos superior al 10% en el último año.")
     if cr is not None and cr >= 1.5:
         strengths.append("Liquidez holgada: el activo corriente cubre con amplitud el pasivo a corto plazo.")
-    if ebitda and ebitda > 0 and net_debt <= 0:
+    if ebitda and ebitda > 0 and net_debt is not None and net_debt <= 0:
         strengths.append("Posición de caja neta positiva, sin deuda financiera neta.")
 
     # weaknesses
@@ -725,7 +739,7 @@ async def analyze(identifier: str) -> Optional[Dict]:
         risks.append("Resultado neto negativo en el último ejercicio.")
     if evolution.get("trend") == "deterioration":
         risks.append("Tendencia de ingresos a la baja.")
-    if ebitda and ebitda > 0 and net_debt > 0 and (net_debt / ebitda) > 4:
+    if ebitda and ebitda > 0 and net_debt is not None and net_debt > 0 and (net_debt / ebitda) > 4:
         risks.append("Apalancamiento elevado: la deuda financiera neta supera cuatro veces el EBITDA.")
     if d2e is not None and d2e > 3:
         risks.append("Endeudamiento elevado en relación con los fondos propios.")

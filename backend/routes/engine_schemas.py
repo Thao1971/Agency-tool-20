@@ -64,6 +64,7 @@ class ValuationBlock(_Base):
     confidence: Optional[Any] = None
     hypotheses: Optional[List[Any]] = None
     lineage: Optional[Dict[str, Any]] = None
+    dcf: Optional[Dict[str, Any]] = None
 
 
 class FinancialAnalyzeResponse(_Base):
